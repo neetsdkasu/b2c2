@@ -1,0 +1,13 @@
+[package]
+name = "b2c2"
+version = "0.1.0"
+authors = ["Leonardone <neetsdkasu@gmail.com>"]
+edition = "2018"
+description = "Translate basic-like to casl2" 
+readme = "README.md"
+license = "MIT"
+repository = "https://bitbucket.org/neetsdkasu/b2c2/"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
