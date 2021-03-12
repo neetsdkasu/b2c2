@@ -86,9 +86,9 @@ fn take_hex_integer_token(s: &str) -> Option<(Token, &str)> {
         .map_or(s.len(), |(p, _)| p);
     let (num, rest) = s.split_at(split_position);
     let (_prefix, num) = num.split_at(prefix_position);
-    i16::from_str_radix(num, 16)
+    u16::from_str_radix(num, 16)
         .ok()
-        .map(|n| (Token::Integer(n as i32), rest))
+        .map(|n| (Token::Integer(n as i16 as i32), rest))
 }
 
 fn take_integer_token(s: &str) -> Option<(Token, &str)> {
@@ -138,6 +138,7 @@ fn take_operator_token(s: &str) -> Option<(Token, &str)> {
         .next()
         .filter(|(_, ch)| !ch.is_ascii_alphanumeric())?;
     char_indices
+        .chain(vec![(s.len(), '\n')])
         .filter_map(|(p, _)| {
             let (word, rest) = s.split_at(p);
             Operator::parse(word).map(|token| (token, rest))
@@ -358,6 +359,7 @@ mod test {
         assert!(!is_comment("hoge"));
         assert!(!is_comment("h'oge"));
         assert!(!is_comment("&hoge"));
+        assert!(!is_comment(" ' hoge"));
         assert!(!is_comment(" Rem"));
         assert!(!is_comment("R e m"));
         assert!(!is_comment("\"rem\""));
@@ -368,14 +370,207 @@ mod test {
     #[test]
     fn take_hex_integer_token_works() {
         let src = [
-            ("&H000000", Some((Token::Integer(0), ""))),
-            ("&H00001", Some((Token::Integer(1), ""))),
-            ("&H10", Some((Token::Integer(16), ""))),
-            ("&H1000", Some((Token::Integer(1 << 12), ""))),
-            ("&H3000", Some((Token::Integer(3 << 12), ""))),
+            ("&H000000", Some((Token::Integer(0x0), ""))),
+            ("&H00001", Some((Token::Integer(0x1), ""))),
+            ("&h10", Some((Token::Integer(0x10), ""))),
+            ("&H1000", Some((Token::Integer(0x1000), ""))),
+            ("&HABCZ", Some((Token::Integer(0xABC), "Z"))),
+            ("&hFF", Some((Token::Integer(0xFF), ""))),
+            ("&H10 0", Some((Token::Integer(0x10), " 0"))),
+            ("&H10xx", Some((Token::Integer(0x10), "xx"))),
+            ("&h1000.00", Some((Token::Integer(0x1000), ".00"))),
+            ("&H7fff+1", Some((Token::Integer(0x7FFF), "+1"))),
+            ("&H8000-2", Some((Token::Integer(-0x8000), "-2"))),
+            ("&", None),
+            ("&H", None),
+            ("&Hx", None),
+            ("&H 0", None),
+            ("&012", None),
+            ("H012", None),
+            ("0x12", None),
+            ("ABC", None),
+            (" &h01", None),
+            ("&h10000", None),
+            ("&h123456789", None),
+            ("+&h100", None),
+            ("-&h100", None),
         ];
         for (s, res) in &src {
             assert_eq!(take_hex_integer_token(s), *res);
+        }
+    }
+
+    #[test]
+    fn take_integer_token_works() {
+        let src = [
+            ("000000", Some((Token::Integer(0), ""))),
+            ("001", Some((Token::Integer(1), ""))),
+            ("1", Some((Token::Integer(1), ""))),
+            ("12345#", Some((Token::Integer(12345), "#"))),
+            ("12345L", Some((Token::Integer(12345), "L"))),
+            ("12345+", Some((Token::Integer(12345), "+"))),
+            ("12345.6", Some((Token::Integer(12345), ".6"))),
+            ("12 345", Some((Token::Integer(12), " 345"))),
+            ("32767", Some((Token::Integer(32767), ""))),
+            ("32768", Some((Token::Integer(32768), ""))),
+            ("32769", None),
+            ("123456789", None),
+            ("&H1", None),
+            ("ABC", None),
+            (" 123", None),
+            ("+123", None),
+            ("-123", None),
+        ];
+        for (s, res) in &src {
+            assert_eq!(take_integer_token(s), *res);
+        }
+    }
+
+    #[test]
+    fn take_string_token_works() {
+        let src = [
+            (r#""ABCD""#, Some((Token::String("ABCD".into()), ""))),
+            (r#""AB CD""#, Some((Token::String("AB CD".into()), ""))),
+            (r#""AB""CD""#, Some((Token::String("AB\"CD".into()), ""))),
+            (
+                r#""AB""""CD""#,
+                Some((Token::String("AB\"\"CD".into()), "")),
+            ),
+            (r#""AB"CD""#, Some((Token::String("AB".into()), "CD\""))),
+            (
+                r#""AB" "CD""#,
+                Some((Token::String("AB".into()), " \"CD\"")),
+            ),
+            (r#""ABCD"xyz"#, Some((Token::String("ABCD".into()), "xyz"))),
+            (r#""ABCD"&x"#, Some((Token::String("ABCD".into()), "&x"))),
+            (r#""""#, Some((Token::String("".into()), ""))),
+            (r#"""#, None),
+            (r#"ABCD""#, None),
+            (r#""ABCD"#, None),
+            (r#"ABCD"#, None),
+        ];
+        for (s, res) in &src {
+            assert_eq!(take_string_token(s), *res);
+        }
+    }
+
+    #[test]
+    fn take_operator_token_works() {
+        let src = [
+            ("<<", Some((Token::Operator(Operator::ShiftLeft), ""))),
+            ("<", Some((Token::Operator(Operator::LessThan), ""))),
+            ("<=", Some((Token::Operator(Operator::LessOrEequal), ""))),
+            ("<>", Some((Token::Operator(Operator::NotEqual), ""))),
+            ("<>>", Some((Token::Operator(Operator::NotEqual), ">"))),
+            ("==", Some((Token::Operator(Operator::Equal), "="))),
+            ("+=", Some((Token::Operator(Operator::AddInto), ""))),
+            ("+", Some((Token::Operator(Operator::Add), ""))),
+            ("mod", None),
+            ("And", None),
+            ("Xor", None),
+            ("'", None),
+            ("|", None),
+            (" + ", None),
+        ];
+        for (s, res) in &src {
+            assert_eq!(take_operator_token(s), *res);
+        }
+    }
+
+    #[test]
+    fn take_word_works() {
+        let src = [
+            ("ABC", Some(("ABC", ""))),
+            ("abc", Some(("abc", ""))),
+            ("ABC123", Some(("ABC123", ""))),
+            ("AB_C12_3", Some(("AB_C12_3", ""))),
+            ("AB*C12*3", Some(("AB", "*C12*3"))),
+            ("123ABC", None),
+            ("_123ABC", None),
+            (" ABC", None),
+            ("_ABC", None),
+            ("*ABC", None),
+        ];
+        for (s, res) in &src {
+            assert_eq!(take_word(s), *res);
+        }
+    }
+
+    #[test]
+    fn take_word_token_works() {
+        let src = [
+            ("ABC", Some((Token::Name("ABC".into()), ""))),
+            ("ABC123", Some((Token::Name("ABC123".into()), ""))),
+            ("else", Some((Token::Keyword(Keyword::Else), ""))),
+            ("MAX", Some((Token::Function(Function::Max), ""))),
+            ("integer", Some((Token::TypeName(TypeName::Integer), ""))),
+            ("xoR", Some((Token::Operator(Operator::Xor), ""))),
+            ("else if", Some((Token::Keyword(Keyword::Else), " if"))),
+            ("MAX++", Some((Token::Function(Function::Max), "++"))),
+            (
+                "integer(x)",
+                Some((Token::TypeName(TypeName::Integer), "(x)")),
+            ),
+            ("MAXX", Some((Token::Name("MAXX".into()), ""))),
+            ("Integerr", Some((Token::Name("Integerr".into()), ""))),
+            ("Inte", Some((Token::Name("Inte".into()), ""))),
+            ("X or", Some((Token::Name("X".into()), " or"))),
+            (" Abc", None),
+            ("_Abc", None),
+            ("+Abc", None),
+            ("123", None),
+            ("+", None),
+            ("<>", None),
+        ];
+        for (s, res) in &src {
+            assert_eq!(take_word_token(s), *res);
+        }
+    }
+
+    #[test]
+    fn take_token_works() {
+        let src = [
+            ("ABC", Some((Token::Name("ABC".into()), ""))),
+            ("ABC123", Some((Token::Name("ABC123".into()), ""))),
+            ("else", Some((Token::Keyword(Keyword::Else), ""))),
+            ("MAX", Some((Token::Function(Function::Max), ""))),
+            ("integer", Some((Token::TypeName(TypeName::Integer), ""))),
+            ("xoR", Some((Token::Operator(Operator::Xor), ""))),
+            ("else if", Some((Token::Keyword(Keyword::Else), " if"))),
+            ("MAX++", Some((Token::Function(Function::Max), "++"))),
+            (
+                "integer(x)",
+                Some((Token::TypeName(TypeName::Integer), "(x)")),
+            ),
+            ("MAXX", Some((Token::Name("MAXX".into()), ""))),
+            ("Integerr", Some((Token::Name("Integerr".into()), ""))),
+            ("Inte", Some((Token::Name("Inte".into()), ""))),
+            ("X or", Some((Token::Name("X".into()), " or"))),
+            ("==", Some((Token::Operator(Operator::Equal), "="))),
+            ("+=", Some((Token::Operator(Operator::AddInto), ""))),
+            ("+", Some((Token::Operator(Operator::Add), ""))),
+            ("+Abc", Some((Token::Operator(Operator::Add), "Abc"))),
+            ("&H7fff+1", Some((Token::Integer(0x7FFF), "+1"))),
+            ("&H8000-2", Some((Token::Integer(-0x8000), "-2"))),
+            ("&", Some((Token::Operator(Operator::Concat), ""))),
+            ("&H", Some((Token::Operator(Operator::Concat), "H"))),
+            ("&Hx", Some((Token::Operator(Operator::Concat), "Hx"))),
+            (r#""ABCD"&x"#, Some((Token::String("ABCD".into()), "&x"))),
+            (r#""""#, Some((Token::String("".into()), ""))),
+            (r#"ABCD""#, Some((Token::Name("ABCD".into()), "\""))),
+            ("<=", Some((Token::Operator(Operator::LessOrEequal), ""))),
+            ("<>", Some((Token::Operator(Operator::NotEqual), ""))),
+            ("<>>", Some((Token::Operator(Operator::NotEqual), ">"))),
+            ("12 345", Some((Token::Integer(12), " 345"))),
+            ("32767", Some((Token::Integer(32767), ""))),
+            ("32768", Some((Token::Integer(32768), ""))),
+            ("32769", None),
+            (r#"""#, None),
+            (" Abc", None),
+            ("_Abc", None),
+        ];
+        for (s, res) in &src {
+            assert_eq!(take_token(s), *res);
         }
     }
 
