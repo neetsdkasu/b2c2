@@ -54,6 +54,13 @@ impl<R> Tokenizer<R> {
     }
 }
 
+fn is_comment(line: &str) -> bool {
+    line.starts_with('\'')
+        || take_word(line)
+            .filter(|(word, _)| "Rem".eq_ignore_ascii_case(word))
+            .is_some()
+}
+
 fn take_token(line: &str) -> Option<(Token, &str)> {
     [
         take_word_token,
@@ -66,23 +73,19 @@ fn take_token(line: &str) -> Option<(Token, &str)> {
     .find_map(|f| f(line))
 }
 
-fn is_comment(line: &str) -> bool {
-    line.starts_with('\'')
-        || take_word(line)
-            .filter(|(word, _)| "Rem".eq_ignore_ascii_case(word))
-            .is_some()
-}
-
 fn take_hex_integer_token(s: &str) -> Option<(Token, &str)> {
     let mut char_indices = s.char_indices();
     char_indices.next().filter(|(_, ch)| *ch == '&')?;
     char_indices
         .next()
         .filter(|(_, ch)| 'H'.eq_ignore_ascii_case(ch))?;
+    let mut char_indices = char_indices.peekable();
+    let &(prefix_position, _) = char_indices.peek()?;
     let split_position = char_indices
         .find(|(_, ch)| !ch.is_ascii_hexdigit())
         .map_or(s.len(), |(p, _)| p);
     let (num, rest) = s.split_at(split_position);
+    let (_prefix, num) = num.split_at(prefix_position);
     i16::from_str_radix(num, 16)
         .ok()
         .map(|n| (Token::Integer(n as i32), rest))
@@ -336,6 +339,44 @@ mod test {
             assert_eq!(line?.unwrap(), src_tokens);
         }
         Ok(())
+    }
+
+    #[test]
+    fn is_comment_works() {
+        // comment
+        assert!(is_comment("' hoge"));
+        assert!(is_comment("'hoge"));
+        assert!(is_comment("''hoge"));
+        assert!(is_comment("'"));
+        assert!(is_comment("Rem hoge"));
+        assert!(is_comment("Rem'hoge"));
+        assert!(is_comment("Rem.hoge"));
+        assert!(is_comment("rem hoge"));
+        assert!(is_comment("REM'hoge"));
+        assert!(is_comment("rEm.hoge"));
+        // not comment
+        assert!(!is_comment("hoge"));
+        assert!(!is_comment("h'oge"));
+        assert!(!is_comment("&hoge"));
+        assert!(!is_comment(" Rem"));
+        assert!(!is_comment("R e m"));
+        assert!(!is_comment("\"rem\""));
+        assert!(!is_comment("Reminder"));
+        assert!(!is_comment("rem1234"));
+    }
+
+    #[test]
+    fn take_hex_integer_token_works() {
+        let src = [
+            ("&H000000", Some((Token::Integer(0), ""))),
+            ("&H00001", Some((Token::Integer(1), ""))),
+            ("&H10", Some((Token::Integer(16), ""))),
+            ("&H1000", Some((Token::Integer(1 << 12), ""))),
+            ("&H3000", Some((Token::Integer(3 << 12), ""))),
+        ];
+        for (s, res) in &src {
+            assert_eq!(take_hex_integer_token(s), *res);
+        }
     }
 
     const SRC: &str = r#"
