@@ -157,9 +157,22 @@ fn take_word(s: &str) -> Option<(&str, &str)> {
     Some(s.split_at(split_position))
 }
 
+fn parse_boolean(token: &str) -> Option<Token> {
+    // [("True", true), ("False", false)]
+    // .iter()
+    // .find(|(lit, _)| lit.eq_ignore_ascii_case(token))
+    // .map(|(_, b)| Token::Boolean(*b))
+    token
+        .to_ascii_lowercase()
+        .parse::<bool>()
+        .map(Token::Boolean)
+        .ok()
+}
+
 fn take_word_token(s: &str) -> Option<(Token, &str)> {
     take_word(s).and_then(|(word, rest)| {
         [
+            parse_boolean,
             Keyword::parse,
             Function::parse,
             TypeName::parse,
@@ -181,6 +194,7 @@ enum Token {
     Operator(Operator),
     String(String),
     Integer(i32),
+    Boolean(bool),
 }
 
 macro_rules! enumdef {
@@ -264,6 +278,7 @@ enumdef!(
 enumdef!(
     TypeName;
     TYPE_NAMES;
+    Boolean,
     Integer,
     String,
 );
@@ -365,6 +380,27 @@ mod test {
         assert!(!is_comment("\"rem\""));
         assert!(!is_comment("Reminder"));
         assert!(!is_comment("rem1234"));
+    }
+
+    #[test]
+    fn parse_boolean_works() {
+        let src = [
+            ("true", Some(Token::Boolean(true))),
+            ("false", Some(Token::Boolean(false))),
+            ("True", Some(Token::Boolean(true))),
+            ("False", Some(Token::Boolean(false))),
+            ("TRUE", Some(Token::Boolean(true))),
+            ("FALSE", Some(Token::Boolean(false))),
+            ("t", None),
+            ("f", None),
+            (" true", None),
+            (" false", None),
+            ("true1", None),
+            ("false1", None),
+        ];
+        for (s, res) in &src {
+            assert_eq!(parse_boolean(s), *res);
+        }
     }
 
     #[test]
