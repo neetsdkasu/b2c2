@@ -1,5 +1,5 @@
 #[allow(dead_code)]
-mod tok;
+mod tokenizer;
 
 fn main() {
     println!("Hello, world!");
