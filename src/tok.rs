@@ -572,6 +572,27 @@ mod test {
         for (s, res) in &src {
             assert_eq!(take_token(s), *res);
         }
+        for keyword in &KEYWORDS {
+            assert_eq!(take_token(keyword.to_str()), Some(((*keyword).into(), "")));
+        }
+        for function in &FUNCTIONS {
+            assert_eq!(
+                take_token(function.to_str()),
+                Some(((*function).into(), ""))
+            );
+        }
+        for type_name in &TYPE_NAMES {
+            assert_eq!(
+                take_token(type_name.to_str()),
+                Some(((*type_name).into(), ""))
+            );
+        }
+        for operator in &OPERATORS {
+            assert_eq!(
+                take_token(operator.to_str()),
+                Some(((*operator).into(), ""))
+            );
+        }
     }
 
     const SRC: &str = r#"
