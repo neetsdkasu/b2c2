@@ -1,15 +1,16 @@
+use crate::SyntaxError;
 use std::io::{self, BufRead};
 use std::result;
 
-type Result = result::Result<(usize, Vec<(usize, Token)>), (usize, usize, String)>;
+type Result = result::Result<(usize, Vec<(usize, Token)>), SyntaxError>;
 
-struct Tokenizer<R> {
+pub struct Tokenizer<R> {
     line_number: usize,
     reader: R,
 }
 
 impl<R> Tokenizer<R> {
-    fn new(reader: R) -> Self {
+    pub fn new(reader: R) -> Self {
         Self {
             line_number: 0,
             reader,
@@ -42,10 +43,10 @@ impl<R> Tokenizer<R> {
                     line = rest.trim_start();
                 }
                 None => {
-                    return Err((
+                    return Err(SyntaxError::new(
                         self.line_number,
                         pos,
-                        format!("Syntax Error [in {}:{}]: {}", self.line_number, pos, line),
+                        format!("invalid token: {}", line),
                     ))
                 }
             }
@@ -186,7 +187,7 @@ fn take_word_token(s: &str) -> Option<(Token, &str)> {
 }
 
 #[derive(PartialEq, Eq, Debug)]
-enum Token {
+pub enum Token {
     Name(String),
     Keyword(Keyword),
     Function(Function),
@@ -202,7 +203,7 @@ macro_rules! enumdef {
     ($v:ident, $($vs:ident,)*) => (1 + enumdef!($($vs,)*));
     ($name:ident; $array:ident;; $($value:ident,)* ) => {
         #[derive(PartialEq,Eq,Clone,Copy,Debug)]
-        enum $name {
+        pub enum $name {
             $($value,)*
         }
         static $array: [$name; enumdef!($($value,)*)] = [
@@ -227,6 +228,11 @@ macro_rules! enumdef {
             fn parse(token: &str) -> Option<Token> {
                 use std::convert::*;
                 $name::try_from(token).map(Into::into).ok()
+            }
+        }
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.to_str())
             }
         }
     };
