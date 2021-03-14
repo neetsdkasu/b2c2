@@ -86,6 +86,15 @@ impl Parser {
             return Err(self.syntax_error(format!("undefined variable: {}", name)));
         }
 
+        // var = expr
+        // var += expr
+        // var -= expr
+        // array(expr) = expr
+        // array(expr) += expr
+        // array(expr) -= expr
+
+        // TODO
+
         match pos_and_tokens.first() {
             Some((_, Token::Operator(Operator::Equal)))
             | Some((_, Token::Operator(Operator::AddInto)))
@@ -134,7 +143,7 @@ impl Parser {
                     return Err(self
                         .syntax_error_pos(*pos_n, format!("already defined variable: {}", name)));
                 }
-                if *size < 1 || *size > 1000 {
+                if *size < 0 || *size > 256 {
                     return Err(
                         self.syntax_error_pos(*pos_s, "invalid Array Size in Dim statement".into())
                     );
@@ -234,16 +243,19 @@ impl Parser {
             },
             _ => {}
         }
-        let expr = self.perse_expr(pos_and_tokens)?;
+        let expr = self.parse_expr(pos_and_tokens)?;
         match expr.return_type() {
-            TypeName::Boolean => self.add_statement(Statement::PrintExprBoolan(expr)),
-            TypeName::Integer => self.add_statement(Statement::PrintExprInteger(expr)),
-            TypeName::String => self.add_statement(Statement::PrintExprString(expr)),
+            ExprType::Boolean => self.add_statement(Statement::PrintExprBoolan(expr)),
+            ExprType::Integer => self.add_statement(Statement::PrintExprInteger(expr)),
+            ExprType::String => self.add_statement(Statement::PrintExprString(expr)),
+            ExprType::ParamList => {
+                return Err(self.syntax_error("invalid Expression in Print statement".into()))
+            }
         }
         Ok(())
     }
 
-    fn perse_expr(&self, pos_and_tokens: &[(usize, Token)]) -> Result<Expr, SyntaxError> {
+    fn parse_expr(&self, pos_and_tokens: &[(usize, Token)]) -> Result<Expr, SyntaxError> {
         match pos_and_tokens {
             [] => return Err(self.syntax_error("invalid Expression".into())),
             [(_, Token::Boolean(value))] => return Ok(Expr::LitBoolean(*value)),
@@ -268,7 +280,7 @@ impl Parser {
                     return Err(self.syntax_error_pos(*pos, format!("undefined variable: {}", name)))
                 }
             },
-            [(_, Token::Operator(op)), (_, Token::Boolean(value))] if op.can_unary_boolean() => {
+            [(_, Token::Operator(op)), (_, Token::Boolean(value))] if op.can_be_unary_boolean() => {
                 return Ok(Expr::UnaryOperatorBoolean(
                     *op,
                     Box::new(Expr::LitBoolean(*value)),
@@ -281,7 +293,9 @@ impl Parser {
                     return Err(self.syntax_error_pos(*pos, format!("invalid integer: {}", *value)));
                 }
             }
-            [(_, Token::Operator(op)), (pos, Token::Integer(value))] if op.can_unary_integer() => {
+            [(_, Token::Operator(op)), (pos, Token::Integer(value))]
+                if op.can_be_unary_integer() =>
+            {
                 if let Some(value) = validate_integer(false, *value) {
                     return Ok(Expr::UnaryOperatorInteger(
                         *op,
@@ -291,28 +305,27 @@ impl Parser {
                     return Err(self.syntax_error_pos(*pos, format!("invalid integer: {}", *value)));
                 }
             }
-            [(_, Token::Operator(op)), (pos, Token::Name(name))] if op.can_unary() => {
-                match self.variables.get(name) {
-                    Some(VarType::Boolean) if op.can_unary_boolean() => {
-                        return Ok(Expr::UnaryOperatorBoolean(
-                            *op,
-                            Box::new(Expr::VarBoolean(name.clone())),
-                        ))
-                    }
-                    Some(VarType::Integer) if op.can_unary_integer() => {
-                        return Ok(Expr::UnaryOperatorInteger(
-                            *op,
-                            Box::new(Expr::VarInteger(name.clone())),
-                        ))
-                    }
-                    Some(_) => return Err(self.syntax_error_pos(*pos, "invalid Expression".into())),
-                    None => {
-                        return Err(
-                            self.syntax_error_pos(*pos, format!("undefined variable: {}", name))
-                        )
-                    }
+            [(_, Token::Operator(op)), (pos, Token::Name(name))] if op.can_be_unary() => match self
+                .variables
+                .get(name)
+            {
+                Some(VarType::Boolean) if op.can_be_unary_boolean() => {
+                    return Ok(Expr::UnaryOperatorBoolean(
+                        *op,
+                        Box::new(Expr::VarBoolean(name.clone())),
+                    ))
                 }
-            }
+                Some(VarType::Integer) if op.can_be_unary_integer() => {
+                    return Ok(Expr::UnaryOperatorInteger(
+                        *op,
+                        Box::new(Expr::VarInteger(name.clone())),
+                    ))
+                }
+                Some(_) => return Err(self.syntax_error_pos(*pos, "invalid Expression".into())),
+                None => {
+                    return Err(self.syntax_error_pos(*pos, format!("undefined variable: {}", name)))
+                }
+            },
             [(pos, token)] | [(pos, token), (_, _)] => {
                 return Err(self
                     .syntax_error_pos(*pos, format!("invalid token in Expression: {:?}", token)))
@@ -320,12 +333,65 @@ impl Parser {
             _ => {}
         }
 
-        // 優先度のもっとも高い外側の演算子のうち一番左のを抽出する (括弧のネストに気をつける)
-        //    項 op 項 op 項 op ... op 項
+        let mut target_op: Option<(usize, Operator)> = None;
+        let mut next_unary = true;
+        let mut bracket_count = 0;
+        for (i, (pos, token)) in pos_and_tokens.iter().enumerate() {
+            if bracket_count > 0 {
+                match token {
+                    Token::Operator(Operator::OpenBracket) => bracket_count += 1,
+                    Token::Operator(Operator::CloseBracket) => bracket_count -= 1,
+                    _ => {}
+                }
+                continue;
+            }
+            if let Token::Operator(op) = token {
+                if matches!(op, Operator::OpenBracket) {
+                    bracket_count += 1;
+                    next_unary = false;
+                    continue;
+                }
+                if next_unary {
+                    if op.can_be_unary() {
+                        next_unary = false;
+                    } else {
+                        return Err(self.syntax_error_pos(*pos, "invalid Expression".into()));
+                    }
+                } else if op.can_be_binary() {
+                    if target_op.filter(|(_, cur_op)| cur_op >= op).is_none() {
+                        target_op = Some((i, *op));
+                    }
+                    next_unary = true;
+                } else {
+                    return Err(self.syntax_error_pos(*pos, "invalid Expression".into()));
+                }
+            } else {
+                next_unary = false;
+            }
+        }
+
+        if bracket_count > 0 || next_unary {
+            return Err(self.syntax_error("invalid Expression".into()));
+        }
+
+        if let Some((i, op)) = target_op {
+            let lhs = self.parse_expr(&pos_and_tokens[..i])?;
+            let rhs = self.parse_expr(&pos_and_tokens[i + 1..])?;
+            return Expr::binary(op, lhs, rhs).ok_or_else(|| {
+                let (pos, _) = pos_and_tokens[i];
+                self.syntax_error_pos(pos, "invalid Expression".into())
+            });
+        }
+
+        // 外側の演算子のうち一番左のを抽出する (括弧のネストに気をつける)
+        //    項 op1 項 op2 項 op1 ... op2 項
+        //   -> (項 op1 項) op2 (項 op1 ... op2 項)
+        //   分割して再帰的に処理していく
         // 外側の演算子がない場合、つまり、項が１つ
         //    [unary-op] ( 式 )
+        //    [unary-op] Array ( 引数 )
         //    [unary-op] Func ( 引数 )
-        //  のどちらかなハズ
+        //  のどれかのハズ
         todo!();
     }
 }
@@ -353,15 +419,26 @@ impl Keyword {
 }
 
 impl Operator {
-    fn can_unary(&self) -> bool {
+    fn can_be_binary(&self) -> bool {
+        !matches!(
+            self,
+            Operator::Not
+                | Operator::OpenBracket
+                | Operator::CloseBracket
+                | Operator::AddInto
+                | Operator::SubInto
+        )
+    }
+
+    fn can_be_unary(&self) -> bool {
         matches!(self, Operator::Sub | Operator::Not)
     }
 
-    fn can_unary_integer(&self) -> bool {
+    fn can_be_unary_integer(&self) -> bool {
         matches!(self, Operator::Sub | Operator::Not)
     }
 
-    fn can_unary_boolean(&self) -> bool {
+    fn can_be_unary_boolean(&self) -> bool {
         matches!(self, Operator::Not)
     }
 
@@ -386,6 +463,12 @@ impl Operator {
 
             Comma => 18,
         }
+    }
+}
+
+impl PartialOrd for Operator {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.priority().cmp(&other.priority()))
     }
 }
 
@@ -418,14 +501,22 @@ enum VarType {
     ArrayOfInteger(usize),
 }
 
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+enum ExprType {
+    Boolean,
+    Integer,
+    String,
+    ParamList,
+}
+
 #[derive(PartialEq, Eq, Clone, Debug)]
 enum Expr {
     BinaryOperatorBoolean(Operator, Box<Expr>, Box<Expr>),
     BinaryOperatorInteger(Operator, Box<Expr>, Box<Expr>),
     BinaryOperatorString(Operator, Box<Expr>, Box<Expr>),
-    FunctionBoolean(Function, Vec<Expr>),
-    FunctionInteger(Function, Vec<Expr>),
-    FunctionString(Function, Vec<Expr>),
+    FunctionBoolean(Function, Box<Expr>),
+    FunctionInteger(Function, Box<Expr>),
+    FunctionString(Function, Box<Expr>),
     LitBoolean(bool),
     LitInteger(i32),
     LitString(String),
@@ -436,10 +527,19 @@ enum Expr {
     VarString(String),
     VarArrayOfBoolean(String, Box<Expr>),
     VarArrayOfInteger(String, Box<Expr>),
+    ParamList(Vec<Expr>),
 }
 
 impl Expr {
-    fn return_type(&self) -> TypeName {
+    fn binary(op: Operator, lhs: Expr, rhs: Expr) -> Option<Expr> {
+        assert!(op.can_be_binary());
+        // op == , => ParamList, lhsとrhsは型が不一致でもOK
+        // op != , => lhsとrhsは型が一致する必要がある
+        // opが受け取れる型とopが返す型は様々
+        todo!();
+    }
+
+    fn return_type(&self) -> ExprType {
         use Expr::*;
         match self {
             BinaryOperatorBoolean(_, _, _)
@@ -447,18 +547,20 @@ impl Expr {
             | LitBoolean(_)
             | UnaryOperatorBoolean(_, _)
             | VarBoolean(_)
-            | VarArrayOfBoolean(_, _) => TypeName::Boolean,
+            | VarArrayOfBoolean(_, _) => ExprType::Boolean,
 
             BinaryOperatorInteger(_, _, _)
             | FunctionInteger(_, _)
             | LitInteger(_)
             | UnaryOperatorInteger(_, _)
             | VarInteger(_)
-            | VarArrayOfInteger(_, _) => TypeName::Integer,
+            | VarArrayOfInteger(_, _) => ExprType::Integer,
 
             BinaryOperatorString(_, _, _) | FunctionString(_, _) | LitString(_) | VarString(_) => {
-                TypeName::String
+                ExprType::String
             }
+
+            ParamList(_) => ExprType::ParamList,
         }
     }
 }
@@ -475,6 +577,153 @@ mod test {
         parse(src)?.unwrap();
 
         Ok(())
+    }
+
+    #[test]
+    fn parser_parse_expr_works() {
+        let mut parser = Parser::new();
+
+        let bool_var1 = "boolVar1";
+        let int_var1 = "intVar1";
+        let str_var1 = "strVar1";
+
+        [
+            (bool_var1, VarType::Boolean),
+            (int_var1, VarType::Integer),
+            (str_var1, VarType::String),
+        ]
+        .iter()
+        .for_each(|(v, t)| {
+            parser.variables.insert(v.to_string(), *t);
+        });
+
+        let src = vec![
+            (vec![(1, Token::Boolean(true))], Expr::LitBoolean(true)),
+            (vec![(1, Token::Integer(1234))], Expr::LitInteger(1234)),
+            (
+                vec![(1, Token::String("text".into()))],
+                Expr::LitString("text".into()),
+            ),
+            (
+                vec![(1, Token::Name(bool_var1.into()))],
+                Expr::VarBoolean(bool_var1.into()),
+            ),
+            (
+                vec![(1, Token::Name(int_var1.into()))],
+                Expr::VarInteger(int_var1.into()),
+            ),
+            (
+                vec![(1, Token::Name(str_var1.into()))],
+                Expr::VarString(str_var1.into()),
+            ),
+            (
+                vec![
+                    (1, Token::Operator(Operator::Not)),
+                    (2, Token::Boolean(true)),
+                ],
+                Expr::UnaryOperatorBoolean(Operator::Not, Box::new(Expr::LitBoolean(true))),
+            ),
+            (
+                vec![
+                    (1, Token::Operator(Operator::Sub)),
+                    (2, Token::Integer(1234)),
+                ],
+                Expr::LitInteger(-1234),
+            ),
+            (
+                vec![
+                    (1, Token::Operator(Operator::Sub)),
+                    (2, Token::Integer(0x8000)),
+                ],
+                Expr::LitInteger(-0x8000),
+            ),
+            (
+                vec![
+                    (1, Token::Operator(Operator::Not)),
+                    (2, Token::Integer(1234)),
+                ],
+                Expr::UnaryOperatorInteger(Operator::Not, Box::new(Expr::LitInteger(1234))),
+            ),
+            (
+                vec![
+                    (1, Token::Operator(Operator::Not)),
+                    (2, Token::Name(bool_var1.into())),
+                ],
+                Expr::UnaryOperatorBoolean(
+                    Operator::Not,
+                    Box::new(Expr::VarBoolean(bool_var1.into())),
+                ),
+            ),
+            (
+                vec![
+                    (1, Token::Operator(Operator::Not)),
+                    (2, Token::Name(int_var1.into())),
+                ],
+                Expr::UnaryOperatorInteger(
+                    Operator::Not,
+                    Box::new(Expr::VarInteger(int_var1.into())),
+                ),
+            ),
+            (
+                vec![
+                    (1, Token::Operator(Operator::Sub)),
+                    (2, Token::Name(int_var1.into())),
+                ],
+                Expr::UnaryOperatorInteger(
+                    Operator::Sub,
+                    Box::new(Expr::VarInteger(int_var1.into())),
+                ),
+            ),
+            (
+                vec![
+                    (1, Token::Integer(123)),
+                    (2, Token::Operator(Operator::Add)),
+                    (3, Token::Integer(456)),
+                ],
+                Expr::BinaryOperatorInteger(
+                    Operator::Add,
+                    Box::new(Expr::LitInteger(123)),
+                    Box::new(Expr::LitInteger(456)),
+                ),
+            ),
+            (
+                vec![
+                    (1, Token::Operator(Operator::Sub)),
+                    (2, Token::Integer(123)),
+                    (3, Token::Operator(Operator::Add)),
+                    (4, Token::Operator(Operator::Sub)),
+                    (5, Token::Integer(456)),
+                ],
+                Expr::BinaryOperatorInteger(
+                    Operator::Add,
+                    Box::new(Expr::LitInteger(-123)),
+                    Box::new(Expr::LitInteger(-456)),
+                ),
+            ),
+            (
+                vec![
+                    (1, Token::Integer(12)),
+                    (2, Token::Operator(Operator::Add)),
+                    (3, Token::Operator(Operator::Sub)),
+                    (4, Token::Integer(34)),
+                    (5, Token::Operator(Operator::Mul)),
+                    (6, Token::Integer(56)),
+                ],
+                Expr::BinaryOperatorInteger(
+                    Operator::Add,
+                    Box::new(Expr::LitInteger(12)),
+                    Box::new(Expr::BinaryOperatorInteger(
+                        Operator::Mul,
+                        Box::new(Expr::LitInteger(-34)),
+                        Box::new(Expr::LitInteger(56)),
+                    )),
+                ),
+            ),
+        ];
+
+        for (tokens, expr) in src {
+            assert_eq!(parser.parse_expr(&tokens).unwrap(), expr);
+        }
     }
 
     const SRC: &str = r#"

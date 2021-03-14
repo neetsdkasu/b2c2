@@ -186,7 +186,7 @@ fn take_word_token(s: &str) -> Option<(Token, &str)> {
     })
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum Token {
     Name(String),
     Keyword(Keyword),
