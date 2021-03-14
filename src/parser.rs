@@ -256,9 +256,15 @@ impl Parser {
     }
 
     fn parse_expr(&self, pos_and_tokens: &[(usize, Token)]) -> Result<Expr, SyntaxError> {
+        // 項の最小単位
         match pos_and_tokens {
+            // 空の項は存在してはダメ (構文エラー)
             [] => return Err(self.syntax_error("invalid Expression".into())),
+
+            // 真理値リテラル
             [(_, Token::Boolean(value))] => return Ok(Expr::LitBoolean(*value)),
+
+            // 整数リテラル
             [(pos, Token::Integer(value))] => {
                 if let Some(value) = validate_integer(false, *value) {
                     return Ok(Expr::LitInteger(value));
@@ -266,7 +272,11 @@ impl Parser {
                     return Err(self.syntax_error_pos(*pos, format!("invalid integer: {}", *value)));
                 }
             }
+
+            // 文字列リテラル
             [(_, Token::String(value))] => return Ok(Expr::LitString(value.clone())),
+
+            // プリミティブ変数
             [(pos, Token::Name(name))] => match self.variables.get(name) {
                 Some(VarType::Boolean) => return Ok(Expr::VarBoolean(name.clone())),
                 Some(VarType::Integer) => return Ok(Expr::VarInteger(name.clone())),
@@ -280,12 +290,16 @@ impl Parser {
                     return Err(self.syntax_error_pos(*pos, format!("undefined variable: {}", name)))
                 }
             },
+
+            // 単項演算子と真理値
             [(_, Token::Operator(op)), (_, Token::Boolean(value))] if op.can_be_unary_boolean() => {
                 return Ok(Expr::UnaryOperatorBoolean(
                     *op,
                     Box::new(Expr::LitBoolean(*value)),
                 ))
             }
+
+            // 単項演算子マイナスと整数
             [(_, Token::Operator(Operator::Sub)), (pos, Token::Integer(value))] => {
                 if let Some(value) = validate_integer(true, *value) {
                     return Ok(Expr::LitInteger(value));
@@ -293,6 +307,8 @@ impl Parser {
                     return Err(self.syntax_error_pos(*pos, format!("invalid integer: {}", *value)));
                 }
             }
+
+            // 単項演算子と整数
             [(_, Token::Operator(op)), (pos, Token::Integer(value))]
                 if op.can_be_unary_integer() =>
             {
@@ -305,6 +321,8 @@ impl Parser {
                     return Err(self.syntax_error_pos(*pos, format!("invalid integer: {}", *value)));
                 }
             }
+
+            // 単項演算子と変数(真理値or整数)
             [(_, Token::Operator(op)), (pos, Token::Name(name))] if op.can_be_unary() => match self
                 .variables
                 .get(name)
@@ -326,15 +344,20 @@ impl Parser {
                     return Err(self.syntax_error_pos(*pos, format!("undefined variable: {}", name)))
                 }
             },
+
+            // 存在してはいけないトークン列　(構文エラー)
             [(pos, token)] | [(pos, token), (_, _)] => {
                 return Err(self
                     .syntax_error_pos(*pos, format!("invalid token in Expression: {:?}", token)))
             }
+
+            // 他はここでは処理しない
             _ => {}
         }
 
         let mut target_op: Option<(usize, Operator)> = None;
         let mut next_unary = true;
+        let mut next_term = true;
         let mut bracket_count = 0;
         for (i, (pos, token)) in pos_and_tokens.iter().enumerate() {
             if bracket_count > 0 {
@@ -349,9 +372,13 @@ impl Parser {
                 if matches!(op, Operator::OpenBracket) {
                     bracket_count += 1;
                     next_unary = false;
+                    next_term = false;
                     continue;
                 }
                 if next_unary {
+                    // 単項演算子をそのまま重ねることは禁止
+                    //  NG:  Not Not Not -123
+                    //  OK:  Not (Not (Not (-123)))
                     if op.can_be_unary() {
                         next_unary = false;
                     } else {
@@ -362,15 +389,20 @@ impl Parser {
                         target_op = Some((i, *op));
                     }
                     next_unary = true;
+                    next_term = true;
                 } else {
                     return Err(self.syntax_error_pos(*pos, "invalid Expression".into()));
                 }
             } else {
+                if !next_term {
+                    return Err(self.syntax_error_pos(*pos, "invalid Expression".into()));
+                }
                 next_unary = false;
+                next_term = false;
             }
         }
 
-        if bracket_count > 0 || next_unary {
+        if bracket_count > 0 || next_unary || next_term {
             return Err(self.syntax_error("invalid Expression".into()));
         }
 
@@ -388,11 +420,101 @@ impl Parser {
         //   -> (項 op1 項) op2 (項 op1 ... op2 項)
         //   分割して再帰的に処理していく
         // 外側の演算子がない場合、つまり、項が１つ
+        // 構文ミスが無い場合は
         //    [unary-op] ( 式 )
-        //    [unary-op] Array ( 引数 )
+        //    [unary-op] Array ( 引数 ) ' 要素取り出し
         //    [unary-op] Func ( 引数 )
-        //  のどれかのハズ
-        todo!();
+        //    VarString ( 引数 ) ' 文字取り出し
+        //    LitString ( 引数 ) ' 文字取り出し
+        //    のどれかのハズ
+        //    ※引数なし関数は定義しない ()
+        //    ※配列自体や関数自体は計算結果として現れないため (CInt)("123")
+        //    ※関数自体を持つ変数は作れないとするため 変数(引数) は現れない
+        //    ※一時的に生成される文字列から文字取り出しはできないとする (s1 & s2 & "XYZ")(1) など
+        // 構文ミスがある場合は例えば、項を繋ぐ演算子が無い場合
+        //     値 ( 式 ) ( 式 ) 値 Func 値 ( 引数 ) unary-op 値
+
+        match pos_and_tokens {
+            // 単項演算子 と　何か項
+            [(pos, Token::Operator(op)), rest @ ..] if op.can_be_unary() => {
+                let expr = self.parse_expr(rest)?;
+                match expr.return_type() {
+                    ExprType::Boolean if op.can_be_unary_boolean() => {
+                        Ok(Expr::UnaryOperatorBoolean(*op, Box::new(expr)))
+                    }
+                    ExprType::Integer if op.can_be_unary_integer() => {
+                        Ok(Expr::UnaryOperatorInteger(*op, Box::new(expr)))
+                    }
+                    _ => Err(self.syntax_error_pos(*pos, "invalid Expression".into())),
+                }
+            }
+
+            // ( 式 )
+            [(_, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] => {
+                self.parse_expr(inner)
+            }
+
+            // 文字列リテラル ( 添え字 )
+            [(_, Token::String(text)), (pos, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
+            {
+                let expr = self.parse_expr(inner)?;
+                if matches!(expr.return_type(), ExprType::Integer) {
+                    Ok(Expr::CharOfLitString(text.clone(), Box::new(expr)))
+                } else {
+                    Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+                }
+            }
+
+            // 配列変数 ( 添え字 )  もしくは  文字列変数 ( 添え字 )
+            [(pos_n, Token::Name(name)), (pos_e, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
+            {
+                let expr = self.parse_expr(inner)?;
+                if !matches!(expr.return_type(), ExprType::Integer) {
+                    Err(self.syntax_error_pos(*pos_e, "invalid Expression".into()))
+                } else {
+                    match self.variables.get(name) {
+                        Some(VarType::ArrayOfBoolean(_)) => {
+                            Ok(Expr::VarArrayOfBoolean(name.clone(), Box::new(expr)))
+                        }
+                        Some(VarType::ArrayOfInteger(_)) => {
+                            Ok(Expr::VarArrayOfInteger(name.clone(), Box::new(expr)))
+                        }
+                        Some(VarType::String) => {
+                            Ok(Expr::CharOfVarString(name.clone(), Box::new(expr)))
+                        }
+                        Some(_) => Err(self.syntax_error_pos(*pos_n, "invalid Expression".into())),
+                        None => {
+                            Err(self
+                                .syntax_error_pos(*pos_n, format!("undefined Variable: {}", name)))
+                        }
+                    }
+                }
+            }
+
+            // 関数 ( )  ※引数なし関数
+            [(_, Token::Function(_function)), (pos, Token::Operator(Operator::OpenBracket)), (_, Token::Operator(Operator::CloseBracket))] => {
+                Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+            }
+
+            // 関数 ( 引数 )
+            [(_, Token::Function(function)), (pos, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
+            {
+                let param = self.parse_expr(inner)?;
+                if !function.check_param(&param) {
+                    Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+                } else {
+                    match function.return_type() {
+                        ExprType::Boolean => Ok(Expr::FunctionBoolean(*function, Box::new(param))),
+                        ExprType::Integer => Ok(Expr::FunctionInteger(*function, Box::new(param))),
+                        ExprType::String => Ok(Expr::FunctionString(*function, Box::new(param))),
+                        _ => Err(self.syntax_error_pos(*pos, "invalid Expression".into())),
+                    }
+                }
+            }
+
+            // 該当なし (構文エラー)
+            _ => Err(self.syntax_error("invalid Expression".into())),
+        }
     }
 }
 
@@ -514,6 +636,8 @@ enum Expr {
     BinaryOperatorBoolean(Operator, Box<Expr>, Box<Expr>),
     BinaryOperatorInteger(Operator, Box<Expr>, Box<Expr>),
     BinaryOperatorString(Operator, Box<Expr>, Box<Expr>),
+    CharOfLitString(String, Box<Expr>),
+    CharOfVarString(String, Box<Expr>),
     FunctionBoolean(Function, Box<Expr>),
     FunctionInteger(Function, Box<Expr>),
     FunctionString(Function, Box<Expr>),
@@ -532,7 +656,6 @@ enum Expr {
 
 impl Expr {
     fn binary(op: Operator, lhs: Expr, rhs: Expr) -> Option<Expr> {
-        assert!(op.can_be_binary());
         // op == , => ParamList, lhsとrhsは型が不一致でもOK
         // op != , => lhsとrhsは型が一致する必要がある
         // opが受け取れる型とopが返す型は様々
@@ -626,13 +749,41 @@ impl Expr {
             | LitInteger(_)
             | UnaryOperatorInteger(_, _)
             | VarInteger(_)
-            | VarArrayOfInteger(_, _) => ExprType::Integer,
+            | VarArrayOfInteger(_, _)
+            | CharOfLitString(_, _)
+            | CharOfVarString(_, _) => ExprType::Integer,
 
             BinaryOperatorString(_, _, _) | FunctionString(_, _) | LitString(_) | VarString(_) => {
                 ExprType::String
             }
 
             ParamList(_) => ExprType::ParamList,
+        }
+    }
+}
+
+impl Function {
+    fn return_type(&self) -> ExprType {
+        use Function::*;
+        match self {
+            CInt | Max | Min => ExprType::Integer,
+        }
+    }
+
+    fn check_param(&self, param: &Expr) -> bool {
+        use Function::*;
+        match self {
+            CInt => matches!(param.return_type(), ExprType::Boolean | ExprType::String),
+            Max | Min => {
+                if let Expr::ParamList(list) = param {
+                    list.len() == 2
+                        && list
+                            .iter()
+                            .all(|expr| matches!(expr.return_type(), ExprType::Integer))
+                } else {
+                    false
+                }
+            }
         }
     }
 }
@@ -658,11 +809,13 @@ mod test {
         let bool_var1 = "boolVar1";
         let int_var1 = "intVar1";
         let str_var1 = "strVar1";
+        let int_arr1 = "intArr1";
 
         [
             (bool_var1, VarType::Boolean),
             (int_var1, VarType::Integer),
             (str_var1, VarType::String),
+            (int_arr1, VarType::ArrayOfInteger(5)),
         ]
         .iter()
         .for_each(|(v, t)| {
@@ -670,24 +823,31 @@ mod test {
         });
 
         let src = vec![
+            // True
             (vec![(1, Token::Boolean(true))], Expr::LitBoolean(true)),
+            // 1234
             (vec![(1, Token::Integer(1234))], Expr::LitInteger(1234)),
+            // "text"
             (
                 vec![(1, Token::String("text".into()))],
                 Expr::LitString("text".into()),
             ),
+            // boolVar1
             (
                 vec![(1, Token::Name(bool_var1.into()))],
                 Expr::VarBoolean(bool_var1.into()),
             ),
+            // intVar1
             (
                 vec![(1, Token::Name(int_var1.into()))],
                 Expr::VarInteger(int_var1.into()),
             ),
+            // strVar1
             (
                 vec![(1, Token::Name(str_var1.into()))],
                 Expr::VarString(str_var1.into()),
             ),
+            // Not true
             (
                 vec![
                     (1, Token::Operator(Operator::Not)),
@@ -695,6 +855,7 @@ mod test {
                 ],
                 Expr::UnaryOperatorBoolean(Operator::Not, Box::new(Expr::LitBoolean(true))),
             ),
+            // -1234
             (
                 vec![
                     (1, Token::Operator(Operator::Sub)),
@@ -702,6 +863,7 @@ mod test {
                 ],
                 Expr::LitInteger(-1234),
             ),
+            // -&h8000
             (
                 vec![
                     (1, Token::Operator(Operator::Sub)),
@@ -709,6 +871,7 @@ mod test {
                 ],
                 Expr::LitInteger(-0x8000),
             ),
+            // Not 1234
             (
                 vec![
                     (1, Token::Operator(Operator::Not)),
@@ -716,6 +879,7 @@ mod test {
                 ],
                 Expr::UnaryOperatorInteger(Operator::Not, Box::new(Expr::LitInteger(1234))),
             ),
+            // Not boolVar1
             (
                 vec![
                     (1, Token::Operator(Operator::Not)),
@@ -726,6 +890,7 @@ mod test {
                     Box::new(Expr::VarBoolean(bool_var1.into())),
                 ),
             ),
+            // Not intVar1
             (
                 vec![
                     (1, Token::Operator(Operator::Not)),
@@ -736,6 +901,7 @@ mod test {
                     Box::new(Expr::VarInteger(int_var1.into())),
                 ),
             ),
+            // -intVar1
             (
                 vec![
                     (1, Token::Operator(Operator::Sub)),
@@ -746,6 +912,7 @@ mod test {
                     Box::new(Expr::VarInteger(int_var1.into())),
                 ),
             ),
+            // 123 + 456
             (
                 vec![
                     (1, Token::Integer(123)),
@@ -758,6 +925,7 @@ mod test {
                     Box::new(Expr::LitInteger(456)),
                 ),
             ),
+            // -123 + -456
             (
                 vec![
                     (1, Token::Operator(Operator::Sub)),
@@ -772,6 +940,7 @@ mod test {
                     Box::new(Expr::LitInteger(-456)),
                 ),
             ),
+            // 12 + -34 * 56
             (
                 vec![
                     (1, Token::Integer(12)),
@@ -788,6 +957,106 @@ mod test {
                         Operator::Mul,
                         Box::new(Expr::LitInteger(-34)),
                         Box::new(Expr::LitInteger(56)),
+                    )),
+                ),
+            ),
+            // intVar1 = 12 Or boolVar1
+            (
+                vec![
+                    (1, Token::Name(int_var1.into())),
+                    (2, Token::Operator(Operator::Equal)),
+                    (3, Token::Integer(12)),
+                    (4, Token::Operator(Operator::Or)),
+                    (5, Token::Name(bool_var1.into())),
+                ],
+                Expr::BinaryOperatorBoolean(
+                    Operator::Or,
+                    Box::new(Expr::BinaryOperatorBoolean(
+                        Operator::Equal,
+                        Box::new(Expr::VarInteger(int_var1.into())),
+                        Box::new(Expr::LitInteger(12)),
+                    )),
+                    Box::new(Expr::VarBoolean(bool_var1.into())),
+                ),
+            ),
+            // 3 * intArr1(5 * 10) And 4
+            (
+                vec![
+                    (1, Token::Integer(3)),
+                    (2, Token::Operator(Operator::Mul)),
+                    (3, Token::Name(int_arr1.into())),
+                    (4, Token::Operator(Operator::OpenBracket)),
+                    (5, Token::Integer(5)),
+                    (6, Token::Operator(Operator::Mul)),
+                    (7, Token::Integer(10)),
+                    (8, Token::Operator(Operator::CloseBracket)),
+                    (9, Token::Operator(Operator::And)),
+                    (10, Token::Integer(4)),
+                ],
+                Expr::BinaryOperatorInteger(
+                    Operator::And,
+                    Box::new(Expr::BinaryOperatorInteger(
+                        Operator::Mul,
+                        Box::new(Expr::LitInteger(3)),
+                        Box::new(Expr::VarArrayOfInteger(
+                            int_arr1.into(),
+                            Box::new(Expr::BinaryOperatorInteger(
+                                Operator::Mul,
+                                Box::new(Expr::LitInteger(5)),
+                                Box::new(Expr::LitInteger(10)),
+                            )),
+                        )),
+                    )),
+                    Box::new(Expr::LitInteger(4)),
+                ),
+            ),
+            // -Max(123, 456) + -(987 - 321) * Not intVar1
+            (
+                vec![
+                    (1, Token::Operator(Operator::Sub)),
+                    (2, Token::Function(Function::Max)),
+                    (3, Token::Operator(Operator::OpenBracket)),
+                    (4, Token::Integer(123)),
+                    (5, Token::Operator(Operator::Comma)),
+                    (6, Token::Integer(456)),
+                    (7, Token::Operator(Operator::CloseBracket)),
+                    (8, Token::Operator(Operator::Add)),
+                    (9, Token::Operator(Operator::Sub)),
+                    (10, Token::Operator(Operator::OpenBracket)),
+                    (11, Token::Integer(987)),
+                    (12, Token::Operator(Operator::Sub)),
+                    (13, Token::Integer(321)),
+                    (14, Token::Operator(Operator::CloseBracket)),
+                    (15, Token::Operator(Operator::Mul)),
+                    (16, Token::Operator(Operator::Not)),
+                    (17, Token::Name(int_var1.into())),
+                ],
+                Expr::BinaryOperatorInteger(
+                    Operator::Add,
+                    Box::new(Expr::UnaryOperatorInteger(
+                        Operator::Sub,
+                        Box::new(Expr::FunctionInteger(
+                            Function::Max,
+                            Box::new(Expr::ParamList(vec![
+                                Expr::LitInteger(123),
+                                Expr::LitInteger(456),
+                            ])),
+                        )),
+                    )),
+                    Box::new(Expr::BinaryOperatorInteger(
+                        Operator::Mul,
+                        Box::new(Expr::UnaryOperatorInteger(
+                            Operator::Sub,
+                            Box::new(Expr::BinaryOperatorInteger(
+                                Operator::Sub,
+                                Box::new(Expr::LitInteger(987)),
+                                Box::new(Expr::LitInteger(321)),
+                            )),
+                        )),
+                        Box::new(Expr::UnaryOperatorInteger(
+                            Operator::Not,
+                            Box::new(Expr::VarInteger(int_var1.into())),
+                        )),
                     )),
                 ),
             ),
