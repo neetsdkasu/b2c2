@@ -82,9 +82,11 @@ impl Parser {
         name: &str,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
-        if !self.variables.contains_key(name) {
-            return Err(self.syntax_error(format!("undefined variable: {}", name)));
-        }
+        let var_type = self
+            .variables
+            .get(name)
+            .cloned()
+            .ok_or_else(|| self.syntax_error(format!("undefined variable: {}", name)))?;
 
         // var = expr
         // var += expr
@@ -92,16 +94,147 @@ impl Parser {
         // array(expr) = expr
         // array(expr) += expr
         // array(expr) -= expr
+        // string(expr) = expr
 
-        // TODO
-
-        match pos_and_tokens.first() {
-            Some((_, Token::Operator(Operator::Equal)))
-            | Some((_, Token::Operator(Operator::AddInto)))
-            | Some((_, Token::Operator(Operator::SubInto))) => {}
-            _ => {
-                return Err(self.syntax_error("invalid statement".into()));
+        match pos_and_tokens {
+            // 代入
+            [(_, Token::Operator(Operator::Equal)), rest @ ..]
+                if matches!(
+                    var_type,
+                    VarType::Boolean | VarType::Integer | VarType::String
+                ) =>
+            {
+                let expr = self.parse_expr(rest)?;
+                match expr.return_type() {
+                    ExprType::Boolean if matches!(var_type, VarType::Boolean) => {
+                        self.add_statement(Statement::AssignBoolean(name.into(), expr));
+                    }
+                    ExprType::Integer if matches!(var_type, VarType::Integer) => {
+                        self.add_statement(Statement::AssignInteger(name.into(), expr));
+                    }
+                    ExprType::String if matches!(var_type, VarType::String) => {
+                        self.add_statement(Statement::AssignString(name.into(), expr));
+                    }
+                    _ => return Err(self.syntax_error("invalid Assign statement".into())),
+                }
             }
+            // 加算代入
+            [(_, Token::Operator(Operator::AddInto)), rest @ ..]
+                if matches!(var_type, VarType::Integer) =>
+            {
+                let expr = self.parse_expr(rest)?;
+                if matches!(expr.return_type(), ExprType::Integer) {
+                    self.add_statement(Statement::AssignAddInto(name.into(), expr));
+                } else {
+                    return Err(self.syntax_error("invalid Assign statement".into()));
+                }
+            }
+            // 減算代入
+            [(_, Token::Operator(Operator::SubInto)), rest @ ..]
+                if matches!(var_type, VarType::Integer) =>
+            {
+                let expr = self.parse_expr(rest)?;
+                if matches!(expr.return_type(), ExprType::Integer) {
+                    self.add_statement(Statement::AssignSubInto(name.into(), expr));
+                } else {
+                    return Err(self.syntax_error("invalid Assign statement".into()));
+                }
+            }
+            // 配列要素または文字列要素に代入
+            [(_, Token::Operator(Operator::OpenBracket)), ..]
+                if matches!(
+                    var_type,
+                    VarType::String | VarType::ArrayOfBoolean(_) | VarType::ArrayOfInteger(_)
+                ) =>
+            {
+                return self.parse_assign_element(name, var_type, pos_and_tokens);
+            }
+            _ => {
+                return Err(self.syntax_error("invalid Assign statement".into()));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn parse_assign_element(
+        &mut self,
+        name: &str,
+        var_type: VarType,
+        pos_and_tokens: &[(usize, Token)],
+    ) -> Result<(), SyntaxError> {
+        // array(expr) = expr
+        // array(expr) += expr
+        // array(expr) -= expr
+        // string(expr) = expr
+
+        let mut close_pos: Option<usize> = None;
+        let mut bracket_count = 1;
+        for (i, (_, token)) in pos_and_tokens.iter().enumerate().skip(1) {
+            match token {
+                Token::Operator(Operator::OpenBracket) => bracket_count += 1,
+                Token::Operator(Operator::CloseBracket) => bracket_count -= 1,
+                _ => {}
+            }
+            if bracket_count == 0 {
+                close_pos = Some(i);
+                break;
+            }
+        }
+        let close_pos = close_pos
+            .take()
+            .ok_or_else(|| self.syntax_error("invalid Assign statement".into()))?;
+
+        let (param, value) = pos_and_tokens.split_at(close_pos + 1);
+
+        let param = if let [_, inner @ .., _] = param {
+            self.parse_expr(inner)?
+        } else {
+            return Err(self.syntax_error("invalid Assign statement".into()));
+        };
+        if !matches!(param.return_type(), ExprType::Integer) {
+            return Err(self.syntax_error("invalid Assign statement".into()));
+        }
+
+        match value {
+            // 要素への代入
+            [(_, Token::Operator(Operator::Equal)), rest @ ..] => {
+                let expr = self.parse_expr(rest)?;
+                match expr.return_type() {
+                    ExprType::Boolean if matches!(var_type, VarType::ArrayOfBoolean(_)) => {
+                        self.add_statement(Statement::AssignElement(name.into(), param, expr));
+                    }
+                    ExprType::Integer
+                        if matches!(var_type, VarType::String | VarType::ArrayOfInteger(_)) =>
+                    {
+                        self.add_statement(Statement::AssignElement(name.into(), param, expr));
+                    }
+                    _ => return Err(self.syntax_error("invalid Assign statement".into())),
+                }
+            }
+            // 要素への加算代入
+            [(_, Token::Operator(Operator::AddInto)), rest @ ..]
+                if matches!(var_type, VarType::ArrayOfInteger(_)) =>
+            {
+                let expr = self.parse_expr(rest)?;
+                if matches!(expr.return_type(), ExprType::Integer) {
+                    self.add_statement(Statement::AssignAddIntoElement(name.into(), param, expr));
+                } else {
+                    return Err(self.syntax_error("invalid Assign statement".into()));
+                }
+            }
+            // 要素への減算代入
+            [(_, Token::Operator(Operator::SubInto)), rest @ ..]
+                if matches!(var_type, VarType::ArrayOfInteger(_)) =>
+            {
+                let expr = self.parse_expr(rest)?;
+                if matches!(expr.return_type(), ExprType::Integer) {
+                    self.add_statement(Statement::AssignSubIntoElement(name.into(), param, expr));
+                } else {
+                    return Err(self.syntax_error("invalid Assign statement".into()));
+                }
+            }
+            _ => return Err(self.syntax_error("invalid Assign statement".into())),
         }
 
         Ok(())
@@ -115,6 +248,13 @@ impl Parser {
         match command {
             Keyword::Dim => self.parse_command_dim(pos_and_tokens),
             Keyword::Input => self.parse_command_input(pos_and_tokens),
+            Keyword::Let => {
+                if let [(_, Token::Name(name)), rest @ ..] = pos_and_tokens {
+                    self.parse_assign(name, rest)
+                } else {
+                    Err(self.syntax_error("invalid Let statement".into()))
+                }
+            }
             Keyword::Print => self.parse_command_print(pos_and_tokens),
             _ => Ok(()),
         }
@@ -122,6 +262,7 @@ impl Parser {
 
     fn parse_command_dim(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         match pos_and_tokens {
+            // プリミティブ変数の宣言
             [(pos, Token::Name(name)), (_, Token::Keyword(Keyword::As)), (_, Token::TypeName(type_name))] =>
             {
                 if self.variables.contains_key(name) {
@@ -137,18 +278,19 @@ impl Parser {
                 self.variables.insert(name.clone(), var_type);
                 self.add_statement(Statement::Dim(name.clone(), var_type));
             }
+            // 配列変数の宣言
             [(pos_n, Token::Name(name)), (_, Token::Operator(Operator::OpenBracket)), (pos_s, Token::Integer(size)), (_, Token::Operator(Operator::CloseBracket)), (_, Token::Keyword(Keyword::As)), (pos_t, Token::TypeName(type_name))] =>
             {
                 if self.variables.contains_key(name) {
                     return Err(self
                         .syntax_error_pos(*pos_n, format!("already defined variable: {}", name)));
                 }
-                if *size < 0 || *size > 256 {
+                if !(0..=255).contains(size) {
                     return Err(
                         self.syntax_error_pos(*pos_s, "invalid Array Size in Dim statement".into())
                     );
                 }
-                let size = *size as usize;
+                let size = *size as usize + 1;
                 let var_type = match type_name {
                     TypeName::Boolean => VarType::ArrayOfBoolean(size),
                     TypeName::Integer => VarType::ArrayOfInteger(size),
@@ -172,24 +314,42 @@ impl Parser {
         &mut self,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
-        let name = if let [(_, Token::Name(name))] = pos_and_tokens {
-            name
-        } else {
-            return Err(self.syntax_error("invalid Input statement".into()));
-        };
-        match self.variables.get(name) {
-            Some(VarType::Integer) => {
-                self.add_statement(Statement::InputInteger(name.clone()));
+        match pos_and_tokens {
+            // プリミティブ変数への入力
+            [(pos, Token::Name(name))] => match self.variables.get(name) {
+                Some(VarType::Integer) => {
+                    self.add_statement(Statement::InputInteger(name.clone()));
+                }
+                Some(VarType::String) => {
+                    self.add_statement(Statement::InputString(name.clone()));
+                }
+                Some(_) => {
+                    return Err(
+                        self.syntax_error_pos(*pos, "invalid Variable in Input statement".into())
+                    )
+                }
+                None => {
+                    return Err(self.syntax_error_pos(*pos, format!("undefined variable: {}", name)))
+                }
+            },
+            // 整数配列の指定位置への入力
+            [(pos, Token::Name(name)), (_, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
+            {
+                if !matches!(self.variables.get(name), Some(VarType::ArrayOfInteger(_))) {
+                    return Err(
+                        self.syntax_error_pos(*pos, "invalid Variable in Input statement".into())
+                    );
+                }
+                let param = self.parse_expr(inner)?;
+                if !matches!(param.return_type(), ExprType::Integer) {
+                    return Err(
+                        self.syntax_error_pos(*pos, "invalid Variable in Input statement".into())
+                    );
+                }
+                self.add_statement(Statement::InputElementInteger(name.clone(), param));
             }
-            Some(VarType::String) => {
-                self.add_statement(Statement::InputString(name.clone()));
-            }
-            Some(_) => {
-                return Err(self.syntax_error("invalid Variable Type in Input statement".into()))
-            }
-            None => return Err(self.syntax_error(format!("undefined variable: {}", name))),
+            _ => return Err(self.syntax_error("invalid Input statement".into())),
         }
-
         Ok(())
     }
 
@@ -198,14 +358,17 @@ impl Parser {
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
         match pos_and_tokens {
+            // 空文字列の出力
             [] => {
                 self.add_statement(Statement::PrintLitString("".into()));
                 return Ok(());
             }
+            // 真理値リテラルの出力
             [(_, Token::Boolean(value))] => {
                 self.add_statement(Statement::PrintLitBoolean(*value));
                 return Ok(());
             }
+            // 整数リテラルの出力
             [(pos, Token::Integer(value))] => {
                 if let Some(value) = validate_integer(false, *value) {
                     self.add_statement(Statement::PrintLitInteger(value));
@@ -214,6 +377,7 @@ impl Parser {
                     return Err(self.syntax_error_pos(*pos, format!("invalid integer: {}", *value)));
                 }
             }
+            // 負符号付きの整数リテラルの出力
             [(_, Token::Operator(Operator::Sub)), (pos, Token::Integer(value))] => {
                 if let Some(value) = validate_integer(true, *value) {
                     self.add_statement(Statement::PrintLitInteger(value));
@@ -222,10 +386,12 @@ impl Parser {
                     return Err(self.syntax_error_pos(*pos, format!("invalid integer: {}", *value)));
                 }
             }
+            // 文字列リテラルの出力
             [(_, Token::String(value))] => {
                 self.add_statement(Statement::PrintLitString(value.clone()));
                 return Ok(());
             }
+            // プリミティブ変数の出力
             [(_, Token::Name(name))] => match self.variables.get(name) {
                 Some(VarType::Boolean) => {
                     self.add_statement(Statement::PrintVarBoolean(name.clone()));
@@ -243,6 +409,7 @@ impl Parser {
             },
             _ => {}
         }
+        // 計算結果の出力
         let expr = self.parse_expr(pos_and_tokens)?;
         match expr.return_type() {
             ExprType::Boolean => self.add_statement(Statement::PrintExprBoolan(expr)),
@@ -355,6 +522,12 @@ impl Parser {
             _ => {}
         }
 
+        // 外側の演算子のうち一番左のを抽出する (括弧のネストに気をつける)
+        //    項 op1 項 op2 項 op1 ... op2 項
+        //   -> (項 op1 項) op2 (項 op1 ... op2 項)
+        //   分割して再帰的に処理していく
+
+        // 分割点となる演算子の抜き出し
         let mut target_op: Option<(usize, Operator)> = None;
         let mut next_unary = true;
         let mut next_term = true;
@@ -406,6 +579,7 @@ impl Parser {
             return Err(self.syntax_error("invalid Expression".into()));
         }
 
+        // 分割して再帰的に処理していく
         if let Some((i, op)) = target_op {
             let lhs = self.parse_expr(&pos_and_tokens[..i])?;
             let rhs = self.parse_expr(&pos_and_tokens[i + 1..])?;
@@ -415,10 +589,6 @@ impl Parser {
             });
         }
 
-        // 外側の演算子のうち一番左のを抽出する (括弧のネストに気をつける)
-        //    項 op1 項 op2 項 op1 ... op2 項
-        //   -> (項 op1 項) op2 (項 op1 ... op2 項)
-        //   分割して再帰的に処理していく
         // 外側の演算子がない場合、つまり、項が１つ
         // 構文ミスが無い場合は
         //    [unary-op] ( 式 )
@@ -435,7 +605,7 @@ impl Parser {
         //     値 ( 式 ) ( 式 ) 値 Func 値 ( 引数 ) unary-op 値
 
         match pos_and_tokens {
-            // 単項演算子 と　何か項
+            // 単項演算子の分離
             [(pos, Token::Operator(op)), rest @ ..] if op.can_be_unary() => {
                 let expr = self.parse_expr(rest)?;
                 match expr.return_type() {
@@ -532,8 +702,8 @@ impl Keyword {
     fn is_command(&self) -> bool {
         use Keyword::*;
         match self {
-            Case | Continue | Else | ElseIf | End | Exit | Dim | Do | For | If | Input | Loop
-            | Next | Print | Select => true,
+            Case | Continue | Else | ElseIf | End | Exit | Dim | Do | For | If | Input | Let
+            | Loop | Next | Print | Select => true,
 
             As | Step | Then | To | While => false,
         }
@@ -596,11 +766,20 @@ impl PartialOrd for Operator {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 enum Statement {
+    AssignAddInto(String, Expr),
+    AssignAddIntoElement(String, Expr, Expr),
+    AssignBoolean(String, Expr),
+    AssignElement(String, Expr, Expr),
+    AssignInteger(String, Expr),
+    AssignString(String, Expr),
+    AssignSubInto(String, Expr),
+    AssignSubIntoElement(String, Expr, Expr),
     ContinueDo,
     ContinueFor,
     Dim(String, VarType),
     ExitDo,
     ExitFor,
+    InputElementInteger(String, Expr),
     InputInteger(String),
     InputString(String),
     PrintLitBoolean(bool),
@@ -766,14 +945,18 @@ impl Function {
     fn return_type(&self) -> ExprType {
         use Function::*;
         match self {
-            CInt | Max | Min => ExprType::Integer,
+            CBool => ExprType::Boolean,
+            CInt | Len | Max | Min => ExprType::Integer,
+            CStr => ExprType::String,
         }
     }
 
     fn check_param(&self, param: &Expr) -> bool {
         use Function::*;
         match self {
+            CBool => matches!(param.return_type(), ExprType::Integer),
             CInt => matches!(param.return_type(), ExprType::Boolean | ExprType::String),
+            CStr => matches!(param.return_type(), ExprType::Boolean | ExprType::Integer),
             Max | Min => {
                 if let Expr::ParamList(list) = param {
                     list.len() == 2
@@ -784,6 +967,7 @@ impl Function {
                     false
                 }
             }
+            Len => matches!(param.return_type(), ExprType::String),
         }
     }
 }
@@ -795,9 +979,11 @@ mod test {
 
     #[test]
     fn it_works() -> io::Result<()> {
-        let src = io::Cursor::new(SRC);
+        let src1 = io::Cursor::new(SRC1);
+        parse(src1)?.unwrap();
 
-        parse(src)?.unwrap();
+        let src2 = io::Cursor::new(SRC2);
+        parse(src2)?.unwrap();
 
         Ok(())
     }
@@ -1067,7 +1253,7 @@ mod test {
         }
     }
 
-    const SRC: &str = r#"
+    const SRC1: &str = r#"
 Dim i As Integer
 Dim c As Integer
 Print "Limit?"

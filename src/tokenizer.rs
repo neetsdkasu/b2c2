@@ -263,6 +263,7 @@ enumdef!(
     For,
     If,
     Input,
+    Let,
     Loop,
     Next,
     Print,
@@ -276,7 +277,10 @@ enumdef!(
 enumdef!(
     Function;
     FUNCTIONS;
+    CBool,
     CInt,
+    CStr,
+    Len,
     Max,
     Min,
 );
