@@ -536,7 +536,79 @@ impl Expr {
         // op == , => ParamList, lhsとrhsは型が不一致でもOK
         // op != , => lhsとrhsは型が一致する必要がある
         // opが受け取れる型とopが返す型は様々
-        todo!();
+
+        use Operator::*;
+        let bin_op_expr = match op {
+            // binary operator ではないもの、ここに来たらどこかにバグ
+            OpenBracket | CloseBracket | AddInto | SubInto | Not => unreachable!(),
+
+            // 任意の結果を受け取ってパラメータリストとして返すもの
+            Comma => {
+                let v = match (lhs, rhs) {
+                    (Expr::ParamList(mut v1), Expr::ParamList(mut v2)) => {
+                        v1.append(&mut v2);
+                        v1
+                    }
+                    (Expr::ParamList(mut v1), rhs) => {
+                        v1.push(rhs);
+                        v1
+                    }
+                    (lhs, Expr::ParamList(mut v2)) => {
+                        v2.insert(0, lhs);
+                        v2
+                    }
+                    (lhs, rhs) => vec![lhs, rhs],
+                };
+                return Some(Expr::ParamList(v));
+            }
+
+            // カンマ以外の演算子で左辺と右辺の型が異なるのはシンタックスエラー
+            _ if lhs.return_type() != rhs.return_type() => return None,
+
+            // 整数を受け取って整数を返すもの
+            ShiftLeft | ShiftRight | Mul | Div | Mod | Add | Sub
+                if matches!(lhs.return_type(), ExprType::Integer) =>
+            {
+                Expr::BinaryOperatorInteger
+            }
+
+            // 文字列を受け取って文字列を返すもの
+            Concat if matches!(lhs.return_type(), ExprType::String) => Expr::BinaryOperatorString,
+
+            // 整数または文字列を受け取って真理値を返すもの
+            LessOrEequal | GreaterOrEqual | LessThan | GreaterThan
+                if matches!(lhs.return_type(), ExprType::Integer | ExprType::String) =>
+            {
+                Expr::BinaryOperatorBoolean
+            }
+
+            // 真理値または整数または文字列を受け取って真理値を返すもの
+            Equal | NotEqual
+                if matches!(
+                    lhs.return_type(),
+                    ExprType::Boolean | ExprType::Integer | ExprType::String
+                ) =>
+            {
+                Expr::BinaryOperatorBoolean
+            }
+
+            // 真理値を受け取って真理値を返す、または整数を受け取って整数を返すもの
+            And | Or | Xor if matches!(lhs.return_type(), ExprType::Boolean) => {
+                Expr::BinaryOperatorBoolean
+            }
+            And | Or | Xor if matches!(lhs.return_type(), ExprType::Integer) => {
+                Expr::BinaryOperatorInteger
+            }
+
+            // 受け取る型に対応する演算子ではないのでシンタックスエラー
+            // 漏れを無くすため全列挙…
+            ShiftLeft | ShiftRight | Mul | Div | Mod | Add | Sub | Concat | LessOrEequal
+            | GreaterOrEqual | LessThan | GreaterThan | Equal | NotEqual | And | Or | Xor => {
+                return None
+            }
+        };
+
+        Some(bin_op_expr(op, Box::new(lhs), Box::new(rhs)))
     }
 
     fn return_type(&self) -> ExprType {
