@@ -4,28 +4,28 @@ use std::collections::HashMap;
 use std::io::{self, BufRead};
 
 fn parse<R: BufRead>(reader: R) -> io::Result<Result<(), SyntaxError>> {
-    let mut perser = Parser::new();
+    let mut parser = Parser::new();
 
     for line in Tokenizer::new(reader) {
         let (line_number, pos_and_tokens) = match line? {
             Ok(values) => values,
             Err(error) => return Ok(Err(error)),
         };
-        perser.line_number = line_number;
+        parser.line_number = line_number;
 
         match pos_and_tokens.first() {
             None => continue,
             Some((pos, Token::Name(name))) => {
                 // bind (assign) statement
-                perser.line_start_position = *pos;
-                if let Err(error) = perser.parse_assign(name, &pos_and_tokens[1..]) {
+                parser.line_start_position = *pos;
+                if let Err(error) = parser.parse_assign(name, &pos_and_tokens[1..]) {
                     return Ok(Err(error));
                 }
             }
             Some((pos, Token::Keyword(keyword))) if keyword.is_command() => {
                 // command statement
-                perser.line_start_position = *pos;
-                if let Err(error) = perser.parse_command(keyword, &pos_and_tokens[1..]) {
+                parser.line_start_position = *pos;
+                if let Err(error) = parser.parse_command(keyword, &pos_and_tokens[1..]) {
                     return Ok(Err(error));
                 }
             }
@@ -247,6 +247,7 @@ impl Parser {
     ) -> Result<(), SyntaxError> {
         match command {
             Keyword::Dim => self.parse_command_dim(pos_and_tokens),
+            Keyword::For => self.parse_command_for(pos_and_tokens),
             Keyword::Input => self.parse_command_input(pos_and_tokens),
             Keyword::Let => {
                 if let [(_, Token::Name(name)), rest @ ..] = pos_and_tokens {
@@ -255,9 +256,100 @@ impl Parser {
                     Err(self.syntax_error("invalid Let statement".into()))
                 }
             }
+            Keyword::Next => self.parse_command_next(pos_and_tokens),
             Keyword::Print => self.parse_command_print(pos_and_tokens),
             _ => Ok(()),
         }
+    }
+
+    fn parse_command_next(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
+        if self.count_for == 0 {
+            return Err(self.syntax_error("invalid Next statement".into()));
+        }
+
+        let name = match pos_and_tokens {
+            [] => None,
+            [(_, Token::Name(name))] => Some(name),
+            _ => return Err(self.syntax_error("invalid Next statment".into())),
+        };
+
+        self.count_for -= 1;
+        let for_block = self.statements.pop().expect("BUG");
+
+        if let Statement::ProvisionalFor(counter, init, end, step) = self
+            .statements
+            .last_mut()
+            .expect("BUG")
+            .pop()
+            .ok_or_else(|| self.syntax_error("invalid Next statement".into()))?
+        {
+            if name.filter(|name| *name != &counter).is_some() {
+                return Err(self.syntax_error("invalid Next statement".into()));
+            }
+            self.add_statement(Statement::For(counter, init, end, step, for_block));
+        } else {
+            return Err(self.syntax_error("invalid Next statement".into()));
+        }
+
+        Ok(())
+    }
+
+    fn parse_command_for(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
+        let (name, rest) = if let [(_, Token::Name(name)), (_, Token::Operator(Operator::Equal)), rest @ ..] =
+            pos_and_tokens
+        {
+            (name, rest)
+        } else {
+            return Err(self.syntax_error("invalid For statement".into()));
+        };
+
+        if !matches!(self.variables.get(name), Some(VarType::Integer)) {
+            return Err(self.syntax_error("invalid For statement".into()));
+        }
+
+        let to_position = rest
+            .iter()
+            .enumerate()
+            .find(|(_, (_, token))| matches!(token, Token::Keyword(Keyword::To)))
+            .map(|(i, _)| i)
+            .ok_or_else(|| self.syntax_error("invalid For statement".into()))?;
+
+        let (init, rest) = rest.split_at(to_position);
+
+        let step_position = rest
+            .iter()
+            .enumerate()
+            .find(|(_, (_, token))| matches!(token, Token::Keyword(Keyword::Step)))
+            .map_or(rest.len(), |(i, _)| i);
+
+        let (end, step) = rest.split_at(step_position);
+
+        let init = self.parse_expr(init)?;
+        if !matches!(init.return_type(), ExprType::Integer) {
+            return Err(self.syntax_error("invalid initial value in For statement".into()));
+        }
+
+        let end = self.parse_expr(&end[1..])?;
+        if !matches!(end.return_type(), ExprType::Integer) {
+            return Err(self.syntax_error("invalid end value in For statement".into()));
+        }
+
+        let step = if step.is_empty() {
+            None
+        } else {
+            let step = self.parse_expr(&step[1..])?;
+            if matches!(step.return_type(), ExprType::Integer) {
+                Some(step)
+            } else {
+                return Err(self.syntax_error("invalid end value in For statement".into()));
+            }
+        };
+
+        self.add_statement(Statement::ProvisionalFor(name.clone(), init, end, step));
+        self.count_for += 1;
+        self.statements.push(Vec::new());
+
+        Ok(())
     }
 
     fn parse_command_dim(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
@@ -779,6 +871,8 @@ enum Statement {
     Dim(String, VarType),
     ExitDo,
     ExitFor,
+    For(String, Expr, Expr, Option<Expr>, Vec<Statement>),
+    ProvisionalFor(String, Expr, Expr, Option<Expr>),
     InputElementInteger(String, Expr),
     InputInteger(String),
     InputString(String),
