@@ -3,7 +3,7 @@ use crate::SyntaxError;
 use std::collections::HashMap;
 use std::io::{self, BufRead};
 
-fn parse<R: BufRead>(reader: R) -> io::Result<Result<(), SyntaxError>> {
+fn parse<R: BufRead>(reader: R) -> io::Result<Result<Vec<Statement>, SyntaxError>> {
     let mut parser = Parser::new();
 
     for line in Tokenizer::new(reader) {
@@ -39,7 +39,7 @@ fn parse<R: BufRead>(reader: R) -> io::Result<Result<(), SyntaxError>> {
         }
     }
 
-    Ok(Ok(()))
+    Ok(Ok(parser.statements.pop().expect("BUG")))
 }
 
 struct Parser {
@@ -285,7 +285,9 @@ impl Parser {
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
         match command {
+            Keyword::Continue => self.parse_command_continue(pos_and_tokens),
             Keyword::Dim => self.parse_command_dim(pos_and_tokens),
+            Keyword::Do => self.parse_command_do(pos_and_tokens),
             Keyword::For => self.parse_command_for(pos_and_tokens),
             Keyword::Input => self.parse_command_input(pos_and_tokens),
             Keyword::Let => {
@@ -295,25 +297,166 @@ impl Parser {
                     Err(self.syntax_error("invalid Let statement".into()))
                 }
             }
+            Keyword::Loop => self.parse_command_loop(pos_and_tokens),
             Keyword::Next => self.parse_command_next(pos_and_tokens),
             Keyword::Print => self.parse_command_print(pos_and_tokens),
             _ => Ok(()),
         }
     }
 
-    fn parse_command_next(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
-        if self.nest_of_for.is_empty() {
-            return Err(self.syntax_error("invalid Next statement".into()));
+    fn parse_command_continue(
+        &mut self,
+        pos_and_tokens: &[(usize, Token)],
+    ) -> Result<(), SyntaxError> {
+        match pos_and_tokens {
+            [(_, Token::Keyword(Keyword::Do))] => {
+                if let Some(&exit_id) = self.nest_of_do.last() {
+                    self.add_statement(Statement::ContinueDo { exit_id });
+                } else {
+                    return Err(self.syntax_error("invalid Continue statement".into()));
+                }
+            }
+            [(_, Token::Keyword(Keyword::For))] => {
+                if let Some(&exit_id) = self.nest_of_for.last() {
+                    self.add_statement(Statement::ContinueFor { exit_id });
+                } else {
+                    return Err(self.syntax_error("invalid Continue statement".into()));
+                }
+            }
+            _ => return Err(self.syntax_error("invalid Continue statement".into())),
         }
 
+        Ok(())
+    }
+
+    fn parse_command_loop(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
+        let cur_exit_id = self
+            .nest_of_do
+            .pop()
+            .ok_or_else(|| self.syntax_error("invalid Loop statement".into()))?;
+
+        let block = self.statements.pop().expect("BUG");
+
+        if let Some(Statement::ProvisionalDo {
+            exit_id,
+            until_condition,
+            while_condition,
+        }) = self.statements.last_mut().expect("BUG").pop()
+        {
+            if exit_id != cur_exit_id {
+                return Err(self.syntax_error("invalid Loop statement".into()));
+            }
+            assert!(until_condition
+                .as_ref()
+                .or_else(|| while_condition.as_ref())
+                .is_none());
+            match pos_and_tokens {
+                [] => {
+                    if let Some(condition) = until_condition {
+                        self.add_statement(Statement::DoUntilLoop {
+                            exit_id,
+                            condition,
+                            block,
+                        });
+                    } else if let Some(condition) = while_condition {
+                        self.add_statement(Statement::DoWhileLoop {
+                            exit_id,
+                            condition,
+                            block,
+                        });
+                    } else {
+                        self.add_statement(Statement::DoLoop { exit_id, block });
+                    }
+                }
+                _ if until_condition.or(while_condition).is_some() => {
+                    return Err(self.syntax_error("invalid Loop statement".into()))
+                }
+                [(pos, Token::Keyword(Keyword::Until)), rest @ ..] => {
+                    let condition = self.parse_expr(rest)?;
+                    if !matches!(condition.return_type(), ExprType::Boolean) {
+                        return Err(self.syntax_error_pos(*pos, "invalid Loop statement".into()));
+                    }
+                    self.add_statement(Statement::DoLoopUntil {
+                        exit_id,
+                        condition,
+                        block,
+                    });
+                }
+                [(pos, Token::Keyword(Keyword::While)), rest @ ..] => {
+                    let condition = self.parse_expr(rest)?;
+                    if !matches!(condition.return_type(), ExprType::Boolean) {
+                        return Err(self.syntax_error_pos(*pos, "invalid Loop statement".into()));
+                    }
+                    self.add_statement(Statement::DoLoopWhile {
+                        exit_id,
+                        condition,
+                        block,
+                    });
+                }
+                _ => return Err(self.syntax_error("invalid Loop statement".into())),
+            }
+        } else {
+            return Err(self.syntax_error("invalid Loop statement".into()));
+        }
+
+        Ok(())
+    }
+
+    fn parse_command_do(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
+        let exit_id = self.get_new_exit_id();
+
+        match pos_and_tokens {
+            [] => {
+                self.add_statement(Statement::ProvisionalDo {
+                    exit_id,
+                    until_condition: None,
+                    while_condition: None,
+                });
+            }
+            [(pos, Token::Keyword(Keyword::Until)), rest @ ..] => {
+                let condition = self.parse_expr(rest)?;
+                if !matches!(condition.return_type(), ExprType::Boolean) {
+                    return Err(self.syntax_error_pos(*pos, "invalid Do statement".into()));
+                }
+                self.add_statement(Statement::ProvisionalDo {
+                    exit_id,
+                    until_condition: Some(condition),
+                    while_condition: None,
+                });
+            }
+            [(pos, Token::Keyword(Keyword::While)), rest @ ..] => {
+                let condition = self.parse_expr(rest)?;
+                if !matches!(condition.return_type(), ExprType::Boolean) {
+                    return Err(self.syntax_error_pos(*pos, "invalid Do statement".into()));
+                }
+                self.add_statement(Statement::ProvisionalDo {
+                    exit_id,
+                    until_condition: None,
+                    while_condition: Some(condition),
+                });
+            }
+            _ => return Err(self.syntax_error("invalid Do statement".into())),
+        }
+
+        self.nest_of_do.push(exit_id);
+        self.statements.push(Vec::new());
+
+        Ok(())
+    }
+
+    fn parse_command_next(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         let name = match pos_and_tokens {
             [] => None,
             [(_, Token::Name(name))] => Some(name),
             _ => return Err(self.syntax_error("invalid Next statment".into())),
         };
 
-        let cur_exit_id = self.nest_of_for.pop().expect("BUG");
-        let for_block = self.statements.pop().expect("BUG");
+        let cur_exit_id = self
+            .nest_of_for
+            .pop()
+            .ok_or_else(|| self.syntax_error("invalid Next statement".into()))?;
+
+        let block = self.statements.pop().expect("BUG");
 
         if let Some(Statement::ProvisionalFor {
             exit_id,
@@ -323,8 +466,7 @@ impl Parser {
             step,
         }) = self.statements.last_mut().expect("BUG").pop()
         {
-            assert_eq!(exit_id, cur_exit_id);
-            if name.filter(|name| *name != &counter).is_some() {
+            if name.filter(|name| *name != &counter).is_some() || exit_id != cur_exit_id {
                 return Err(self.syntax_error("invalid Next statement".into()));
             }
             self.add_statement(Statement::For {
@@ -333,7 +475,7 @@ impl Parser {
                 init,
                 end,
                 step,
-                block: for_block,
+                block,
             });
         } else {
             return Err(self.syntax_error("invalid Next statement".into()));
@@ -873,7 +1015,7 @@ impl Keyword {
             Case | Continue | Else | ElseIf | End | Exit | Dim | Do | For | If | Input | Let
             | Loop | Next | Print | Select => true,
 
-            As | Step | Then | To | While => false,
+            As | Step | Then | To | Until | While => false,
         }
     }
 }
@@ -969,8 +1111,12 @@ enum Statement {
         index: Expr,
         value: Expr,
     },
-    ContinueDo,
-    ContinueFor,
+    ContinueDo {
+        exit_id: usize,
+    },
+    ContinueFor {
+        exit_id: usize,
+    },
     Dim {
         var_name: String,
         var_type: VarType,
@@ -979,7 +1125,17 @@ enum Statement {
         exit_id: usize,
         block: Vec<Statement>,
     },
+    DoLoopUntil {
+        exit_id: usize,
+        condition: Expr,
+        block: Vec<Statement>,
+    },
     DoLoopWhile {
+        exit_id: usize,
+        condition: Expr,
+        block: Vec<Statement>,
+    },
+    DoUntilLoop {
         exit_id: usize,
         condition: Expr,
         block: Vec<Statement>,
@@ -991,7 +1147,8 @@ enum Statement {
     },
     ProvisionalDo {
         exit_id: usize,
-        condition: Option<Expr>,
+        until_condition: Option<Expr>,
+        while_condition: Option<Expr>,
     },
     ExitDo {
         exit_id: usize,
@@ -1243,10 +1400,10 @@ mod test {
     #[test]
     fn it_works() -> io::Result<()> {
         let src1 = io::Cursor::new(SRC1);
-        parse(src1)?.unwrap();
+        dbg!(parse(src1)?.unwrap());
 
         let src2 = io::Cursor::new(SRC2);
-        parse(src2)?.unwrap();
+        dbg!(parse(src2)?.unwrap());
 
         Ok(())
     }
