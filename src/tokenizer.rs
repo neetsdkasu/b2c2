@@ -112,6 +112,9 @@ fn take_string_token(s: &str) -> Option<(Token, &str)> {
     let mut split_position = s.len();
     let mut text = String::new();
     for (p, ch) in char_indices {
+        if !ch.is_ascii() {
+            return None;
+        }
         if quotation {
             if ch == '"' {
                 quotation = false;
