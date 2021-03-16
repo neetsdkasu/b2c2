@@ -351,7 +351,7 @@ impl Parser {
         todo!()
     }
 
-    // ElseIf <condtion> Then
+    // ElseIf <condition> Then
     fn parse_command_elseif(
         &mut self,
         pos_and_tokens: &[(usize, Token)],
@@ -398,15 +398,118 @@ impl Parser {
     // Case <string> [, <string>]*
     // Case Else
     fn parse_command_case(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
-        todo!()
+        let select_type = match self.provisionals.pop() {
+            Some(Statement::ProvisionalSelectInteger { exit_id, value }) => {
+                self.provisionals.push(Statement::SelectInteger {
+                    exit_id,
+                    value,
+                    case_blocks: vec![],
+                });
+                ExprType::Integer
+            }
+            Some(Statement::ProvisionalSelectString { exit_id, value }) => {
+                self.provisionals.push(Statement::SelectString {
+                    exit_id,
+                    value,
+                    case_blocks: vec![],
+                });
+                ExprType::String
+            }
+            Some(Statement::ProvisionalCaseInteger { values }) => {
+                let block = self.statements.pop().expect("BUG");
+                if let Some(Statement::SelectInteger { case_blocks, .. }) =
+                    self.provisionals.last_mut()
+                {
+                    case_blocks.push(Statement::CaseInteger { values, block });
+                } else {
+                    unreachable!("BUG");
+                }
+                ExprType::Integer
+            }
+            Some(Statement::ProvisionalCaseString { values }) => {
+                let block = self.statements.pop().expect("BUG");
+                if let Some(Statement::SelectString { case_blocks, .. }) =
+                    self.provisionals.last_mut()
+                {
+                    case_blocks.push(Statement::CaseString { values, block });
+                } else {
+                    unreachable!("BUG");
+                }
+                ExprType::String
+            }
+            _ => return Err(self.syntax_error("invalid Case statement".into())),
+        };
+
+        if matches!(pos_and_tokens, [(_, Token::Keyword(Keyword::Else))]) {
+            self.provisionals.push(Statement::ProvisionalCaseElse);
+            self.statements.push(Vec::new());
+            return Ok(());
+        }
+
+        match self.parse_expr(pos_and_tokens)? {
+            Expr::LitInteger(value) => self.provisionals.push(Statement::ProvisionalCaseInteger {
+                values: vec![value],
+            }),
+            Expr::LitString(value) => self.provisionals.push(Statement::ProvisionalCaseString {
+                values: vec![value],
+            }),
+            Expr::ParamList(values) if matches!(select_type, ExprType::Integer) => {
+                assert!(values.len() > 1);
+                let values = values.into_iter().try_fold(vec![], |mut acc, expr| {
+                    if let Expr::LitInteger(value) = expr {
+                        acc.push(value);
+                        Ok(acc)
+                    } else {
+                        Err(self.syntax_error("invalid Case statement".into()))
+                    }
+                })?;
+                self.provisionals
+                    .push(Statement::ProvisionalCaseInteger { values });
+            }
+            Expr::ParamList(values) if matches!(select_type, ExprType::String) => {
+                assert!(values.len() > 1);
+                let values = values.into_iter().try_fold(vec![], |mut acc, expr| {
+                    if let Expr::LitString(value) = expr {
+                        acc.push(value);
+                        Ok(acc)
+                    } else {
+                        Err(self.syntax_error("invalid Case statement".into()))
+                    }
+                })?;
+                self.provisionals
+                    .push(Statement::ProvisionalCaseString { values });
+            }
+            _ => return Err(self.syntax_error("invalid Case statement".into())),
+        }
+
+        self.statements.push(Vec::new());
+
+        Ok(())
     }
 
-    // Select { <var_name> / <expr> }
+    // Select Case <expr>
     fn parse_command_select(
         &mut self,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
-        todo!()
+        let exit_id = self.get_new_exit_id();
+
+        let statement = if let [(_, Token::Keyword(Keyword::Case)), rest @ ..] = pos_and_tokens {
+            let value = self.parse_expr(rest)?;
+            match value.return_type() {
+                ExprType::Integer => Statement::ProvisionalSelectInteger { exit_id, value },
+                ExprType::String => Statement::ProvisionalSelectString { exit_id, value },
+                _ => return Err(self.syntax_error("invalid Select statement".into())),
+            }
+        } else {
+            return Err(self.syntax_error("invalid Select statement".into()));
+        };
+
+        self.is_select_head = true;
+        self.nest_of_select.push(exit_id);
+        self.provisionals.push(statement);
+
+        Ok(())
     }
 
     // Continue { Do / For }
@@ -1292,6 +1395,61 @@ enum Statement {
         var_name: String,
         index: Expr,
     },
+    If {
+        condition: Expr,
+        block: Vec<Statement>,
+        else_blocks: Vec<Statement>,
+    },
+    ProvitionalIf {
+        condition: Expr,
+    },
+    ElseIf {
+        condition: Expr,
+        block: Vec<Statement>,
+    },
+    ProvisionalElseIf {
+        condition: Expr,
+    },
+    Else {
+        block: Vec<Statement>,
+    },
+    ProvisionalElse,
+    SelectInteger {
+        exit_id: usize,
+        value: Expr,
+        case_blocks: Vec<Statement>,
+    },
+    ProvisionalSelectInteger {
+        exit_id: usize,
+        value: Expr,
+    },
+    CaseInteger {
+        values: Vec<i32>,
+        block: Vec<Statement>,
+    },
+    ProvisionalCaseInteger {
+        values: Vec<i32>,
+    },
+    SelectString {
+        exit_id: usize,
+        value: Expr,
+        case_blocks: Vec<Statement>,
+    },
+    ProvisionalSelectString {
+        exit_id: usize,
+        value: Expr,
+    },
+    CaseString {
+        values: Vec<String>,
+        block: Vec<Statement>,
+    },
+    ProvisionalCaseString {
+        values: Vec<String>,
+    },
+    CaseElse {
+        block: Vec<Statement>,
+    },
+    ProvisionalCaseElse,
     InputInteger {
         var_name: String,
     },
