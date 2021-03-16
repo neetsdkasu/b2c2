@@ -398,7 +398,7 @@ impl Parser {
                     unreachable!("BUG");
                 }
             }
-            _ => return Err(self.syntax_error("invalid End If statement".into())),
+            _ => return Err(self.syntax_error("invalid End statement".into())),
         }
 
         Ok(())
@@ -538,7 +538,7 @@ impl Parser {
                     unreachable!("BUG");
                 }
             }
-            _ => return Err(self.syntax_error("invalid ElseIf statement".into())),
+            _ => return Err(self.syntax_error("invalid Else statement".into())),
         }
 
         self.provisionals.push(Statement::ProvisionalElse);
