@@ -343,12 +343,208 @@ impl Parser {
 
     // End { If / Select }
     fn parse_command_end(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
-        todo!()
+        match pos_and_tokens {
+            [(_, Token::Keyword(Keyword::If))] => self.compose_command_if(),
+            [(_, Token::Keyword(Keyword::Select))] => self.compose_command_select(),
+            _ => Err(self.syntax_error("invalid End statement".into())),
+        }
+    }
+
+    // End If
+    fn compose_command_if(&mut self) -> Result<(), SyntaxError> {
+        let block = self.statements.pop().expect("BUG"); // 常に self.statements.len() > 0 なので
+
+        match self.provisionals.pop() {
+            Some(Statement::ProvitionalIf { condition }) => {
+                self.add_statement(Statement::If {
+                    condition,
+                    block,
+                    else_blocks: Vec::new(),
+                });
+            }
+            Some(Statement::ProvisionalElseIf { condition }) => {
+                let else_if_statement = Statement::ElseIf { condition, block };
+                if let Some(Statement::If {
+                    condition,
+                    block,
+                    mut else_blocks,
+                }) = self.provisionals.pop()
+                {
+                    else_blocks.push(else_if_statement);
+                    self.add_statement(Statement::If {
+                        condition,
+                        block,
+                        else_blocks,
+                    });
+                } else {
+                    unreachable!("BUG");
+                }
+            }
+            Some(Statement::ProvisionalElse) => {
+                let else_statement = Statement::Else { block };
+                if let Some(Statement::If {
+                    condition,
+                    block,
+                    mut else_blocks,
+                }) = self.provisionals.pop()
+                {
+                    else_blocks.push(else_statement);
+                    self.add_statement(Statement::If {
+                        condition,
+                        block,
+                        else_blocks,
+                    });
+                } else {
+                    unreachable!("BUG");
+                }
+            }
+            _ => return Err(self.syntax_error("invalid End If statement".into())),
+        }
+
+        Ok(())
+    }
+
+    // End Select
+    fn compose_command_select(&mut self) -> Result<(), SyntaxError> {
+        let cur_exit_id = self
+            .nest_of_select
+            .pop()
+            .ok_or_else(|| self.syntax_error("invalid End statement".into()))?;
+
+        match self.provisionals.pop() {
+            Some(Statement::ProvisionalSelectInteger { exit_id, value }) => {
+                assert!(self.is_select_head, "BUG");
+                assert!(exit_id == cur_exit_id, "BUG");
+                self.add_statement(Statement::SelectInteger {
+                    exit_id,
+                    value,
+                    case_blocks: Vec::new(),
+                });
+                self.is_select_head = false;
+            }
+            Some(Statement::ProvisionalSelectString { exit_id, value }) => {
+                assert!(self.is_select_head, "BUG");
+                assert!(exit_id == cur_exit_id, "BUG");
+                self.add_statement(Statement::SelectString {
+                    exit_id,
+                    value,
+                    case_blocks: Vec::new(),
+                });
+                self.is_select_head = false;
+            }
+            Some(Statement::ProvisionalCaseInteger { values }) => {
+                assert!(!self.is_select_head, "BUG");
+                let block = self.statements.pop().expect("BUG");
+                if let Some(Statement::SelectInteger {
+                    exit_id,
+                    value,
+                    mut case_blocks,
+                }) = self.provisionals.pop()
+                {
+                    assert!(exit_id == cur_exit_id, "BUG");
+                    case_blocks.push(Statement::CaseInteger { values, block });
+                    self.add_statement(Statement::SelectInteger {
+                        exit_id,
+                        value,
+                        case_blocks,
+                    });
+                } else {
+                    unreachable!("BUG");
+                }
+            }
+            Some(Statement::ProvisionalCaseString { values }) => {
+                assert!(!self.is_select_head, "BUG");
+                let block = self.statements.pop().expect("BUG");
+                if let Some(Statement::SelectString {
+                    exit_id,
+                    value,
+                    mut case_blocks,
+                }) = self.provisionals.pop()
+                {
+                    assert!(exit_id == cur_exit_id, "BUG");
+                    case_blocks.push(Statement::CaseString { values, block });
+                    self.add_statement(Statement::SelectString {
+                        exit_id,
+                        value,
+                        case_blocks,
+                    });
+                } else {
+                    unreachable!("BUG");
+                }
+            }
+            Some(Statement::ProvisionalCaseElse) => {
+                assert!(!self.is_select_head, "BUG");
+                let block = self.statements.pop().expect("BUG");
+                match self.provisionals.pop() {
+                    Some(Statement::SelectInteger {
+                        exit_id,
+                        value,
+                        mut case_blocks,
+                    }) => {
+                        assert!(exit_id == cur_exit_id, "BUG");
+                        case_blocks.push(Statement::CaseElse { block });
+                        self.add_statement(Statement::SelectInteger {
+                            exit_id,
+                            value,
+                            case_blocks,
+                        });
+                    }
+                    Some(Statement::SelectString {
+                        exit_id,
+                        value,
+                        mut case_blocks,
+                    }) => {
+                        assert!(exit_id == cur_exit_id, "BUG");
+                        case_blocks.push(Statement::CaseElse { block });
+                        self.add_statement(Statement::SelectString {
+                            exit_id,
+                            value,
+                            case_blocks,
+                        });
+                    }
+                    _ => unreachable!("BUG"),
+                }
+            }
+            _ => return Err(self.syntax_error("invalid End statement".into())),
+        }
+
+        Ok(())
     }
 
     // Else
     fn parse_command_else(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
-        todo!()
+        match pos_and_tokens {
+            [] => {}
+            [(_, Token::Keyword(Keyword::If)), rest @ ..] => {
+                return self.parse_command_elseif(rest)
+            }
+            _ => return Err(self.syntax_error("invalid Else statement".into())),
+        }
+
+        let block = self.statements.pop().expect("BUG"); // 常に self.statements.len() > 0 なので
+
+        match self.provisionals.pop() {
+            Some(Statement::ProvitionalIf { condition }) => {
+                self.provisionals.push(Statement::If {
+                    condition,
+                    block,
+                    else_blocks: Vec::new(),
+                });
+            }
+            Some(Statement::ProvisionalElseIf { condition }) => {
+                if let Some(Statement::If { else_blocks, .. }) = self.provisionals.last_mut() {
+                    else_blocks.push(Statement::ElseIf { condition, block });
+                } else {
+                    unreachable!("BUG");
+                }
+            }
+            _ => return Err(self.syntax_error("invalid ElseIf statement".into())),
+        }
+
+        self.provisionals.push(Statement::ProvisionalElse);
+        self.statements.push(Vec::new());
+
+        Ok(())
     }
 
     // ElseIf <condition> Then
@@ -356,12 +552,56 @@ impl Parser {
         &mut self,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
-        todo!()
+        let block = self.statements.pop().expect("BUG"); // 常に self.statements.len() > 0 なので
+
+        match self.provisionals.pop() {
+            Some(Statement::ProvitionalIf { condition }) => {
+                self.provisionals.push(Statement::If {
+                    condition,
+                    block,
+                    else_blocks: Vec::new(),
+                });
+            }
+            Some(Statement::ProvisionalElseIf { condition }) => {
+                if let Some(Statement::If { else_blocks, .. }) = self.provisionals.last_mut() {
+                    else_blocks.push(Statement::ElseIf { condition, block });
+                } else {
+                    unreachable!("BUG");
+                }
+            }
+            _ => return Err(self.syntax_error("invalid ElseIf statement".into())),
+        }
+
+        let condition = if let [rest @ .., (_, Token::Keyword(Keyword::Then))] = pos_and_tokens {
+            self.parse_expr(rest)?
+        } else {
+            return Err(self.syntax_error("invalid ElseIf statement".into()));
+        };
+
+        self.provisionals
+            .push(Statement::ProvisionalElseIf { condition });
+        self.statements.push(Vec::new());
+
+        Ok(())
     }
 
     // If <condition> Then
     fn parse_command_if(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
-        todo!()
+        let condition = if let [rest @ .., (_, Token::Keyword(Keyword::Then))] = pos_and_tokens {
+            self.parse_expr(rest)?
+        } else {
+            return Err(self.syntax_error("invalid If statement".into()));
+        };
+
+        if !matches!(condition.return_type(), ExprType::Boolean) {
+            return Err(self.syntax_error("invalid If statement".into()));
+        }
+
+        self.provisionals
+            .push(Statement::ProvitionalIf { condition });
+        self.statements.push(Vec::new());
+
+        Ok(())
     }
 
     // Exit { Do / For / Select }
@@ -400,22 +640,27 @@ impl Parser {
     fn parse_command_case(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         let select_type = match self.provisionals.pop() {
             Some(Statement::ProvisionalSelectInteger { exit_id, value }) => {
+                assert!(self.is_select_head, "BUG");
                 self.provisionals.push(Statement::SelectInteger {
                     exit_id,
                     value,
                     case_blocks: vec![],
                 });
+                self.is_select_head = false;
                 ExprType::Integer
             }
             Some(Statement::ProvisionalSelectString { exit_id, value }) => {
+                assert!(self.is_select_head, "BUG");
                 self.provisionals.push(Statement::SelectString {
                     exit_id,
                     value,
                     case_blocks: vec![],
                 });
+                self.is_select_head = false;
                 ExprType::String
             }
             Some(Statement::ProvisionalCaseInteger { values }) => {
+                assert!(!self.is_select_head, "BUG");
                 let block = self.statements.pop().expect("BUG");
                 if let Some(Statement::SelectInteger { case_blocks, .. }) =
                     self.provisionals.last_mut()
@@ -427,6 +672,7 @@ impl Parser {
                 ExprType::Integer
             }
             Some(Statement::ProvisionalCaseString { values }) => {
+                assert!(!self.is_select_head, "BUG");
                 let block = self.statements.pop().expect("BUG");
                 if let Some(Statement::SelectString { case_blocks, .. }) =
                     self.provisionals.last_mut()
@@ -447,14 +693,48 @@ impl Parser {
         }
 
         match self.parse_expr(pos_and_tokens)? {
-            Expr::LitInteger(value) => self.provisionals.push(Statement::ProvisionalCaseInteger {
-                values: vec![value],
-            }),
-            Expr::LitString(value) => self.provisionals.push(Statement::ProvisionalCaseString {
-                values: vec![value],
-            }),
+            Expr::LitInteger(value) => {
+                if let Some(Statement::SelectInteger { case_blocks, .. }) = self.provisionals.last()
+                {
+                    let found_duplicate = case_blocks.iter().any(|s| {
+                        if let Statement::CaseInteger { values, .. } = s {
+                            values.iter().any(|v| *v == value)
+                        } else {
+                            unreachable!("BUG");
+                        }
+                    });
+                    if found_duplicate {
+                        return Err(self.syntax_error("invalid Case statement".into()));
+                    }
+                } else {
+                    unreachable!("BUG");
+                }
+                self.provisionals.push(Statement::ProvisionalCaseInteger {
+                    values: vec![value],
+                });
+            }
+            Expr::LitString(value) => {
+                if let Some(Statement::SelectString { case_blocks, .. }) = self.provisionals.last()
+                {
+                    let found_duplicate = case_blocks.iter().any(|s| {
+                        if let Statement::CaseString { values, .. } = s {
+                            values.iter().any(|v| v == &value)
+                        } else {
+                            unreachable!("BUG");
+                        }
+                    });
+                    if found_duplicate {
+                        return Err(self.syntax_error("invalid Case statement".into()));
+                    }
+                } else {
+                    unreachable!("BUG");
+                }
+                self.provisionals.push(Statement::ProvisionalCaseString {
+                    values: vec![value],
+                });
+            }
             Expr::ParamList(values) if matches!(select_type, ExprType::Integer) => {
-                assert!(values.len() > 1);
+                assert!(values.len() > 1, "BUG");
                 let values = values.into_iter().try_fold(vec![], |mut acc, expr| {
                     if let Expr::LitInteger(value) = expr {
                         acc.push(value);
@@ -463,11 +743,28 @@ impl Parser {
                         Err(self.syntax_error("invalid Case statement".into()))
                     }
                 })?;
+                if let Some(Statement::SelectInteger { case_blocks, .. }) = self.provisionals.last()
+                {
+                    let found_duplicate = values.iter().any(|value| {
+                        case_blocks.iter().any(|s| {
+                            if let Statement::CaseInteger { values, .. } = s {
+                                values.iter().any(|v| v == value)
+                            } else {
+                                unreachable!("BUG");
+                            }
+                        })
+                    });
+                    if found_duplicate {
+                        return Err(self.syntax_error("invalid Case statement".into()));
+                    }
+                } else {
+                    unreachable!("BUG");
+                }
                 self.provisionals
                     .push(Statement::ProvisionalCaseInteger { values });
             }
             Expr::ParamList(values) if matches!(select_type, ExprType::String) => {
-                assert!(values.len() > 1);
+                assert!(values.len() > 1, "BUG");
                 let values = values.into_iter().try_fold(vec![], |mut acc, expr| {
                     if let Expr::LitString(value) = expr {
                         acc.push(value);
@@ -476,6 +773,23 @@ impl Parser {
                         Err(self.syntax_error("invalid Case statement".into()))
                     }
                 })?;
+                if let Some(Statement::SelectString { case_blocks, .. }) = self.provisionals.last()
+                {
+                    let found_duplicate = values.iter().any(|value| {
+                        case_blocks.iter().any(|s| {
+                            if let Statement::CaseString { values, .. } = s {
+                                values.iter().any(|v| v == value)
+                            } else {
+                                unreachable!("BUG");
+                            }
+                        })
+                    });
+                    if found_duplicate {
+                        return Err(self.syntax_error("invalid Case statement".into()));
+                    }
+                } else {
+                    unreachable!("BUG");
+                }
                 self.provisionals
                     .push(Statement::ProvisionalCaseString { values });
             }
@@ -553,13 +867,11 @@ impl Parser {
             while_condition,
         }) = self.provisionals.pop()
         {
-            if exit_id != cur_exit_id {
-                return Err(self.syntax_error("invalid Loop statement".into()));
-            }
-            assert!(until_condition
-                .as_ref()
-                .or_else(|| while_condition.as_ref())
-                .is_none());
+            assert!(exit_id == cur_exit_id, "BUG");
+            assert!(
+                until_condition.is_none() || while_condition.is_none(),
+                "BUG"
+            );
             match pos_and_tokens {
                 [] => {
                     if let Some(condition) = until_condition {
@@ -677,7 +989,8 @@ impl Parser {
             step,
         }) = self.provisionals.pop()
         {
-            if name.filter(|name| *name != &counter).is_some() || exit_id != cur_exit_id {
+            assert!(exit_id == cur_exit_id, "BUG");
+            if name.filter(|name| *name != &counter).is_some() {
                 return Err(self.syntax_error("invalid Next statement".into()));
             }
             self.add_statement(Statement::For {
@@ -1953,14 +2266,14 @@ Input c
 c = Max(1, Min(100, c))
 For i = 1 To c Step 1
     Select Case i Mod 15
-    Case 0
-        Print "FizzBuzz"
-    Case 3, 6, 9, 12
-        Print "Fizz"
-    Case 5, 10
-        Print "Buzz"
-    Case Else
-        Print i
+        Case 0
+            Print "FizzBuzz"
+        Case 3, 6, 9, 12
+            Print "Fizz"
+        Case 5, 10
+            Print "Buzz"
+        Case Else
+            Print i
     End Select
 Next i
 "#;

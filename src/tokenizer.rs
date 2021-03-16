@@ -655,14 +655,14 @@ Input c
 c = Max(1, Min(100, c))
 For i = 1 To c Step 1
     Select Case i Mod 15
-    Case 0
-        Print "FizzBuzz"
-    Case 3, 6, 9, 12
-        Print "Fizz"
-    Case 5, 10
-        Print "Buzz"
-    Case Else
-        Print i
+        Case 0
+            Print "FizzBuzz"
+        Case 3, 6, 9, 12
+            Print "Fizz"
+        Case 5, 10
+            Print "Buzz"
+        Case Else
+            Print i
     End Select
 Next i
 
@@ -785,64 +785,64 @@ Loop
                 ],
                 //          111111111122222222223333333333
                 // 123456789012345678901234567890123456789
-                //     Case 0
-                9 => vec![(5, Token::Keyword(Keyword::Case)), (10, Token::Integer(0))],
+                //         Case 0
+                9 => vec![(9, Token::Keyword(Keyword::Case)), (14, Token::Integer(0))],
                 //          111111111122222222223333333333
                 // 123456789012345678901234567890123456789
-                //         Print "FizzBuzz"
+                //             Print "FizzBuzz"
                 10 => vec![
-                    (9, Token::Keyword(Keyword::Print)),
-                    (15, Token::String("FizzBuzz".into())),
+                    (13, Token::Keyword(Keyword::Print)),
+                    (19, Token::String("FizzBuzz".into())),
                 ],
                 //          111111111122222222223333333333
                 // 123456789012345678901234567890123456789
-                //     Case 3, 6, 9, 12
+                //         Case 3, 6, 9, 12
                 11 => vec![
-                    (5, Token::Keyword(Keyword::Case)),
-                    (10, Token::Integer(3)),
-                    (11, Token::Operator(Operator::Comma)),
-                    (13, Token::Integer(6)),
-                    (14, Token::Operator(Operator::Comma)),
-                    (16, Token::Integer(9)),
-                    (17, Token::Operator(Operator::Comma)),
-                    (19, Token::Integer(12)),
+                    (9, Token::Keyword(Keyword::Case)),
+                    (14, Token::Integer(3)),
+                    (15, Token::Operator(Operator::Comma)),
+                    (17, Token::Integer(6)),
+                    (18, Token::Operator(Operator::Comma)),
+                    (20, Token::Integer(9)),
+                    (21, Token::Operator(Operator::Comma)),
+                    (23, Token::Integer(12)),
                 ],
                 //          111111111122222222223333333333
                 // 123456789012345678901234567890123456789
-                //         Print "Fizz"
+                //             Print "Fizz"
                 12 => vec![
-                    (9, Token::Keyword(Keyword::Print)),
-                    (15, Token::String("Fizz".into())),
+                    (13, Token::Keyword(Keyword::Print)),
+                    (19, Token::String("Fizz".into())),
                 ],
                 //          111111111122222222223333333333
                 // 123456789012345678901234567890123456789
-                //     Case 5, 10
+                //         Case 5, 10
                 13 => vec![
-                    (5, Token::Keyword(Keyword::Case)),
-                    (10, Token::Integer(5)),
-                    (11, Token::Operator(Operator::Comma)),
-                    (13, Token::Integer(10)),
+                    (9, Token::Keyword(Keyword::Case)),
+                    (14, Token::Integer(5)),
+                    (15, Token::Operator(Operator::Comma)),
+                    (17, Token::Integer(10)),
                 ],
                 //          111111111122222222223333333333
                 // 123456789012345678901234567890123456789
-                //         Print "Buzz"
+                //             Print "Buzz"
                 14 => vec![
-                    (9, Token::Keyword(Keyword::Print)),
-                    (15, Token::String("Buzz".into())),
+                    (13, Token::Keyword(Keyword::Print)),
+                    (19, Token::String("Buzz".into())),
                 ],
                 //          111111111122222222223333333333
                 // 123456789012345678901234567890123456789
-                //     Case Else
+                //         Case Else
                 15 => vec![
-                    (5, Token::Keyword(Keyword::Case)),
-                    (10, Token::Keyword(Keyword::Else)),
+                    (9, Token::Keyword(Keyword::Case)),
+                    (14, Token::Keyword(Keyword::Else)),
                 ],
                 //          111111111122222222223333333333
                 // 123456789012345678901234567890123456789
-                //         Print i
+                //             Print i
                 16 => vec![
-                    (9, Token::Keyword(Keyword::Print)),
-                    (15, Token::Name("i".into())),
+                    (13, Token::Keyword(Keyword::Print)),
+                    (19, Token::Name("i".into())),
                 ],
                 //          111111111122222222223333333333
                 // 123456789012345678901234567890123456789
