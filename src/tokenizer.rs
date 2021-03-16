@@ -1,3 +1,4 @@
+use crate::jis_x_201;
 use crate::SyntaxError;
 use std::io::{self, BufRead};
 use std::result;
@@ -112,7 +113,7 @@ fn take_string_token(s: &str) -> Option<(Token, &str)> {
     let mut split_position = s.len();
     let mut text = String::new();
     for (p, ch) in char_indices {
-        if !ch.is_ascii() {
+        if !jis_x_201::contains(ch) {
             return None;
         }
         if quotation {
@@ -129,7 +130,7 @@ fn take_string_token(s: &str) -> Option<(Token, &str)> {
             text.push(ch);
         }
     }
-    if !quotation {
+    if !quotation || text.len() > 256 {
         return None;
     }
     let (_, rest) = s.split_at(split_position);
@@ -158,7 +159,7 @@ fn take_word(s: &str) -> Option<(&str, &str)> {
     let split_position = char_indices
         .find(|(_, ch)| !(ch.is_ascii_alphanumeric() || *ch == '_'))
         .map_or(s.len(), |(p, _)| p);
-    Some(s.split_at(split_position))
+    Some(s.split_at(split_position)).filter(|(word, _)| word.chars().count() <= 30)
 }
 
 fn parse_boolean(token: &str) -> Option<Token> {

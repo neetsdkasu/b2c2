@@ -1,4 +1,10 @@
 #[allow(dead_code)]
+mod casl2;
+
+#[allow(dead_code)]
+mod jis_x_201;
+
+#[allow(dead_code)]
 mod tokenizer;
 
 #[allow(dead_code)]
