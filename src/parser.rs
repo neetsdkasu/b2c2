@@ -39,6 +39,14 @@ fn parse<R: BufRead>(reader: R) -> io::Result<Result<Vec<Statement>, SyntaxError
         }
     }
 
+    if !parser.is_valid() {
+        return Ok(Err(SyntaxError::new(
+            parser.line_number + 1,
+            0,
+            "invalid Source Code".into(),
+        )));
+    }
+
     Ok(Ok(parser.statements.pop().expect("BUG")))
 }
 
@@ -49,7 +57,10 @@ struct Parser {
     statements: Vec<Vec<Statement>>,
     nest_of_do: Vec<usize>,
     nest_of_for: Vec<usize>,
+    nest_of_select: Vec<usize>,
+    provisionals: Vec<Statement>,
     exit_id: usize,
+    is_select_head: bool,
 }
 
 impl Parser {
@@ -61,8 +72,20 @@ impl Parser {
             statements: vec![vec![]; 1],
             nest_of_do: vec![],
             nest_of_for: vec![],
+            nest_of_select: vec![],
+            provisionals: vec![],
             exit_id: 0,
+            is_select_head: false,
         }
+    }
+
+    fn is_valid(&self) -> bool {
+        self.statements.len() == 1
+            && self.nest_of_do.is_empty()
+            && self.nest_of_for.is_empty()
+            && self.nest_of_select.is_empty()
+            && self.provisionals.is_empty()
+            && !self.is_select_head
     }
 
     fn get_new_exit_id(&mut self) -> usize {
@@ -80,16 +103,19 @@ impl Parser {
     }
 
     fn add_statement(&mut self, statement: Statement) {
-        if let Some(block) = self.statements.last_mut() {
-            block.push(statement);
-        }
+        self.statements.last_mut().expect("BUG").push(statement);
     }
 
+    // Assign Variable
     fn parse_assign(
         &mut self,
         name: &str,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
+        if self.is_select_head {
+            return Err(self.syntax_error("invalid Code statement".into()));
+        }
+
         let var_type = self
             .variables
             .get(name)
@@ -180,6 +206,7 @@ impl Parser {
         Ok(())
     }
 
+    // Assign Elment of Array
     fn parse_assign_element(
         &mut self,
         name: &str,
@@ -279,16 +306,24 @@ impl Parser {
         Ok(())
     }
 
+    // Command
     fn parse_command(
         &mut self,
         command: &Keyword,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
         match command {
+            Keyword::Case => self.parse_command_case(pos_and_tokens),
+            _ if self.is_select_head => Err(self.syntax_error("invalid Code statement".into())),
             Keyword::Continue => self.parse_command_continue(pos_and_tokens),
             Keyword::Dim => self.parse_command_dim(pos_and_tokens),
             Keyword::Do => self.parse_command_do(pos_and_tokens),
+            Keyword::Else => self.parse_command_else(pos_and_tokens),
+            Keyword::ElseIf => self.parse_command_elseif(pos_and_tokens),
+            Keyword::End => self.parse_command_end(pos_and_tokens),
+            Keyword::Exit => self.parse_command_exit(pos_and_tokens),
             Keyword::For => self.parse_command_for(pos_and_tokens),
+            Keyword::If => self.parse_command_if(pos_and_tokens),
             Keyword::Input => self.parse_command_input(pos_and_tokens),
             Keyword::Let => {
                 if let [(_, Token::Name(name)), rest @ ..] = pos_and_tokens {
@@ -300,10 +335,81 @@ impl Parser {
             Keyword::Loop => self.parse_command_loop(pos_and_tokens),
             Keyword::Next => self.parse_command_next(pos_and_tokens),
             Keyword::Print => self.parse_command_print(pos_and_tokens),
-            _ => Ok(()),
+            Keyword::Select => self.parse_command_select(pos_and_tokens),
+            _ if command.is_command() => unreachable!("BUG"),
+            _ => Err(self.syntax_error("invalid Code statement".into())),
         }
     }
 
+    // End { If / Select }
+    fn parse_command_end(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
+        todo!()
+    }
+
+    // Else
+    fn parse_command_else(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
+        todo!()
+    }
+
+    // ElseIf <condtion> Then
+    fn parse_command_elseif(
+        &mut self,
+        pos_and_tokens: &[(usize, Token)],
+    ) -> Result<(), SyntaxError> {
+        todo!()
+    }
+
+    // If <condition> Then
+    fn parse_command_if(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
+        todo!()
+    }
+
+    // Exit { Do / For / Select }
+    fn parse_command_exit(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
+        match pos_and_tokens {
+            [(_, Token::Keyword(Keyword::Do))] => {
+                if let Some(&exit_id) = self.nest_of_do.last() {
+                    self.add_statement(Statement::ExitDo { exit_id });
+                } else {
+                    return Err(self.syntax_error("invalid Exit statement".into()));
+                }
+            }
+            [(_, Token::Keyword(Keyword::For))] => {
+                if let Some(&exit_id) = self.nest_of_for.last() {
+                    self.add_statement(Statement::ExitFor { exit_id });
+                } else {
+                    return Err(self.syntax_error("invalid Exit statement".into()));
+                }
+            }
+            [(_, Token::Keyword(Keyword::Select))] => {
+                if let Some(&exit_id) = self.nest_of_select.last() {
+                    self.add_statement(Statement::ExitSelect { exit_id });
+                } else {
+                    return Err(self.syntax_error("invalid Exit statement".into()));
+                }
+            }
+            _ => return Err(self.syntax_error("invalid Exit statement".into())),
+        }
+
+        Ok(())
+    }
+
+    // Case <integer> [, <integer>]*
+    // Case <string> [, <string>]*
+    // Case Else
+    fn parse_command_case(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
+        todo!()
+    }
+
+    // Select { <var_name> / <expr> }
+    fn parse_command_select(
+        &mut self,
+        pos_and_tokens: &[(usize, Token)],
+    ) -> Result<(), SyntaxError> {
+        todo!()
+    }
+
+    // Continue { Do / For }
     fn parse_command_continue(
         &mut self,
         pos_and_tokens: &[(usize, Token)],
@@ -329,6 +435,7 @@ impl Parser {
         Ok(())
     }
 
+    // Loop [{ While / Until } <condition>]
     fn parse_command_loop(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         let cur_exit_id = self
             .nest_of_do
@@ -341,7 +448,7 @@ impl Parser {
             exit_id,
             until_condition,
             while_condition,
-        }) = self.statements.last_mut().expect("BUG").pop()
+        }) = self.provisionals.pop()
         {
             if exit_id != cur_exit_id {
                 return Err(self.syntax_error("invalid Loop statement".into()));
@@ -402,48 +509,49 @@ impl Parser {
         Ok(())
     }
 
+    // Do [{ While / Until } <condition>]
     fn parse_command_do(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         let exit_id = self.get_new_exit_id();
 
-        match pos_and_tokens {
-            [] => {
-                self.add_statement(Statement::ProvisionalDo {
-                    exit_id,
-                    until_condition: None,
-                    while_condition: None,
-                });
-            }
+        let statement = match pos_and_tokens {
+            [] => Statement::ProvisionalDo {
+                exit_id,
+                until_condition: None,
+                while_condition: None,
+            },
             [(pos, Token::Keyword(Keyword::Until)), rest @ ..] => {
                 let condition = self.parse_expr(rest)?;
                 if !matches!(condition.return_type(), ExprType::Boolean) {
                     return Err(self.syntax_error_pos(*pos, "invalid Do statement".into()));
                 }
-                self.add_statement(Statement::ProvisionalDo {
+                Statement::ProvisionalDo {
                     exit_id,
                     until_condition: Some(condition),
                     while_condition: None,
-                });
+                }
             }
             [(pos, Token::Keyword(Keyword::While)), rest @ ..] => {
                 let condition = self.parse_expr(rest)?;
                 if !matches!(condition.return_type(), ExprType::Boolean) {
                     return Err(self.syntax_error_pos(*pos, "invalid Do statement".into()));
                 }
-                self.add_statement(Statement::ProvisionalDo {
+                Statement::ProvisionalDo {
                     exit_id,
                     until_condition: None,
                     while_condition: Some(condition),
-                });
+                }
             }
             _ => return Err(self.syntax_error("invalid Do statement".into())),
-        }
+        };
 
         self.nest_of_do.push(exit_id);
         self.statements.push(Vec::new());
+        self.provisionals.push(statement);
 
         Ok(())
     }
 
+    // Next [<counter>]
     fn parse_command_next(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         let name = match pos_and_tokens {
             [] => None,
@@ -464,7 +572,7 @@ impl Parser {
             init,
             end,
             step,
-        }) = self.statements.last_mut().expect("BUG").pop()
+        }) = self.provisionals.pop()
         {
             if name.filter(|name| *name != &counter).is_some() || exit_id != cur_exit_id {
                 return Err(self.syntax_error("invalid Next statement".into()));
@@ -484,6 +592,7 @@ impl Parser {
         Ok(())
     }
 
+    // For <counter> = <init> To <end> [Step <step>]
     fn parse_command_for(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         let (name, rest) = if let [(_, Token::Name(name)), (_, Token::Operator(Operator::Equal)), rest @ ..] =
             pos_and_tokens
@@ -536,19 +645,21 @@ impl Parser {
         };
 
         let exit_id = self.get_new_exit_id();
-        self.add_statement(Statement::ProvisionalFor {
+        self.nest_of_for.push(exit_id);
+        self.statements.push(Vec::new());
+        self.provisionals.push(Statement::ProvisionalFor {
             exit_id,
             counter: name.clone(),
             init,
             end,
             step,
         });
-        self.nest_of_for.push(exit_id);
-        self.statements.push(Vec::new());
 
         Ok(())
     }
 
+    // Dim <var_name> As { Boolean / Integer / String }
+    // Dim <arr_name>(<ubound>) As { Boolean / Integer }
     fn parse_command_dim(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         match pos_and_tokens {
             // プリミティブ変数の宣言
@@ -605,6 +716,7 @@ impl Parser {
         Ok(())
     }
 
+    // Input { <var_name> / <arr_name>(<index>) }
     fn parse_command_input(
         &mut self,
         pos_and_tokens: &[(usize, Token)],
@@ -655,6 +767,7 @@ impl Parser {
         Ok(())
     }
 
+    // Print [ <boolean> / <integer> / <string> / <var_name> / <expr> ]
     fn parse_command_print(
         &mut self,
         pos_and_tokens: &[(usize, Token)],
@@ -732,6 +845,7 @@ impl Parser {
         Ok(())
     }
 
+    // 式の分解
     fn parse_expr(&self, pos_and_tokens: &[(usize, Token)]) -> Result<Expr, SyntaxError> {
         // 項の最小単位
         match pos_and_tokens {
