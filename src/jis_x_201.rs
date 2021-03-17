@@ -2,6 +2,7 @@ pub fn contains(ch: char) -> bool {
     ch.is_ascii() || matches!(ch, '\u{FF61}'..='\u{FF9F}' | '\u{FFE3}' | '\u{FFE5}')
 }
 
+// UTF-8 -> JIS X 201
 pub fn convert_from_str(s: &str) -> Vec<u8> {
     s.chars()
         .map(|ch| {
@@ -19,6 +20,7 @@ pub fn convert_from_str(s: &str) -> Vec<u8> {
         .collect()
 }
 
+// JIS X 201 -> UTF-8
 pub fn convert_to_string(v: &[u8]) -> String {
     use std::convert::TryFrom;
     v.iter()
