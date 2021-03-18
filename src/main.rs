@@ -10,6 +10,9 @@ mod tokenizer;
 #[allow(dead_code)]
 mod parser;
 
+#[allow(dead_code)]
+mod compiler;
+
 #[derive(Debug)]
 pub struct SyntaxError {
     line_number: usize,

@@ -3,7 +3,7 @@ use crate::SyntaxError;
 use std::collections::HashMap;
 use std::io::{self, BufRead};
 
-fn parse<R: BufRead>(reader: R) -> io::Result<Result<Vec<Statement>, SyntaxError>> {
+pub fn parse<R: BufRead>(reader: R) -> io::Result<Result<Vec<Statement>, SyntaxError>> {
     let mut parser = Parser::new();
 
     for line in Tokenizer::new(reader) {
@@ -1605,7 +1605,7 @@ impl PartialOrd for Operator {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-enum Statement {
+pub enum Statement {
     AssignAddInto {
         var_name: String,
         value: Expr,
@@ -1799,7 +1799,7 @@ enum Statement {
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-enum VarType {
+pub enum VarType {
     Boolean,
     Integer,
     String,
@@ -1808,7 +1808,7 @@ enum VarType {
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-enum ExprType {
+pub enum ExprType {
     Boolean,
     Integer,
     String,
@@ -1816,7 +1816,7 @@ enum ExprType {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-enum Expr {
+pub enum Expr {
     BinaryOperatorBoolean(Operator, Box<Expr>, Box<Expr>),
     BinaryOperatorInteger(Operator, Box<Expr>, Box<Expr>),
     BinaryOperatorString(Operator, Box<Expr>, Box<Expr>),
