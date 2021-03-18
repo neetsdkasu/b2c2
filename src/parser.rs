@@ -1983,12 +1983,14 @@ mod test {
     use std::io;
 
     #[test]
-    fn it_works() -> io::Result<()> {
+    fn parse_works() -> io::Result<()> {
         let src1 = io::Cursor::new(SRC1);
-        dbg!(parse(src1)?.unwrap());
+        let statements1 = parse(src1)?.unwrap();
+        assert_eq!(statements1, get_src1_statements());
 
         let src2 = io::Cursor::new(SRC2);
-        dbg!(parse(src2)?.unwrap());
+        let statements2 = parse(src2)?.unwrap();
+        assert_eq!(statements2, get_src2_statements());
 
         Ok(())
     }
@@ -2302,4 +2304,242 @@ Do
     Print s
 Loop
 "#;
+
+    fn get_src1_statements() -> Vec<Statement> {
+        vec![
+            // Dim i As Integer
+            Statement::Dim {
+                var_name: "i".into(),
+                var_type: VarType::Integer,
+            },
+            // Dim c As Integer
+            Statement::Dim {
+                var_name: "c".into(),
+                var_type: VarType::Integer,
+            },
+            // Print "Limit?"
+            Statement::PrintLitString {
+                value: "Limit?".into(),
+            },
+            // Input c
+            Statement::InputInteger {
+                var_name: "c".into(),
+            },
+            // c = Max(1, Min(100, c))
+            Statement::AssignInteger {
+                var_name: "c".into(),
+                value: Expr::FunctionInteger(
+                    Function::Max,
+                    Box::new(Expr::ParamList(vec![
+                        Expr::LitInteger(1),
+                        Expr::FunctionInteger(
+                            Function::Min,
+                            Box::new(Expr::ParamList(vec![
+                                Expr::LitInteger(100),
+                                Expr::VarInteger("c".into()),
+                            ])),
+                        ),
+                    ])),
+                ),
+            },
+            // For i = 1 To c Step 1
+            Statement::For {
+                exit_id: 0,
+                counter: "i".into(),
+                init: Expr::LitInteger(1),
+                end: Expr::VarInteger("c".into()),
+                step: Some(Expr::LitInteger(1)),
+                block: vec![
+                    // Select Case i Mod 15
+                    Statement::SelectInteger {
+                        exit_id: 1,
+                        value: Expr::BinaryOperatorInteger(
+                            Operator::Mod,
+                            Box::new(Expr::VarInteger("i".into())),
+                            Box::new(Expr::LitInteger(15)),
+                        ),
+                        case_blocks: vec![
+                            // Case 0
+                            Statement::CaseInteger {
+                                values: vec![0],
+                                block: vec![
+                                    // Print "FizzBuzz"
+                                    Statement::PrintLitString {
+                                        value: "FizzBuzz".into(),
+                                    },
+                                ],
+                            },
+                            // Case 3, 6, 9, 12
+                            Statement::CaseInteger {
+                                values: vec![3, 6, 9, 12],
+                                block: vec![
+                                    // Print "Fizz"
+                                    Statement::PrintLitString {
+                                        value: "Fizz".into(),
+                                    },
+                                ],
+                            },
+                            // Case 5, 10
+                            Statement::CaseInteger {
+                                values: vec![5, 10],
+                                block: vec![
+                                    // Print "Buzz"
+                                    Statement::PrintLitString {
+                                        value: "Buzz".into(),
+                                    },
+                                ],
+                            },
+                            // Case Else
+                            Statement::CaseElse {
+                                block: vec![
+                                    // Print i
+                                    Statement::PrintVarInteger {
+                                        var_name: "i".into(),
+                                    },
+                                ],
+                            },
+                            // End Select
+                        ],
+                    },
+                    // Next i
+                ],
+            },
+        ]
+    }
+
+    fn get_src2_statements() -> Vec<Statement> {
+        vec![
+            // Dim s As String
+            Statement::Dim {
+                var_name: "s".into(),
+                var_type: VarType::String,
+            },
+            // Dim n As Integer
+            Statement::Dim {
+                var_name: "n".into(),
+                var_type: VarType::Integer,
+            },
+            // Do
+            Statement::DoLoop {
+                exit_id: 0,
+                block: vec![
+                    // Print "Number?"
+                    Statement::PrintLitString {
+                        value: "Number?".into(),
+                    },
+                    // Input s
+                    Statement::InputString {
+                        var_name: "s".into(),
+                    },
+                    // If s = "end" Then
+                    Statement::If {
+                        condition: Expr::BinaryOperatorBoolean(
+                            Operator::Equal,
+                            Box::new(Expr::VarString("s".into())),
+                            Box::new(Expr::LitString("end".into())),
+                        ),
+                        block: vec![
+                            // Exit Do
+                            Statement::ExitDo { exit_id: 0 },
+                        ],
+                        else_blocks: vec![
+                            // End If
+                        ],
+                    },
+                    // n = CInt(s)
+                    Statement::AssignInteger {
+                        var_name: "n".into(),
+                        value: Expr::FunctionInteger(
+                            Function::CInt,
+                            Box::new(Expr::VarString("s".into())),
+                        ),
+                    },
+                    // If n < 1 Then
+                    Statement::If {
+                        condition: Expr::BinaryOperatorBoolean(
+                            Operator::LessThan,
+                            Box::new(Expr::VarInteger("n".into())),
+                            Box::new(Expr::LitInteger(1)),
+                        ),
+                        block: vec![
+                            // Print "Invalid Input"
+                            Statement::PrintLitString {
+                                value: "Invalid Input".into(),
+                            },
+                            // Continue Do
+                            Statement::ContinueDo { exit_id: 0 },
+                        ],
+                        else_blocks: vec![
+                            // End If
+                        ],
+                    },
+                    // If n Mod 15 = 0 Then
+                    Statement::If {
+                        condition: Expr::BinaryOperatorBoolean(
+                            Operator::Equal,
+                            Box::new(Expr::BinaryOperatorInteger(
+                                Operator::Mod,
+                                Box::new(Expr::VarInteger("n".into())),
+                                Box::new(Expr::LitInteger(15)),
+                            )),
+                            Box::new(Expr::LitInteger(0)),
+                        ),
+                        block: vec![
+                            // s = "FizzBuzz"
+                            Statement::AssignString {
+                                var_name: "s".into(),
+                                value: Expr::LitString("FizzBuzz".into()),
+                            },
+                        ],
+                        else_blocks: vec![
+                            // ElseIf n Mod 3 = 0 Then
+                            Statement::ElseIf {
+                                condition: Expr::BinaryOperatorBoolean(
+                                    Operator::Equal,
+                                    Box::new(Expr::BinaryOperatorInteger(
+                                        Operator::Mod,
+                                        Box::new(Expr::VarInteger("n".into())),
+                                        Box::new(Expr::LitInteger(3)),
+                                    )),
+                                    Box::new(Expr::LitInteger(0)),
+                                ),
+                                block: vec![
+                                    // s = "Fizz"
+                                    Statement::AssignString {
+                                        var_name: "s".into(),
+                                        value: Expr::LitString("Fizz".into()),
+                                    },
+                                ],
+                            },
+                            // ElseIf n Mod 5 = 0 Then
+                            Statement::ElseIf {
+                                condition: Expr::BinaryOperatorBoolean(
+                                    Operator::Equal,
+                                    Box::new(Expr::BinaryOperatorInteger(
+                                        Operator::Mod,
+                                        Box::new(Expr::VarInteger("n".into())),
+                                        Box::new(Expr::LitInteger(5)),
+                                    )),
+                                    Box::new(Expr::LitInteger(0)),
+                                ),
+                                block: vec![
+                                    // s = "Buzz"
+                                    Statement::AssignString {
+                                        var_name: "s".into(),
+                                        value: Expr::LitString("Buzz".into()),
+                                    },
+                                ],
+                            },
+                            // End If
+                        ],
+                    },
+                    // Print s
+                    Statement::PrintVarString {
+                        var_name: "s".into(),
+                    },
+                    // Loop
+                ],
+            },
+        ]
+    }
 }
