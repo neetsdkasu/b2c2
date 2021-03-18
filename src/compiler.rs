@@ -257,10 +257,6 @@ impl Compiler {
                 step: _,
                 block: _,
             } => todo!(),
-            InputElementInteger {
-                var_name: _,
-                index: _,
-            } => todo!(),
             If {
                 condition: _,
                 block: _,
@@ -290,8 +286,12 @@ impl Compiler {
                 block: _,
             } => todo!(),
             CaseElse { block: _ } => todo!(),
+            InputElementInteger {
+                var_name: _,
+                index: _,
+            } => todo!(),
             InputInteger { var_name: _ } => todo!(),
-            InputString { var_name: _ } => todo!(),
+            InputString { var_name } => self.compile_input_string(var_name),
             PrintLitBoolean { value } => self.compile_print_lit_boolean(*value),
             PrintLitInteger { value } => self.compile_print_lit_integer(*value),
             PrintLitString { value } => self.compile_print_lit_string(value),
@@ -343,6 +343,15 @@ impl Compiler {
                 self.int_arr_labels.insert(var_name.into(), (label, *size));
             }
         }
+    }
+
+    fn compile_input_string(&mut self, var_name: &str) {
+        let (len_label, buf_label) = self.str_var_labels.get(var_name).expect("BUG");
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::In {
+                pos: buf_label.into(),
+                len: len_label.into(),
+            }));
     }
 
     fn compile_print_lit_boolean(&mut self, value: bool) {
@@ -760,6 +769,45 @@ mod test {
                     len: "SL2".into()
                 }),
                 casl2::Statement::code(casl2::Command::Out {
+                    pos: "SB1".into(),
+                    len: "SL1".into()
+                }),
+                casl2::Statement::code(casl2::Command::Ret),
+                casl2::Statement::labeled("SL1", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled("SB1", casl2::Command::Ds { size: 256 }),
+                casl2::Statement::labeled("SL2", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled("SB2", casl2::Command::Ds { size: 256 }),
+                casl2::Statement::labeled("SL3", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled("SB3", casl2::Command::Ds { size: 256 }),
+                casl2::Statement::code(casl2::Command::End),
+            ]
+        );
+    }
+
+    #[test]
+    fn compiler_compile_input_string_works() {
+        let mut compiler = Compiler::new("TEST").unwrap();
+
+        compiler.compile_dim("strVar1", &parser::VarType::String);
+        compiler.compile_dim("strVar2", &parser::VarType::String);
+        compiler.compile_dim("strVar3", &parser::VarType::String);
+        compiler.compile_input_string("strVar3");
+        compiler.compile_input_string("strVar2");
+        compiler.compile_input_string("strVar1");
+
+        assert_eq!(
+            compiler.finish(),
+            vec![
+                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
+                casl2::Statement::code(casl2::Command::In {
+                    pos: "SB3".into(),
+                    len: "SL3".into()
+                }),
+                casl2::Statement::code(casl2::Command::In {
+                    pos: "SB2".into(),
+                    len: "SL2".into()
+                }),
+                casl2::Statement::code(casl2::Command::In {
                     pos: "SB1".into(),
                     len: "SL1".into()
                 }),

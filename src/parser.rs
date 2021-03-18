@@ -1713,10 +1713,6 @@ pub enum Statement {
         end: Expr,
         step: Option<Expr>,
     },
-    InputElementInteger {
-        var_name: String,
-        index: Expr,
-    },
     If {
         condition: Expr,
         block: Vec<Statement>,
@@ -1772,6 +1768,10 @@ pub enum Statement {
         block: Vec<Statement>,
     },
     ProvisionalCaseElse,
+    InputElementInteger {
+        var_name: String,
+        index: Expr,
+    },
     InputInteger {
         var_name: String,
     },
