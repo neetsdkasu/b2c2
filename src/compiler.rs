@@ -21,6 +21,9 @@ pub fn compile(
 struct Compiler {
     var_id: usize,
     lit_id: usize,
+    local_int_var_id: usize,
+    local_str_var_id: usize,
+    temp_var_id: usize,
     jump_id: usize,
     bool_var_labels: HashMap<String, String>,
     int_var_labels: HashMap<String, String>,
@@ -28,6 +31,9 @@ struct Compiler {
     bool_arr_labels: HashMap<String, (String, usize)>,
     int_arr_labels: HashMap<String, (String, usize)>,
     lit_str_labels: HashMap<String, (String, String)>,
+    temp_int_var_labels: Vec<String>,
+    temp_str_var_labels: Vec<(String, String)>,
+    next_statement_label: Option<casl2::Label>,
     statements: Vec<casl2::Statement>,
 }
 
@@ -57,6 +63,9 @@ impl Compiler {
         Ok(Self {
             var_id: 0,
             lit_id: 0,
+            local_int_var_id: 0,
+            local_str_var_id: 0,
+            temp_var_id: 0,
             jump_id: 0,
             bool_var_labels: HashMap::new(),
             int_var_labels: HashMap::new(),
@@ -64,6 +73,9 @@ impl Compiler {
             bool_arr_labels: HashMap::new(),
             int_arr_labels: HashMap::new(),
             lit_str_labels: HashMap::new(),
+            temp_int_var_labels: Vec::new(),
+            temp_str_var_labels: Vec::new(),
+            next_statement_label: None,
             statements: vec![casl2::Statement::labeled(
                 program_name,
                 casl2::Command::Start { entry_point: None },
@@ -91,11 +103,16 @@ impl Compiler {
             bool_arr_labels,
             int_arr_labels,
             lit_str_labels,
+            next_statement_label,
             mut statements,
             ..
         } = self;
 
-        statements.push(casl2::Statement::code(casl2::Command::Ret));
+        statements.push(casl2::Statement::Code {
+            label: next_statement_label,
+            command: casl2::Command::Ret,
+            comment: None,
+        });
 
         // here: insert operator & function codes
 
@@ -346,49 +363,69 @@ impl Compiler {
     }
 
     fn compile_input_string(&mut self, var_name: &str) {
+        let label = self.next_statement_label.take();
         let (len_label, buf_label) = self.str_var_labels.get(var_name).expect("BUG");
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::In {
+        self.statements.push(casl2::Statement::Code {
+            label,
+            command: casl2::Command::In {
                 pos: buf_label.into(),
                 len: len_label.into(),
-            }));
+            },
+            comment: None,
+        });
     }
 
     fn compile_print_lit_boolean(&mut self, value: bool) {
+        let label = self.next_statement_label.take();
         let s = if value { "True" } else { "False" };
         let (len_label, buf_label) = self.get_lit_str_labels(s);
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::Out {
+        self.statements.push(casl2::Statement::Code {
+            label,
+            command: casl2::Command::Out {
                 pos: buf_label.into(),
                 len: len_label.into(),
-            }));
+            },
+            comment: None,
+        });
     }
 
     fn compile_print_lit_integer(&mut self, value: i32) {
+        let label = self.next_statement_label.take();
         let (len_label, buf_label) = self.get_lit_str_labels(&value.to_string());
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::Out {
+        self.statements.push(casl2::Statement::Code {
+            label,
+            command: casl2::Command::Out {
                 pos: buf_label.into(),
                 len: len_label.into(),
-            }));
+            },
+            comment: None,
+        });
     }
 
     fn compile_print_lit_string(&mut self, value: &str) {
+        let label = self.next_statement_label.take();
         let (len_label, buf_label) = self.get_lit_str_labels(value);
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::Out {
+        self.statements.push(casl2::Statement::Code {
+            label,
+            command: casl2::Command::Out {
                 pos: buf_label.into(),
                 len: len_label.into(),
-            }));
+            },
+            comment: None,
+        });
     }
 
     fn compile_print_var_string(&mut self, var_name: &str) {
+        let label = self.next_statement_label.take();
         let (len_label, buf_label) = self.str_var_labels.get(var_name).expect("BUG");
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::Out {
+        self.statements.push(casl2::Statement::Code {
+            label,
+            command: casl2::Command::Out {
                 pos: buf_label.into(),
                 len: len_label.into(),
-            }));
+            },
+            comment: None,
+        });
     }
 }
 
