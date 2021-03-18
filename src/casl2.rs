@@ -10,10 +10,82 @@ pub enum Statement {
     },
 }
 
+impl Statement {
+    pub fn labeled(label: &str, command: Command) -> Self {
+        Self::Code {
+            label: Some(Label::new(label)),
+            command,
+            comment: None,
+        }
+    }
+
+    pub fn code(command: Command) -> Self {
+        Self::Code {
+            label: None,
+            command,
+            comment: None,
+        }
+    }
+
+    pub fn labeled_with_comment(label: &str, command: Command, comment: &str) -> Self {
+        Self::Code {
+            label: Some(Label::new(label)),
+            command,
+            comment: Some(comment.into()),
+        }
+    }
+
+    pub fn code_with_comment(command: Command, comment: &str) -> Self {
+        Self::Code {
+            label: None,
+            command,
+            comment: Some(comment.into()),
+        }
+    }
+
+    pub fn comment(comment: &str) -> Self {
+        Self::Comment(comment.into())
+    }
+
+    pub fn is_comment(&self) -> bool {
+        matches!(self, Self::Comment(_))
+    }
+
+    pub fn is_code(&self) -> bool {
+        !self.is_comment()
+    }
+
+    pub fn remove_comment(&self) -> Option<Self> {
+        if let Self::Code {
+            label,
+            command,
+            comment: _,
+        } = self
+        {
+            Some(Self::Code {
+                label: label.clone(),
+                command: command.clone(),
+                comment: None,
+            })
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Label(String);
 
 impl Label {
+    pub fn new(label: &str) -> Self {
+        Label(label.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        let Label(label) = self;
+        label
+    }
+
     pub fn is_valid(&self) -> bool {
         let Label(label) = self;
         let mut chars = label.chars();
@@ -29,20 +101,32 @@ impl Label {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum Adr {
-    Dec(i32),           // -32678 ~ 32677
-    Hex(i32),           // #0000 ~ #FFFF
+    Dec(i16),           // -32678 ~ 32677
+    Hex(u16),           // #0000 ~ #FFFF
     Label(Label),       // 'text'
-    LiteralDec(i32),    // =1234
-    LiteralHex(i32),    // =#12AB
+    LiteralDec(i16),    // =1234
+    LiteralHex(u16),    // =#12AB
     LiteralStr(String), // ='text'
+}
+
+impl Adr {
+    pub fn label(label: &str) -> Self {
+        Self::Label(Label::new(label))
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum Constant {
-    Dec(i32),     // =1234
-    Hex(i32),     // =#12AB
+    Dec(i16),     // =1234
+    Hex(u16),     // =#12AB
     Str(String),  // ='text'
     Label(Label), // 'text'
+}
+
+impl Constant {
+    pub fn label(label: &str) -> Self {
+        Self::Label(Label::new(label))
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -122,7 +206,7 @@ pub enum Command {
     },
     End,
     Ds {
-        size: i32,
+        size: u16,
     },
     Dc {
         constants: Vec<Constant>,
@@ -161,6 +245,162 @@ pub enum Command {
     Nop,
 }
 
+#[derive(Clone, Debug)]
+pub struct Program {
+    name: String,
+    statements: Vec<Statement>,
+}
+
+impl Program {
+    pub fn remove_comments(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            statements: self
+                .statements
+                .iter()
+                .filter_map(Statement::remove_comment)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Builder {
+    label: Option<Label>,
+    program: Program,
+}
+
+impl Builder {
+    pub fn new(name: &str) -> Self {
+        let mut statements = vec![];
+        statements.push(Statement::Code {
+            label: Some(Label(name.into())),
+            command: Command::Start { entry_point: None },
+            comment: None,
+        });
+        Self {
+            label: None,
+            program: Program {
+                name: name.into(),
+                statements,
+            },
+        }
+    }
+
+    pub fn new_with_comment(name: &str, comment: &str) -> Self {
+        let mut statements = vec![];
+        statements.push(Statement::Code {
+            label: Some(Label(name.into())),
+            command: Command::Start { entry_point: None },
+            comment: Some(comment.into()),
+        });
+        Self {
+            label: None,
+            program: Program {
+                name: name.into(),
+                statements,
+            },
+        }
+    }
+
+    pub fn start_at(name: &str, entry_point: &str) -> Self {
+        let mut statements = vec![];
+        statements.push(Statement::Code {
+            label: Some(Label(name.into())),
+            command: Command::Start {
+                entry_point: Some(Label(entry_point.into())),
+            },
+            comment: None,
+        });
+        Self {
+            label: None,
+            program: Program {
+                name: name.into(),
+                statements,
+            },
+        }
+    }
+
+    pub fn start_at_with_comment(name: &str, entry_point: &str, comment: &str) -> Self {
+        let mut statements = vec![];
+        statements.push(Statement::Code {
+            label: Some(Label(name.into())),
+            command: Command::Start {
+                entry_point: Some(Label(entry_point.into())),
+            },
+            comment: Some(comment.into()),
+        });
+        Self {
+            label: None,
+            program: Program {
+                name: name.into(),
+                statements,
+            },
+        }
+    }
+
+    pub fn label(mut self, label: &str) -> Self {
+        self.label = Some(Label(label.into()));
+        self
+    }
+
+    pub fn code(mut self, command: Command) -> Self {
+        let label = self.label.take();
+        self.program.statements.push(Statement::Code {
+            label,
+            command,
+            comment: None,
+        });
+        self
+    }
+
+    pub fn code_with_comment(mut self, command: Command, comment: &str) -> Self {
+        let label = self.label.take();
+        self.program.statements.push(Statement::Code {
+            label,
+            command,
+            comment: Some(comment.into()),
+        });
+        self
+    }
+
+    fn comment(mut self, comment: &str) -> Self {
+        self.program
+            .statements
+            .push(Statement::Comment(comment.into()));
+        self
+    }
+
+    fn end(mut self) -> Program {
+        let label = self.label.take();
+        self.program.statements.push(Statement::Code {
+            label,
+            command: Command::End,
+            comment: None,
+        });
+        self.program
+    }
+
+    fn end_with_comment(mut self, comment: &str) -> Program {
+        let label = self.label.take();
+        self.program.statements.push(Statement::Code {
+            label,
+            command: Command::End,
+            comment: Some(comment.into()),
+        });
+        self.program
+    }
+}
+
+impl fmt::Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for s in self.statements.iter() {
+            writeln!(f, "{}", s.to_string())?;
+        }
+        Ok(())
+    }
+}
+
 impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Label(label) = self;
@@ -171,11 +411,11 @@ impl fmt::Display for Label {
 impl fmt::Display for Adr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Adr::Dec(v) => write!(f, "{}", *v as i16),
-            Adr::Hex(v) => write!(f, "#{:04X}", *v as u16),
+            Adr::Dec(v) => write!(f, "{}", *v),
+            Adr::Hex(v) => write!(f, "#{:04X}", *v),
             Adr::Label(v) => write!(f, "{}", v),
-            Adr::LiteralDec(v) => write!(f, "={}", *v as i16),
-            Adr::LiteralHex(v) => write!(f, "={:04X}", *v as u16),
+            Adr::LiteralDec(v) => write!(f, "={}", *v),
+            Adr::LiteralHex(v) => write!(f, "={:04X}", *v),
             Adr::LiteralStr(v) => write!(f, "='{}'", v),
         }
     }
@@ -184,8 +424,8 @@ impl fmt::Display for Adr {
 impl fmt::Display for Constant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Constant::Dec(v) => write!(f, "{}", *v as i16),
-            Constant::Hex(v) => write!(f, "#{:04X}", *v as u16),
+            Constant::Dec(v) => write!(f, "{}", *v),
+            Constant::Hex(v) => write!(f, "#{:04X}", *v),
             Constant::Str(v) => write!(f, "'{}'", v),
             Constant::Label(v) => write!(f, "{}", v),
         }
@@ -275,7 +515,7 @@ impl fmt::Display for Command {
             } => write!(f, "{:<9} {}", "START", entry),
             Start { entry_point: None } => write!(f, "START"),
             End => write!(f, "END"),
-            Ds { size } => write!(f, "{:<9} {}", "DS", *size as u16),
+            Ds { size } => write!(f, "{:<9} {}", "DS", *size),
             Dc { constants } => {
                 write!(f, "{:<9} ", "DC")?;
                 for (i, c) in constants.iter().enumerate() {
@@ -286,12 +526,12 @@ impl fmt::Display for Command {
                 }
                 Ok(())
             }
-            In { pos, len } => write!(f, "{:<9} {}, {}", "IN", pos, len),
-            Out { pos, len } => write!(f, "{:<9} {}, {}", "OUT", pos, len),
+            In { pos, len } => write!(f, "{:<9} {},{}", "IN", pos, len),
+            Out { pos, len } => write!(f, "{:<9} {},{}", "OUT", pos, len),
             Rpush => write!(f, "RPUSH"),
             Rpop => write!(f, "RPOP"),
 
-            R { code, r1, r2 } => write!(f, "{:<9} {}, {}", code.to_string(), r1, r2),
+            R { code, r1, r2 } => write!(f, "{:<9} {},{}", code.to_string(), r1, r2),
             A {
                 code,
                 r,
@@ -320,8 +560,8 @@ impl fmt::Display for Command {
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::Comment(text) => write!(f, "; {}", text),
-            Statement::Code {
+            Self::Comment(text) => write!(f, "; {}", text),
+            Self::Code {
                 label,
                 command,
                 comment: Some(text),
@@ -342,7 +582,7 @@ impl fmt::Display for Statement {
                     write!(f, "{0:<9} {1:<2$}; {3}", "", command, width, text)
                 }
             }
-            Statement::Code {
+            Self::Code {
                 label,
                 command,
                 comment: None,
@@ -361,138 +601,281 @@ impl fmt::Display for Statement {
 mod test {
     use super::*;
 
+    const SRC: &str = "\
+MUL       START
+; MULTIPLY
+; GR0 = GR1 * GR2
+; SUPPORT (0 <= GR1 < 256) && (0<= GR2 < 256)
+          PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          XOR       GR0,GR0        ; GR0 = 0
+LOOP      LAD       GR3,0,GR1      ; GR3 = GR1
+          AND       GR3,=1         ; GR3 &= 1
+          JZE       SHIFT          ; if GR3 == 0 then goto SHIFT
+          ADDL      GR0,GR2        ; GR0 += GR2
+SHIFT     SLL       GR2,=1         ; GR2 <<= 1
+          SRL       GR1,=1         ; GR1 >>= 1
+          JNZ       LOOP           ; if GR1 != 0 then goto LOOP
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+          END
+";
+
     #[test]
     fn it_works() {
-        let src = vec![
-            Statement::Code {
-                label: Some(Label("COUNT1".into())),
-                command: Command::Start { entry_point: None },
-                comment: Some("".into()),
-            },
-            Statement::Comment(format!("{:<7} {:<7} {}", "", "入力", "GR1:検索する語")),
-            Statement::Comment(format!(
-                "{:<7} {:<7} {}",
-                "", "処理", "GR1中の'1'のビットの個数を求める"
-            )),
-            Statement::Comment(format!(
-                "{:<7} {:<7} {}",
-                "", "出力", "GR0:GR1中の'1'のビットの個数"
-            )),
-            Statement::Code {
-                label: None,
-                command: Command::P {
-                    code: P::Push,
+        let statements = get_statements();
+        let program = get_program();
+
+        assert_eq!(statements, program.statements);
+
+        assert_eq!(SRC, &program.to_string());
+    }
+
+    fn get_statements() -> Vec<Statement> {
+        use super::Command as Cmd;
+        use super::IndexRegister as Idx;
+        use super::Register as Reg;
+        use super::Statement as Stmt;
+
+        vec![
+            // MUL       START
+            Stmt::labeled("MUL", Cmd::Start { entry_point: None }),
+            // ; MULTIPLY
+            Stmt::comment("MULTIPLY"),
+            // ; GR0 = GR1 * GR2
+            Stmt::comment("GR0 = GR1 * GR2"),
+            // ; SUPPORT (0 <= GR1 < 256) && (0<= GR2 < 256)
+            Stmt::comment("SUPPORT (0 <= GR1 < 256) && (0<= GR2 < 256)"),
+            // PUSH      0,GR1
+            Stmt::code(Cmd::P {
+                code: P::Push,
+                adr: Adr::Dec(0),
+                x: Some(Idx::GR1),
+            }),
+            // PUSH      0,GR2
+            Stmt::code(Cmd::P {
+                code: P::Push,
+                adr: Adr::Dec(0),
+                x: Some(Idx::GR2),
+            }),
+            // PUSH      0,GR3
+            Stmt::code(Cmd::P {
+                code: P::Push,
+                adr: Adr::Dec(0),
+                x: Some(Idx::GR3),
+            }),
+            // XOR       GR0,GR0        ; GR0 = 0
+            Stmt::code_with_comment(
+                Cmd::R {
+                    code: R::Xor,
+                    r1: Reg::GR0,
+                    r2: Reg::GR0,
+                },
+                "GR0 = 0",
+            ),
+            // LOOP      LAD       GR3,0,GR1      ; GR3 = GR1
+            Stmt::labeled_with_comment(
+                "LOOP",
+                Cmd::A {
+                    code: A::Lad,
+                    r: Reg::GR3,
                     adr: Adr::Dec(0),
-                    x: Some(IndexRegister::GR1),
+                    x: Some(Idx::GR1),
                 },
-                comment: Some("".into()),
-            },
-            Statement::Code {
-                label: None,
-                command: Command::P {
-                    code: P::Push,
-                    adr: Adr::Dec(0),
-                    x: Some(IndexRegister::GR2),
+                "GR3 = GR1",
+            ),
+            // AND       GR3,=1         ; GR3 &= 1
+            Stmt::code_with_comment(
+                Cmd::A {
+                    code: A::And,
+                    r: Reg::GR3,
+                    adr: Adr::LiteralDec(1),
+                    x: None,
                 },
-                comment: Some("".into()),
-            },
-            Statement::Code {
-                label: None,
-                command: Command::R {
-                    code: R::Suba,
-                    r1: Register::GR2,
-                    r2: Register::GR2,
-                },
-                comment: Some("Count = 0".into()),
-            },
-            Statement::Code {
-                label: None,
-                command: Command::R {
-                    code: R::And,
-                    r1: Register::GR1,
-                    r2: Register::GR1,
-                },
-                comment: Some("全部のビットが'0'？".into()),
-            },
-            Statement::Code {
-                label: None,
-                command: Command::P {
+                "GR3 &= 1",
+            ),
+            // JZE       SHIFT          ; if GR3 == 0 then goto SHIFT
+            Stmt::code_with_comment(
+                Cmd::P {
                     code: P::Jze,
-                    adr: Adr::Label(Label("RETURN".into())),
+                    adr: Adr::label("SHIFT"),
                     x: None,
                 },
-                comment: Some("全部のビットが'0'なら終了".into()),
-            },
-            Statement::Code {
-                label: Some(Label("MORE".into())),
-                command: Command::A {
-                    code: A::Lad,
-                    r: Register::GR2,
-                    adr: Adr::Dec(1),
-                    x: Some(IndexRegister::GR2),
+                "if GR3 == 0 then goto SHIFT",
+            ),
+            // ADDL      GR0,GR2        ; GR0 += GR2
+            Stmt::code_with_comment(
+                Cmd::R {
+                    code: R::Addl,
+                    r1: Reg::GR0,
+                    r2: Reg::GR2,
                 },
-                comment: Some("Count = Count + 1".into()),
-            },
-            Statement::Code {
-                label: None,
-                command: Command::A {
-                    code: A::Lad,
-                    r: Register::GR1,
-                    adr: Adr::Dec(-1),
-                    x: Some(IndexRegister::GR1),
+                "GR0 += GR2",
+            ),
+            // SHIFT     SLL       GR2,=1         ; GR2 <<= 1
+            Stmt::labeled_with_comment(
+                "SHIFT",
+                Cmd::A {
+                    code: A::Sll,
+                    r: Reg::GR2,
+                    adr: Adr::LiteralDec(1),
+                    x: None,
                 },
-                comment: Some("最下位の'1'のビット１個を".into()),
-            },
-            Statement::Code {
-                label: None,
-                command: Command::R {
-                    code: R::And,
-                    r1: Register::GR1,
-                    r2: Register::GR0,
+                "GR2 <<= 1",
+            ),
+            // SRL       GR1,=1         ; GR1 >>= 1
+            Stmt::code_with_comment(
+                Cmd::A {
+                    code: A::Srl,
+                    r: Reg::GR1,
+                    adr: Adr::LiteralDec(1),
+                    x: None,
                 },
-                comment: Some("　'0'に変える".into()),
-            },
-            Statement::Code {
-                label: None,
-                command: Command::P {
+                "GR1 >>= 1",
+            ),
+            // JNZ       LOOP           ; if GR1 != 0 then goto LOOP
+            Stmt::code_with_comment(
+                Cmd::P {
                     code: P::Jnz,
-                    adr: Adr::Label(Label("MORE".into())),
+                    adr: Adr::label("LOOP"),
                     x: None,
                 },
-                comment: Some("'1'のビットが残っていれば繰返し".into()),
-            },
-            Statement::Code {
-                label: Some(Label("RETURN".into())),
-                command: Command::R {
-                    code: R::Ld,
-                    r1: Register::GR0,
-                    r2: Register::GR2,
+                "if GR1 != 0 then goto LOOP",
+            ),
+            // POP       GR3
+            Stmt::code(Cmd::Pop { r: Reg::GR3 }),
+            // POP       GR2
+            Stmt::code(Cmd::Pop { r: Reg::GR2 }),
+            // POP       GR1
+            Stmt::code(Cmd::Pop { r: Reg::GR1 }),
+            // RET
+            Stmt::code(Cmd::Ret),
+            // END
+            Stmt::code(Cmd::End),
+        ]
+    }
+
+    fn get_program() -> Program {
+        use super::Command as Cmd;
+        use super::IndexRegister as Idx;
+        use super::Register as Reg;
+
+        // MUL    START
+        Builder::new("MUL")
+            // ; MULTIPLY
+            .comment("MULTIPLY")
+            // ; GR0 = GR1 * GR2
+            .comment("GR0 = GR1 * GR2")
+            // ; SUPPORT (0 <= GR1 < 256) && (0<= GR2 < 256)
+            .comment("SUPPORT (0 <= GR1 < 256) && (0<= GR2 < 256)")
+            // PUSH 0,GR1
+            .code(Cmd::P {
+                code: P::Push,
+                adr: Adr::Dec(0),
+                x: Some(Idx::GR1),
+            })
+            // PUSH 0,GR2
+            .code(Cmd::P {
+                code: P::Push,
+                adr: Adr::Dec(0),
+                x: Some(Idx::GR2),
+            })
+            // PUSH 0,GR3
+            .code(Cmd::P {
+                code: P::Push,
+                adr: Adr::Dec(0),
+                x: Some(Idx::GR3),
+            })
+            // XOR  GR0,GR0    ; GR0 = 0
+            .code_with_comment(
+                Cmd::R {
+                    code: R::Xor,
+                    r1: Reg::GR0,
+                    r2: Reg::GR0,
                 },
-                comment: Some("GR0 = Count".into()),
-            },
-            Statement::Code {
-                label: None,
-                command: Command::Pop { r: Register::GR2 },
-                comment: Some("".into()),
-            },
-            Statement::Code {
-                label: None,
-                command: Command::Pop { r: Register::GR1 },
-                comment: Some("".into()),
-            },
-            Statement::Code {
-                label: None,
-                command: Command::Ret,
-                comment: Some("呼び出しプログラムへ戻る".into()),
-            },
-            Statement::Code {
-                label: None,
-                command: Command::End,
-                comment: Some("".into()),
-            },
-        ];
-        for s in src.iter() {
-            eprintln!("{}", s);
-        }
+                "GR0 = 0",
+            )
+            // LOOP   LAD  GR3,0,GR1  ; GR3 = GR1
+            .label("LOOP")
+            .code_with_comment(
+                Cmd::A {
+                    code: A::Lad,
+                    r: Reg::GR3,
+                    adr: Adr::Dec(0),
+                    x: Some(Idx::GR1),
+                },
+                "GR3 = GR1",
+            )
+            // AND  GR3,=1     ; GR3 &= 1
+            .code_with_comment(
+                Cmd::A {
+                    code: A::And,
+                    r: Reg::GR3,
+                    adr: Adr::LiteralDec(1),
+                    x: None,
+                },
+                "GR3 &= 1",
+            )
+            // JZE  SHIFT      ; if GR3 == 0 then goto SHIFT
+            .code_with_comment(
+                Cmd::P {
+                    code: P::Jze,
+                    adr: Adr::label("SHIFT"),
+                    x: None,
+                },
+                "if GR3 == 0 then goto SHIFT",
+            )
+            // ADDL GR0,GR2    ; GR0 += GR2
+            .code_with_comment(
+                Cmd::R {
+                    code: R::Addl,
+                    r1: Reg::GR0,
+                    r2: Reg::GR2,
+                },
+                "GR0 += GR2",
+            )
+            // SHIFT  SLL  GR2,=1     ; GR2 <<= 1
+            .label("SHIFT")
+            .code_with_comment(
+                Cmd::A {
+                    code: A::Sll,
+                    r: Reg::GR2,
+                    adr: Adr::LiteralDec(1),
+                    x: None,
+                },
+                "GR2 <<= 1",
+            )
+            // SRL  GR1,=1     ; GR1 >>= 1
+            .code_with_comment(
+                Cmd::A {
+                    code: A::Srl,
+                    r: Reg::GR1,
+                    adr: Adr::LiteralDec(1),
+                    x: None,
+                },
+                "GR1 >>= 1",
+            )
+            // JNZ  LOOP       ; if GR1 != 0 then goto LOOP
+            .code_with_comment(
+                Cmd::P {
+                    code: P::Jnz,
+                    adr: Adr::label("LOOP"),
+                    x: None,
+                },
+                "if GR1 != 0 then goto LOOP",
+            )
+            // POP  GR3
+            .code(Cmd::Pop { r: Reg::GR3 })
+            // POP  GR2
+            .code(Cmd::Pop { r: Reg::GR2 })
+            // POP  GR1
+            .code(Cmd::Pop { r: Reg::GR1 })
+            // RET
+            .code(Cmd::Ret)
+            // END
+            .end()
     }
 }
