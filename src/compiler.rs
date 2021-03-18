@@ -20,12 +20,14 @@ pub fn compile(
 
 struct Compiler {
     var_id: usize,
+    lit_id: usize,
     jump_id: usize,
     bool_var_labels: HashMap<String, String>,
     int_var_labels: HashMap<String, String>,
     str_var_labels: HashMap<String, (String, String)>,
     bool_arr_labels: HashMap<String, (String, usize)>,
     int_arr_labels: HashMap<String, (String, usize)>,
+    lit_str_labels: HashMap<String, (String, String)>,
     statements: Vec<casl2::Statement>,
 }
 
@@ -54,17 +56,31 @@ impl Compiler {
 
         Ok(Self {
             var_id: 0,
+            lit_id: 0,
             jump_id: 0,
             bool_var_labels: HashMap::new(),
             int_var_labels: HashMap::new(),
             str_var_labels: HashMap::new(),
             bool_arr_labels: HashMap::new(),
             int_arr_labels: HashMap::new(),
+            lit_str_labels: HashMap::new(),
             statements: vec![casl2::Statement::labeled(
                 program_name,
                 casl2::Command::Start { entry_point: None },
             )],
         })
+    }
+
+    fn get_lit_str_labels(&mut self, literal: &str) -> (String, String) {
+        if let Some(labels) = self.lit_str_labels.get(literal) {
+            return labels.clone();
+        }
+        self.lit_id += 1;
+        let len_label = format!("LL{}", self.lit_id);
+        let buf_label = format!("LB{}", self.lit_id);
+        let labels = (len_label, buf_label);
+        self.lit_str_labels.insert(literal.into(), labels.clone());
+        labels
     }
 
     fn finish(self) -> Vec<casl2::Statement> {
@@ -74,6 +90,7 @@ impl Compiler {
             str_var_labels,
             bool_arr_labels,
             int_arr_labels,
+            lit_str_labels,
             mut statements,
             ..
         } = self;
@@ -104,7 +121,7 @@ impl Compiler {
             ));
         }
 
-        for (len_label, data_label) in str_var_labels
+        for (len_label, buf_label) in str_var_labels
             .into_iter()
             .map(|(_, v)| v)
             .collect::<BTreeSet<_>>()
@@ -114,7 +131,7 @@ impl Compiler {
                 casl2::Command::Ds { size: 1 },
             ));
             statements.push(casl2::Statement::labeled(
-                &data_label,
+                &buf_label,
                 casl2::Command::Ds { size: 256 },
             ));
         }
@@ -138,6 +155,25 @@ impl Compiler {
             statements.push(casl2::Statement::labeled(
                 &label,
                 casl2::Command::Ds { size: size as u16 },
+            ));
+        }
+
+        for ((len_label, buf_label), literal) in lit_str_labels
+            .into_iter()
+            .map(|(k, v)| (v, k))
+            .collect::<BTreeSet<_>>()
+        {
+            statements.push(casl2::Statement::labeled(
+                &len_label,
+                casl2::Command::Dc {
+                    constants: vec![casl2::Constant::Dec(literal.chars().count() as i16)],
+                },
+            ));
+            statements.push(casl2::Statement::labeled(
+                &buf_label,
+                casl2::Command::Dc {
+                    constants: vec![casl2::Constant::Str(literal.clone())],
+                },
             ));
         }
 
@@ -357,6 +393,93 @@ mod test {
     }
 
     #[test]
+    fn compiler_get_lit_str_labels_works() {
+        let mut compiler = Compiler::new("TEST").unwrap();
+
+        assert_eq!(
+            compiler.get_lit_str_labels("-123"),
+            ("LL1".into(), "LB1".into())
+        );
+        assert_eq!(
+            compiler.get_lit_str_labels("A b c"),
+            ("LL2".into(), "LB2".into())
+        );
+        assert_eq!(
+            compiler.get_lit_str_labels("XYZ"),
+            ("LL3".into(), "LB3".into())
+        );
+        assert_eq!(
+            compiler.get_lit_str_labels("Test@1234"),
+            ("LL4".into(), "LB4".into())
+        );
+        assert_eq!(
+            compiler.get_lit_str_labels("A b c"),
+            ("LL2".into(), "LB2".into())
+        );
+        assert_eq!(
+            compiler.get_lit_str_labels("XYZ"),
+            ("LL3".into(), "LB3".into())
+        );
+
+        assert_eq!(
+            compiler.finish(),
+            vec![
+                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
+                casl2::Statement::code(casl2::Command::Ret),
+                casl2::Statement::labeled(
+                    "LL1",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Dec("-123".chars().count() as i16),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LB1",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Str("-123".into()),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LL2",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Dec("A b c".chars().count() as i16),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LB2",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Str("A b c".into()),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LL3",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Dec("XYZ".chars().count() as i16),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LB3",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Str("XYZ".into()),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LL4",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Dec("Test@1234".chars().count() as i16),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LB4",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Str("Test@1234".into()),]
+                    }
+                ),
+                casl2::Statement::code(casl2::Command::End),
+            ]
+        );
+    }
+
+    #[test]
     fn compiler_compile_dim_works() {
         let mut compiler = Compiler::new("TEST").unwrap();
 
@@ -372,18 +495,18 @@ mod test {
         assert_eq!(
             compiler.finish(),
             vec![
-                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None },),
+                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
                 casl2::Statement::code(casl2::Command::Ret),
-                casl2::Statement::labeled("B2", casl2::Command::Ds { size: 1 },),
-                casl2::Statement::labeled("B5", casl2::Command::Ds { size: 1 },),
-                casl2::Statement::labeled("I3", casl2::Command::Ds { size: 1 },),
-                casl2::Statement::labeled("I8", casl2::Command::Ds { size: 1 },),
-                casl2::Statement::labeled("SL1", casl2::Command::Ds { size: 1 },),
-                casl2::Statement::labeled("SB1", casl2::Command::Ds { size: 256 },),
-                casl2::Statement::labeled("SL6", casl2::Command::Ds { size: 1 },),
-                casl2::Statement::labeled("SB6", casl2::Command::Ds { size: 256 },),
-                casl2::Statement::labeled("BA4", casl2::Command::Ds { size: 32 },),
-                casl2::Statement::labeled("IA7", casl2::Command::Ds { size: 155 },),
+                casl2::Statement::labeled("B2", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled("B5", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled("I3", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled("I8", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled("SL1", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled("SB1", casl2::Command::Ds { size: 256 }),
+                casl2::Statement::labeled("SL6", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled("SB6", casl2::Command::Ds { size: 256 }),
+                casl2::Statement::labeled("BA4", casl2::Command::Ds { size: 32 }),
+                casl2::Statement::labeled("IA7", casl2::Command::Ds { size: 155 }),
                 casl2::Statement::code(casl2::Command::End),
             ]
         );
