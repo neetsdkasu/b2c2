@@ -34,7 +34,17 @@ impl Compiler {
         casl2::Label::new(program_name).is_valid()
 
         // 自動生成のラベルとの重複を避けるチェックが必要
-        // B123,I123,SL123,SB123, ..
+        // B123,I123,SL123,SB123,BA123,IA123 ..
+        && (program_name.len() < 2 || !{
+            let (head, tail) = program_name.split_at(1);
+            matches!(head, "B"|"I")
+            && tail.chars().all(|ch| ch.is_ascii_digit())
+        })
+        && (program_name.len() < 3 || !{
+            let (head, tail) = program_name.split_at(2);
+            matches!(head, "SL"|"SB"|"BA"|"IA")
+            && tail.chars().all(|ch| ch.is_ascii_digit())
+        })
     }
 
     fn new(program_name: &str) -> Result<Self, CompileError> {
@@ -321,6 +331,29 @@ mod test {
     #[test]
     fn it_works() {
         assert!(true);
+    }
+
+    #[test]
+    fn compiler_is_valid_program_name_works() {
+        assert!(Compiler::is_valid_program_name("TEST"));
+        assert!(Compiler::is_valid_program_name("X123"));
+        assert!(Compiler::is_valid_program_name("B"));
+        assert!(Compiler::is_valid_program_name("B123XY"));
+
+        assert!(!Compiler::is_valid_program_name("GR3")); // register name is BAD
+        assert!(!Compiler::is_valid_program_name("")); // empty is BAD
+        assert!(!Compiler::is_valid_program_name("FOOBARBAZ")); // too long (require len <= 8)
+        assert!(!Compiler::is_valid_program_name("Test")); // lowercase is BAD
+        assert!(!Compiler::is_valid_program_name("123TEST")); // digit start is BAD
+        assert!(!Compiler::is_valid_program_name("TEST$")); // all chars must be ascii digits or ascii uppercases
+
+        // compiler using names
+        assert!(!Compiler::is_valid_program_name("B123"));
+        assert!(!Compiler::is_valid_program_name("I123"));
+        assert!(!Compiler::is_valid_program_name("SL123"));
+        assert!(!Compiler::is_valid_program_name("SB123"));
+        assert!(!Compiler::is_valid_program_name("BA123"));
+        assert!(!Compiler::is_valid_program_name("IA123"));
     }
 
     #[test]

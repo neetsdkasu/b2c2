@@ -95,7 +95,13 @@ impl Label {
         if !chars.all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit()) {
             return false;
         }
-        label.chars().count() <= 8
+        if label.chars().count() > 8 {
+            return false;
+        }
+        !matches!(
+            label.as_str(),
+            "GR0" | "GR1" | "GR2" | "GR3" | "GR4" | "GR5" | "GR6" | "GR7"
+        )
     }
 }
 
