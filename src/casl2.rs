@@ -13,7 +13,7 @@ pub enum Statement {
 impl Statement {
     pub fn labeled(label: &str, command: Command) -> Self {
         Self::Code {
-            label: Some(Label::new(label)),
+            label: Some(label.into()),
             command,
             comment: None,
         }
@@ -29,7 +29,7 @@ impl Statement {
 
     pub fn labeled_with_comment(label: &str, command: Command, comment: &str) -> Self {
         Self::Code {
-            label: Some(Label::new(label)),
+            label: Some(label.into()),
             command,
             comment: Some(comment.into()),
         }
@@ -76,11 +76,25 @@ impl Statement {
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Label(String);
 
-impl Label {
-    pub fn new(label: &str) -> Self {
-        Label(label.into())
+impl From<String> for Label {
+    fn from(s: String) -> Self {
+        Label(s)
     }
+}
 
+impl From<&str> for Label {
+    fn from(s: &str) -> Self {
+        Label(s.into())
+    }
+}
+
+impl From<&String> for Label {
+    fn from(s: &String) -> Self {
+        Label(s.clone())
+    }
+}
+
+impl Label {
     pub fn as_str(&self) -> &str {
         let Label(label) = self;
         label
@@ -115,9 +129,21 @@ pub enum Adr {
     LiteralStr(String), // ='text'
 }
 
+impl From<Label> for Adr {
+    fn from(label: Label) -> Self {
+        Self::Label(label)
+    }
+}
+
+impl From<&Label> for Adr {
+    fn from(label: &Label) -> Self {
+        Self::Label(label.clone())
+    }
+}
+
 impl Adr {
     pub fn label(label: &str) -> Self {
-        Self::Label(Label::new(label))
+        Self::Label(label.into())
     }
 }
 
@@ -129,9 +155,45 @@ pub enum Constant {
     Label(Label), // 'text'
 }
 
+impl From<i16> for Constant {
+    fn from(v: i16) -> Self {
+        Self::Dec(v)
+    }
+}
+
+impl From<u16> for Constant {
+    fn from(v: u16) -> Self {
+        Self::Hex(v)
+    }
+}
+
+impl From<String> for Constant {
+    fn from(v: String) -> Self {
+        Self::Str(v)
+    }
+}
+
+impl From<&str> for Constant {
+    fn from(v: &str) -> Self {
+        Self::Str(v.into())
+    }
+}
+
+impl From<Label> for Constant {
+    fn from(v: Label) -> Self {
+        Self::Label(v)
+    }
+}
+
+impl From<&Label> for Constant {
+    fn from(v: &Label) -> Self {
+        Self::Label(v.clone())
+    }
+}
+
 impl Constant {
     pub fn label(label: &str) -> Self {
-        Self::Label(Label::new(label))
+        Self::Label(label.into())
     }
 }
 

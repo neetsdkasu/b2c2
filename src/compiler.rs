@@ -33,10 +33,10 @@ struct Compiler {
 
 impl Compiler {
     fn is_valid_program_name(program_name: &str) -> bool {
-        casl2::Label::new(program_name).is_valid()
+        casl2::Label::from(program_name).is_valid()
 
         // 自動生成のラベルとの重複を避けるチェックが必要
-        // B123,I123,SL123,SB123,BA123,IA123 ..
+        // B123,I123,SL123,SB123,BA123,IA123,LL123,LB123 ..
         && (program_name.len() < 2 || !{
             let (head, tail) = program_name.split_at(1);
             matches!(head, "B"|"I")
@@ -44,7 +44,7 @@ impl Compiler {
         })
         && (program_name.len() < 3 || !{
             let (head, tail) = program_name.split_at(2);
-            matches!(head, "SL"|"SB"|"BA"|"IA")
+            matches!(head, "SL"|"SB"|"BA"|"IA"|"LL"|"LB")
             && tail.chars().all(|ch| ch.is_ascii_digit())
         })
     }
@@ -246,11 +246,6 @@ impl Compiler {
                 condition: _,
                 block: _,
             } => todo!(),
-            ProvisionalDo {
-                exit_id: _,
-                until_condition: _,
-                while_condition: _,
-            } => todo!(),
             ExitDo { exit_id: _ } => todo!(),
             ExitFor { exit_id: _ } => todo!(),
             ExitSelect { exit_id: _ } => todo!(),
@@ -262,13 +257,6 @@ impl Compiler {
                 step: _,
                 block: _,
             } => todo!(),
-            ProvisionalFor {
-                exit_id: _,
-                counter: _,
-                init: _,
-                end: _,
-                step: _,
-            } => todo!(),
             InputElementInteger {
                 var_name: _,
                 index: _,
@@ -278,55 +266,53 @@ impl Compiler {
                 block: _,
                 else_blocks: _,
             } => todo!(),
-            ProvitionalIf { condition: _ } => todo!(),
             ElseIf {
                 condition: _,
                 block: _,
             } => todo!(),
-            ProvisionalElseIf { condition: _ } => todo!(),
             Else { block: _ } => todo!(),
-            ProvisionalElse => todo!(),
             SelectInteger {
                 exit_id: _,
                 value: _,
                 case_blocks: _,
             } => todo!(),
-            ProvisionalSelectInteger {
-                exit_id: _,
-                value: _,
-            } => todo!(),
             CaseInteger {
                 values: _,
                 block: _,
             } => todo!(),
-            ProvisionalCaseInteger { values: _ } => todo!(),
             SelectString {
                 exit_id: _,
                 value: _,
                 case_blocks: _,
             } => todo!(),
-            ProvisionalSelectString {
-                exit_id: _,
-                value: _,
-            } => todo!(),
             CaseString {
                 values: _,
                 block: _,
             } => todo!(),
-            ProvisionalCaseString { values: _ } => todo!(),
             CaseElse { block: _ } => todo!(),
-            ProvisionalCaseElse => todo!(),
             InputInteger { var_name: _ } => todo!(),
             InputString { var_name: _ } => todo!(),
-            PrintLitBoolean { value: _ } => todo!(),
-            PrintLitInteger { value: _ } => todo!(),
-            PrintLitString { value: _ } => todo!(),
+            PrintLitBoolean { value } => self.compile_print_lit_boolean(*value),
+            PrintLitInteger { value } => self.compile_print_lit_integer(*value),
+            PrintLitString { value } => self.compile_print_lit_string(value),
             PrintVarBoolean { var_name: _ } => todo!(),
             PrintVarInteger { var_name: _ } => todo!(),
-            PrintVarString { var_name: _ } => todo!(),
+            PrintVarString { var_name } => self.compile_print_var_string(var_name),
             PrintExprBoolan { value: _ } => todo!(),
             PrintExprInteger { value: _ } => todo!(),
             PrintExprString { value: _ } => todo!(),
+
+            // Provisionals unreachable
+            ProvisionalDo { .. }
+            | ProvisionalFor { .. }
+            | ProvitionalIf { .. }
+            | ProvisionalElseIf { .. }
+            | ProvisionalElse
+            | ProvisionalSelectInteger { .. }
+            | ProvisionalCaseInteger { .. }
+            | ProvisionalSelectString { .. }
+            | ProvisionalCaseString { .. }
+            | ProvisionalCaseElse => unreachable!("BUG"),
         }
     }
 
@@ -357,6 +343,43 @@ impl Compiler {
                 self.int_arr_labels.insert(var_name.into(), (label, *size));
             }
         }
+    }
+
+    fn compile_print_lit_boolean(&mut self, value: bool) {
+        let s = if value { "True" } else { "False" };
+        let (len_label, buf_label) = self.get_lit_str_labels(s);
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::Out {
+                pos: buf_label.into(),
+                len: len_label.into(),
+            }));
+    }
+
+    fn compile_print_lit_integer(&mut self, value: i32) {
+        let (len_label, buf_label) = self.get_lit_str_labels(&value.to_string());
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::Out {
+                pos: buf_label.into(),
+                len: len_label.into(),
+            }));
+    }
+
+    fn compile_print_lit_string(&mut self, value: &str) {
+        let (len_label, buf_label) = self.get_lit_str_labels(value);
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::Out {
+                pos: buf_label.into(),
+                len: len_label.into(),
+            }));
+    }
+
+    fn compile_print_var_string(&mut self, var_name: &str) {
+        let (len_label, buf_label) = self.str_var_labels.get(var_name).expect("BUG");
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::Out {
+                pos: buf_label.into(),
+                len: len_label.into(),
+            }));
     }
 }
 
@@ -507,6 +530,246 @@ mod test {
                 casl2::Statement::labeled("SB6", casl2::Command::Ds { size: 256 }),
                 casl2::Statement::labeled("BA4", casl2::Command::Ds { size: 32 }),
                 casl2::Statement::labeled("IA7", casl2::Command::Ds { size: 155 }),
+                casl2::Statement::code(casl2::Command::End),
+            ]
+        );
+    }
+
+    #[test]
+    fn compiler_compile_print_lit_boolean_works() {
+        let mut compiler = Compiler::new("TEST").unwrap();
+
+        compiler.compile_print_lit_boolean(true);
+        compiler.compile_print_lit_boolean(false);
+        compiler.compile_print_lit_boolean(false);
+        compiler.compile_print_lit_boolean(true);
+
+        assert_eq!(
+            compiler.finish(),
+            vec![
+                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
+                casl2::Statement::code(casl2::Command::Out {
+                    pos: "LB1".into(),
+                    len: "LL1".into()
+                }),
+                casl2::Statement::code(casl2::Command::Out {
+                    pos: "LB2".into(),
+                    len: "LL2".into()
+                }),
+                casl2::Statement::code(casl2::Command::Out {
+                    pos: "LB2".into(),
+                    len: "LL2".into()
+                }),
+                casl2::Statement::code(casl2::Command::Out {
+                    pos: "LB1".into(),
+                    len: "LL1".into()
+                }),
+                casl2::Statement::code(casl2::Command::Ret),
+                casl2::Statement::labeled(
+                    "LL1",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Dec("True".chars().count() as i16),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LB1",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Str("True".into()),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LL2",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Dec("False".chars().count() as i16),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LB2",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Str("False".into()),]
+                    }
+                ),
+                casl2::Statement::code(casl2::Command::End),
+            ]
+        );
+    }
+
+    #[test]
+    fn compiler_compile_print_lit_integer_works() {
+        let mut compiler = Compiler::new("TEST").unwrap();
+
+        compiler.compile_print_lit_integer(1234);
+        compiler.compile_print_lit_integer(999);
+        compiler.compile_print_lit_integer(-100);
+        compiler.compile_print_lit_integer(1234);
+
+        assert_eq!(
+            compiler.finish(),
+            vec![
+                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
+                casl2::Statement::code(casl2::Command::Out {
+                    pos: "LB1".into(),
+                    len: "LL1".into()
+                }),
+                casl2::Statement::code(casl2::Command::Out {
+                    pos: "LB2".into(),
+                    len: "LL2".into()
+                }),
+                casl2::Statement::code(casl2::Command::Out {
+                    pos: "LB3".into(),
+                    len: "LL3".into()
+                }),
+                casl2::Statement::code(casl2::Command::Out {
+                    pos: "LB1".into(),
+                    len: "LL1".into()
+                }),
+                casl2::Statement::code(casl2::Command::Ret),
+                casl2::Statement::labeled(
+                    "LL1",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Dec("1234".chars().count() as i16),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LB1",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Str("1234".into()),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LL2",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Dec("999".chars().count() as i16),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LB2",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Str("999".into()),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LL3",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Dec("-100".chars().count() as i16),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LB3",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Str("-100".into()),]
+                    }
+                ),
+                casl2::Statement::code(casl2::Command::End),
+            ]
+        );
+    }
+
+    #[test]
+    fn compiler_compile_print_lit_string_works() {
+        let mut compiler = Compiler::new("TEST").unwrap();
+
+        compiler.compile_print_lit_string("ABCD");
+        compiler.compile_print_lit_string("hey you!");
+        compiler.compile_print_lit_string("");
+        compiler.compile_print_lit_string("ABCD");
+
+        assert_eq!(
+            compiler.finish(),
+            vec![
+                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
+                casl2::Statement::code(casl2::Command::Out {
+                    pos: "LB1".into(),
+                    len: "LL1".into()
+                }),
+                casl2::Statement::code(casl2::Command::Out {
+                    pos: "LB2".into(),
+                    len: "LL2".into()
+                }),
+                casl2::Statement::code(casl2::Command::Out {
+                    pos: "LB3".into(),
+                    len: "LL3".into()
+                }),
+                casl2::Statement::code(casl2::Command::Out {
+                    pos: "LB1".into(),
+                    len: "LL1".into()
+                }),
+                casl2::Statement::code(casl2::Command::Ret),
+                casl2::Statement::labeled(
+                    "LL1",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Dec("ABCD".chars().count() as i16),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LB1",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Str("ABCD".into()),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LL2",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Dec("hey you!".chars().count() as i16),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LB2",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Str("hey you!".into()),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LL3",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Dec("".chars().count() as i16),]
+                    }
+                ),
+                casl2::Statement::labeled(
+                    "LB3",
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Str("".into()),]
+                    }
+                ),
+                casl2::Statement::code(casl2::Command::End),
+            ]
+        );
+    }
+
+    #[test]
+    fn compiler_compile_print_var_string_works() {
+        let mut compiler = Compiler::new("TEST").unwrap();
+
+        compiler.compile_dim("strVar1", &parser::VarType::String);
+        compiler.compile_dim("strVar2", &parser::VarType::String);
+        compiler.compile_dim("strVar3", &parser::VarType::String);
+        compiler.compile_print_var_string("strVar3");
+        compiler.compile_print_var_string("strVar2");
+        compiler.compile_print_var_string("strVar1");
+
+        assert_eq!(
+            compiler.finish(),
+            vec![
+                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
+                casl2::Statement::code(casl2::Command::Out {
+                    pos: "SB3".into(),
+                    len: "SL3".into()
+                }),
+                casl2::Statement::code(casl2::Command::Out {
+                    pos: "SB2".into(),
+                    len: "SL2".into()
+                }),
+                casl2::Statement::code(casl2::Command::Out {
+                    pos: "SB1".into(),
+                    len: "SL1".into()
+                }),
+                casl2::Statement::code(casl2::Command::Ret),
+                casl2::Statement::labeled("SL1", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled("SB1", casl2::Command::Ds { size: 256 }),
+                casl2::Statement::labeled("SL2", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled("SB2", casl2::Command::Ds { size: 256 }),
+                casl2::Statement::labeled("SL3", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled("SB3", casl2::Command::Ds { size: 256 }),
                 casl2::Statement::code(casl2::Command::End),
             ]
         );
