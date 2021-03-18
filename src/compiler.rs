@@ -1,17 +1,15 @@
 use crate::casl2;
 use crate::parser;
+use std::collections::{BTreeSet, HashMap};
 
 type CompileError = String;
 
+// 正しい src が来ることを前提とする (不正な src の判定は面倒くさい)
 pub fn compile(
     program_name: &str,
     src: Vec<parser::Statement>,
 ) -> Result<Vec<casl2::Statement>, CompileError> {
-    if !casl2::Label::new(program_name).is_valid() {
-        return Err(format!("invalid Program Name: {}", program_name));
-    }
-
-    let mut compiler = Compiler::new(program_name);
+    let mut compiler = Compiler::new(program_name)?;
 
     for stmt in src.iter() {
         compiler.compile(stmt);
@@ -21,29 +19,120 @@ pub fn compile(
 }
 
 struct Compiler {
-    int_var_id: usize,
-    str_var_id: usize,
+    var_id: usize,
     jump_id: usize,
+    bool_var_labels: HashMap<String, String>,
+    int_var_labels: HashMap<String, String>,
+    str_var_labels: HashMap<String, (String, String)>,
+    bool_arr_labels: HashMap<String, (String, usize)>,
+    int_arr_labels: HashMap<String, (String, usize)>,
     statements: Vec<casl2::Statement>,
 }
 
 impl Compiler {
-    fn new(program_name: &str) -> Self {
-        Self {
-            int_var_id: 0,
-            str_var_id: 0,
+    fn is_valid_program_name(program_name: &str) -> bool {
+        casl2::Label::new(program_name).is_valid()
+
+        // 自動生成のラベルとの重複を避けるチェックが必要
+        // B123,I123,SL123,SB123, ..
+    }
+
+    fn new(program_name: &str) -> Result<Self, CompileError> {
+        if !Self::is_valid_program_name(program_name) {
+            return Err(format!("invalid Program Name: {}", program_name));
+        }
+
+        Ok(Self {
+            var_id: 0,
             jump_id: 0,
+            bool_var_labels: HashMap::new(),
+            int_var_labels: HashMap::new(),
+            str_var_labels: HashMap::new(),
+            bool_arr_labels: HashMap::new(),
+            int_arr_labels: HashMap::new(),
             statements: vec![casl2::Statement::labeled(
                 program_name,
                 casl2::Command::Start { entry_point: None },
             )],
-        }
+        })
     }
 
-    fn finish(mut self) -> Vec<casl2::Statement> {
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::End));
-        self.statements
+    fn finish(self) -> Vec<casl2::Statement> {
+        let Self {
+            bool_var_labels,
+            int_var_labels,
+            str_var_labels,
+            bool_arr_labels,
+            int_arr_labels,
+            mut statements,
+            ..
+        } = self;
+
+        statements.push(casl2::Statement::code(casl2::Command::Ret));
+
+        // here: insert operator & function codes
+
+        for label in bool_var_labels
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect::<BTreeSet<_>>()
+        {
+            statements.push(casl2::Statement::labeled(
+                &label,
+                casl2::Command::Ds { size: 1 },
+            ));
+        }
+
+        for label in int_var_labels
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect::<BTreeSet<_>>()
+        {
+            statements.push(casl2::Statement::labeled(
+                &label,
+                casl2::Command::Ds { size: 1 },
+            ));
+        }
+
+        for (len_label, data_label) in str_var_labels
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect::<BTreeSet<_>>()
+        {
+            statements.push(casl2::Statement::labeled(
+                &len_label,
+                casl2::Command::Ds { size: 1 },
+            ));
+            statements.push(casl2::Statement::labeled(
+                &data_label,
+                casl2::Command::Ds { size: 256 },
+            ));
+        }
+
+        for (label, size) in bool_arr_labels
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect::<BTreeSet<_>>()
+        {
+            statements.push(casl2::Statement::labeled(
+                &label,
+                casl2::Command::Ds { size: size as u16 },
+            ));
+        }
+
+        for (label, size) in int_arr_labels
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect::<BTreeSet<_>>()
+        {
+            statements.push(casl2::Statement::labeled(
+                &label,
+                casl2::Command::Ds { size: size as u16 },
+            ));
+        }
+
+        statements.push(casl2::Statement::code(casl2::Command::End));
+        statements
     }
 
     fn compile(&mut self, stmt: &parser::Statement) {
@@ -86,10 +175,7 @@ impl Compiler {
             } => todo!(),
             ContinueDo { exit_id: _ } => todo!(),
             ContinueFor { exit_id: _ } => todo!(),
-            Dim {
-                var_name: _,
-                var_type: _,
-            } => todo!(),
+            Dim { var_name, var_type } => self.compile_dim(var_name, var_type),
             DoLoop {
                 exit_id: _,
                 block: _,
@@ -197,13 +283,76 @@ impl Compiler {
             PrintExprString { value: _ } => todo!(),
         }
     }
+
+    fn compile_dim(&mut self, var_name: &str, var_type: &parser::VarType) {
+        use parser::VarType;
+        self.var_id += 1;
+        match var_type {
+            VarType::Boolean => {
+                let label = format!("B{}", self.var_id);
+                self.bool_var_labels.insert(var_name.into(), label);
+            }
+            VarType::Integer => {
+                let label = format!("I{}", self.var_id);
+                self.int_var_labels.insert(var_name.into(), label);
+            }
+            VarType::String => {
+                let len_label = format!("SL{}", self.var_id);
+                let buf_label = format!("SB{}", self.var_id);
+                let labels = (len_label, buf_label);
+                self.str_var_labels.insert(var_name.into(), labels);
+            }
+            VarType::ArrayOfBoolean(size) => {
+                let label = format!("BA{}", self.var_id);
+                self.bool_arr_labels.insert(var_name.into(), (label, *size));
+            }
+            VarType::ArrayOfInteger(size) => {
+                let label = format!("IA{}", self.var_id);
+                self.int_arr_labels.insert(var_name.into(), (label, *size));
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod test {
+    use super::*;
 
     #[test]
     fn it_works() {
         assert!(true);
+    }
+
+    #[test]
+    fn compiler_compile_dim_works() {
+        let mut compiler = Compiler::new("TEST").unwrap();
+
+        compiler.compile_dim("strVar1", &parser::VarType::String);
+        compiler.compile_dim("boolVar1", &parser::VarType::Boolean);
+        compiler.compile_dim("intVar2", &parser::VarType::Integer);
+        compiler.compile_dim("boolArr1", &parser::VarType::ArrayOfBoolean(32));
+        compiler.compile_dim("boolVar2", &parser::VarType::Boolean);
+        compiler.compile_dim("strVar2", &parser::VarType::String);
+        compiler.compile_dim("intArr1", &parser::VarType::ArrayOfInteger(155));
+        compiler.compile_dim("intVar1", &parser::VarType::Integer);
+
+        assert_eq!(
+            compiler.finish(),
+            vec![
+                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None },),
+                casl2::Statement::code(casl2::Command::Ret),
+                casl2::Statement::labeled("B2", casl2::Command::Ds { size: 1 },),
+                casl2::Statement::labeled("B5", casl2::Command::Ds { size: 1 },),
+                casl2::Statement::labeled("I3", casl2::Command::Ds { size: 1 },),
+                casl2::Statement::labeled("I8", casl2::Command::Ds { size: 1 },),
+                casl2::Statement::labeled("SL1", casl2::Command::Ds { size: 1 },),
+                casl2::Statement::labeled("SB1", casl2::Command::Ds { size: 256 },),
+                casl2::Statement::labeled("SL6", casl2::Command::Ds { size: 1 },),
+                casl2::Statement::labeled("SB6", casl2::Command::Ds { size: 256 },),
+                casl2::Statement::labeled("BA4", casl2::Command::Ds { size: 32 },),
+                casl2::Statement::labeled("IA7", casl2::Command::Ds { size: 155 },),
+                casl2::Statement::code(casl2::Command::End),
+            ]
+        );
     }
 }
