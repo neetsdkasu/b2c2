@@ -325,7 +325,7 @@ impl Parser {
             _ if self.is_select_head => Err(self.syntax_error("invalid Code statement".into())),
             Keyword::Continue => self.parse_command_continue(pos_and_tokens),
             Keyword::Dim if self.is_dim_header => self.parse_command_dim(pos_and_tokens),
-            Keyword::Dim => Err(self.syntax_error("invalid Code statement".into())),
+            Keyword::Dim => Err(self.syntax_error("invalid Dim statement".into())),
             Keyword::Do => self.parse_command_do(pos_and_tokens),
             Keyword::Else => self.parse_command_else(pos_and_tokens),
             Keyword::ElseIf => self.parse_command_elseif(pos_and_tokens),
