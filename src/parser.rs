@@ -61,6 +61,7 @@ struct Parser {
     provisionals: Vec<Statement>,
     exit_id: usize,
     is_select_head: bool,
+    is_dim_header: bool,
 }
 
 impl Parser {
@@ -76,6 +77,7 @@ impl Parser {
             provisionals: vec![],
             exit_id: 0,
             is_select_head: false,
+            is_dim_header: true,
         }
     }
 
@@ -114,6 +116,9 @@ impl Parser {
     ) -> Result<(), SyntaxError> {
         if self.is_select_head {
             return Err(self.syntax_error("invalid Code statement".into()));
+        }
+        if self.is_dim_header {
+            self.is_dim_header = false;
         }
 
         let var_type = self
@@ -312,11 +317,15 @@ impl Parser {
         command: &Keyword,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
+        if self.is_dim_header && !matches!(command, Keyword::Dim) {
+            self.is_dim_header = false;
+        }
         match command {
             Keyword::Case => self.parse_command_case(pos_and_tokens),
             _ if self.is_select_head => Err(self.syntax_error("invalid Code statement".into())),
             Keyword::Continue => self.parse_command_continue(pos_and_tokens),
-            Keyword::Dim => self.parse_command_dim(pos_and_tokens),
+            Keyword::Dim if self.is_dim_header => self.parse_command_dim(pos_and_tokens),
+            Keyword::Dim => Err(self.syntax_error("invalid Code statement".into())),
             Keyword::Do => self.parse_command_do(pos_and_tokens),
             Keyword::Else => self.parse_command_else(pos_and_tokens),
             Keyword::ElseIf => self.parse_command_elseif(pos_and_tokens),
