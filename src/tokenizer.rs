@@ -68,6 +68,7 @@ fn take_token(line: &str) -> Option<(Token, &str)> {
         take_word_token,
         take_hex_integer_token,
         take_integer_token,
+        take_char_token,
         take_string_token,
         take_operator_token,
     ]
@@ -106,6 +107,50 @@ fn take_integer_token(s: &str) -> Option<(Token, &str)> {
         .map(|n| (Token::Integer(n), rest))
 }
 
+fn take_char_token(s: &str) -> Option<(Token, &str)> {
+    let mut char_indices = s.char_indices();
+    char_indices.next().filter(|(_, ch)| *ch == '"')?;
+    let mut quotation = false;
+    let mut split_position = s.len();
+    let mut text: Option<char> = None;
+    for (p, ch) in char_indices {
+        if !jis_x_201::contains(ch) {
+            return None;
+        }
+        if quotation {
+            if ch == '"' {
+                if text.is_some() {
+                    return None;
+                }
+                quotation = false;
+                text = Some('"');
+            } else if text.is_some() {
+                split_position = p;
+                break;
+            } else {
+                return None;
+            }
+        } else if ch == '"' {
+            quotation = true;
+        } else if text.is_none() {
+            text = Some(ch);
+        } else {
+            return None;
+        }
+    }
+    if !quotation {
+        return None;
+    }
+    let ch = text.take()?;
+    let (_, rest) = s.split_at(split_position);
+    let (suffix, rest) = take_word(rest)?;
+    if !"c".eq_ignore_ascii_case(suffix) {
+        return None;
+    }
+    let code = jis_x_201::convert_from_char(ch);
+    Some((Token::Integer(code as i32), rest))
+}
+
 fn take_string_token(s: &str) -> Option<(Token, &str)> {
     let mut char_indices = s.char_indices();
     char_indices.next().filter(|(_, ch)| *ch == '"')?;
@@ -130,7 +175,7 @@ fn take_string_token(s: &str) -> Option<(Token, &str)> {
             text.push(ch);
         }
     }
-    if !quotation || text.len() > 256 {
+    if !quotation || text.chars().count() > 256 {
         return None;
     }
     let (_, rest) = s.split_at(split_position);
@@ -478,6 +523,24 @@ mod test {
     }
 
     #[test]
+    fn take_char_token_works() {
+        let src = [
+            (r#""A"c"#, Some((Token::Integer(b'A' as i32), ""))),
+            (r#""A"C"#, Some((Token::Integer(b'A' as i32), ""))),
+            (r#""A"c+"#, Some((Token::Integer(b'A' as i32), "+"))),
+            (r#"""""c"#, Some((Token::Integer(b'"' as i32), ""))),
+            (r#"""c"#, None),
+            (r#""AB"c"#, None),
+            (r#""A""#, None),
+            (r#""A"Cc"#, None),
+            (r#""A"c1"#, None),
+        ];
+        for (s, res) in &src {
+            assert_eq!(take_char_token(s), *res);
+        }
+    }
+
+    #[test]
     fn take_string_token_works() {
         let src = [
             (r#""ABCD""#, Some((Token::String("ABCD".into()), ""))),
@@ -620,6 +683,10 @@ mod test {
             ("12 345", Some((Token::Integer(12), " 345"))),
             ("32767", Some((Token::Integer(32767), ""))),
             ("32768", Some((Token::Integer(32768), ""))),
+            (r#""A"c+"#, Some((Token::Integer(b'A' as i32), "+"))),
+            (r#"""""c"#, Some((Token::Integer(b'"' as i32), ""))),
+            (r#"""c"#, Some((Token::String("".into()), "c"))),
+            (r#""AB"c"#, Some((Token::String("AB".into()), "c"))),
             ("32769", None),
             (r#"""#, None),
             (" Abc", None),
