@@ -199,25 +199,25 @@ impl Constant {
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Register {
-    GR0,
-    GR1,
-    GR2,
-    GR3,
-    GR4,
-    GR5,
-    GR6,
-    GR7,
+    GR0 = 0,
+    GR1 = 1,
+    GR2 = 2,
+    GR3 = 3,
+    GR4 = 4,
+    GR5 = 5,
+    GR6 = 6,
+    GR7 = 7,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum IndexRegister {
-    GR1,
-    GR2,
-    GR3,
-    GR4,
-    GR5,
-    GR6,
-    GR7,
+    GR1 = 1,
+    GR2 = 2,
+    GR3 = 3,
+    GR4 = 4,
+    GR5 = 5,
+    GR6 = 6,
+    GR7 = 7,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -508,7 +508,7 @@ impl fmt::Display for Register {
 
 impl fmt::Display for IndexRegister {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "GR{}", *self as isize + 1)
+        write!(f, "GR{}", *self as isize)
     }
 }
 
