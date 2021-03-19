@@ -669,6 +669,16 @@ impl fmt::Display for Statement {
     }
 }
 
+pub use self::parser::parse;
+
+mod parser {
+    use super::*;
+
+    pub fn parse(_src: &str) -> Vec<Statement> {
+        todo!()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -680,19 +690,16 @@ MUL       START
 ; SUPPORT (0 <= GR1 < 256) && (0<= GR2 < 256)
           PUSH      0,GR1
           PUSH      0,GR2
-          PUSH      0,GR3
           XOR       GR0,GR0        ; GR0 = 0
-LOOP      LAD       GR3,0,GR1      ; GR3 = GR1
-          AND       GR3,=1         ; GR3 &= 1
-          JZE       SHIFT          ; if GR3 == 0 then goto SHIFT
-          ADDL      GR0,GR2        ; GR0 += GR2
-SHIFT     SLL       GR2,=1         ; GR2 <<= 1
-          SRL       GR1,=1         ; GR1 >>= 1
-          JNZ       LOOP           ; if GR1 != 0 then goto LOOP
-          POP       GR3
+LOOP      SRL       GR1,1          ; GR1 >>= 1
+          JOV       ADD
+          JZE       NEXT
           POP       GR2
           POP       GR1
           RET
+ADD       ADDL      GR0,GR2        ; GR0 += GR2
+NEXT      SLL       GR2,1          ; GR2 <<= 1
+          JUMP      LOOP
           END
 ";
 
@@ -733,12 +740,6 @@ SHIFT     SLL       GR2,=1         ; GR2 <<= 1
                 adr: Adr::Dec(0),
                 x: Some(Idx::GR2),
             }),
-            // PUSH      0,GR3
-            Stmt::code(Cmd::P {
-                code: P::Push,
-                adr: Adr::Dec(0),
-                x: Some(Idx::GR3),
-            }),
             // XOR       GR0,GR0        ; GR0 = 0
             Stmt::code_with_comment(
                 Cmd::R {
@@ -746,85 +747,70 @@ SHIFT     SLL       GR2,=1         ; GR2 <<= 1
                     r1: Reg::GR0,
                     r2: Reg::GR0,
                 },
-                "GR0 = 0",
+                "GR0 = 0"
             ),
-            // LOOP      LAD       GR3,0,GR1      ; GR3 = GR1
+            // LOOP      SRL       GR1,1          ; GR1 >>= 1
             Stmt::labeled_with_comment(
                 "LOOP",
                 Cmd::A {
-                    code: A::Lad,
-                    r: Reg::GR3,
-                    adr: Adr::Dec(0),
-                    x: Some(Idx::GR1),
-                },
-                "GR3 = GR1",
-            ),
-            // AND       GR3,=1         ; GR3 &= 1
-            Stmt::code_with_comment(
-                Cmd::A {
-                    code: A::And,
-                    r: Reg::GR3,
-                    adr: Adr::LiteralDec(1),
-                    x: None,
-                },
-                "GR3 &= 1",
-            ),
-            // JZE       SHIFT          ; if GR3 == 0 then goto SHIFT
-            Stmt::code_with_comment(
-                Cmd::P {
-                    code: P::Jze,
-                    adr: Adr::label("SHIFT"),
-                    x: None,
-                },
-                "if GR3 == 0 then goto SHIFT",
-            ),
-            // ADDL      GR0,GR2        ; GR0 += GR2
-            Stmt::code_with_comment(
-                Cmd::R {
-                    code: R::Addl,
-                    r1: Reg::GR0,
-                    r2: Reg::GR2,
-                },
-                "GR0 += GR2",
-            ),
-            // SHIFT     SLL       GR2,=1         ; GR2 <<= 1
-            Stmt::labeled_with_comment(
-                "SHIFT",
-                Cmd::A {
-                    code: A::Sll,
-                    r: Reg::GR2,
-                    adr: Adr::LiteralDec(1),
-                    x: None,
-                },
-                "GR2 <<= 1",
-            ),
-            // SRL       GR1,=1         ; GR1 >>= 1
-            Stmt::code_with_comment(
-                Cmd::A {
                     code: A::Srl,
                     r: Reg::GR1,
-                    adr: Adr::LiteralDec(1),
+                    adr: Adr::Dec(1),
                     x: None,
                 },
-                "GR1 >>= 1",
+                "GR1 >>= 1"
             ),
-            // JNZ       LOOP           ; if GR1 != 0 then goto LOOP
-            Stmt::code_with_comment(
+            // JOV       ADD
+            Stmt::code(
                 Cmd::P {
-                    code: P::Jnz,
-                    adr: Adr::label("LOOP"),
+                    code: P::Jov,
+                    adr: Adr::label("ADD"),
                     x: None,
-                },
-                "if GR1 != 0 then goto LOOP",
+                }
             ),
-            // POP       GR3
-            Stmt::code(Cmd::Pop { r: Reg::GR3 }),
+            // JZE       NEXT
+            Stmt::code(
+                Cmd::P {
+                    code: P::Jze,
+                    adr: Adr::label("NEXT"),
+                    x: None,
+                }
+            ),
             // POP       GR2
             Stmt::code(Cmd::Pop { r: Reg::GR2 }),
             // POP       GR1
             Stmt::code(Cmd::Pop { r: Reg::GR1 }),
             // RET
             Stmt::code(Cmd::Ret),
+            // ADD       ADDL      GR0,GR2        ; GR0 += GR2
+            Stmt::labeled_with_comment(
+                "ADD",
+                Cmd::R {
+                    code: R::Addl,
+                    r1: Reg::GR0,
+                    r2: Reg::GR2,
+                },
+                "GR0 += GR2"
+            ),
+            // NEXT      SLL       GR2,1          ; GR2 <<= 1
+            Stmt::labeled_with_comment(
+                "NEXT",
+                Cmd::A {
+                    code: A::Sll,
+                    r: Reg::GR2,
+                    adr: Adr::Dec(1),
+                    x: None,
+                },
+                "GR2 <<= 1"
+            ),
+            // JUMP      LOOP
+            Stmt::code(
+                Cmd::P {
+                    code: P::Jump,
+                    adr: Adr::label("LOOP"),
+                    x: None,
+                }
+            ),
             // END
             Stmt::code(Cmd::End),
         ]
@@ -855,12 +841,6 @@ SHIFT     SLL       GR2,=1         ; GR2 <<= 1
                 adr: Adr::Dec(0),
                 x: Some(Idx::GR2),
             })
-            // PUSH 0,GR3
-            .code(Cmd::P {
-                code: P::Push,
-                adr: Adr::Dec(0),
-                x: Some(Idx::GR3),
-            })
             // XOR  GR0,GR0    ; GR0 = 0
             .code_with_comment(
                 Cmd::R {
@@ -870,37 +850,37 @@ SHIFT     SLL       GR2,=1         ; GR2 <<= 1
                 },
                 "GR0 = 0",
             )
-            // LOOP   LAD  GR3,0,GR1  ; GR3 = GR1
+            // LOOP      SRL       GR1,1          ; GR1 >>= 1
             .label("LOOP")
             .code_with_comment(
                 Cmd::A {
-                    code: A::Lad,
-                    r: Reg::GR3,
-                    adr: Adr::Dec(0),
-                    x: Some(Idx::GR1),
-                },
-                "GR3 = GR1",
-            )
-            // AND  GR3,=1     ; GR3 &= 1
-            .code_with_comment(
-                Cmd::A {
-                    code: A::And,
-                    r: Reg::GR3,
-                    adr: Adr::LiteralDec(1),
+                    code: A::Srl,
+                    r: Reg::GR1,
+                    adr: Adr::Dec(1),
                     x: None,
                 },
-                "GR3 &= 1",
+                "GR1 >>= 1",
             )
-            // JZE  SHIFT      ; if GR3 == 0 then goto SHIFT
-            .code_with_comment(
-                Cmd::P {
-                    code: P::Jze,
-                    adr: Adr::label("SHIFT"),
-                    x: None,
-                },
-                "if GR3 == 0 then goto SHIFT",
-            )
-            // ADDL GR0,GR2    ; GR0 += GR2
+            // JOV       ADD
+            .code(Cmd::P {
+                code: P::Jov,
+                adr: Adr::label("ADD"),
+                x: None,
+            })
+            // JZE       NEXT
+            .code(Cmd::P {
+                code: P::Jze,
+                adr: Adr::label("NEXT"),
+                x: None,
+            })
+            // POP       GR2
+            .code(Cmd::Pop { r: Reg::GR2 })
+            // POP       GR1
+            .code(Cmd::Pop { r: Reg::GR1 })
+            // RET
+            .code(Cmd::Ret)
+            // ADD       ADDL      GR0,GR2        ; GR0 += GR2
+            .label("ADD")
             .code_with_comment(
                 Cmd::R {
                     code: R::Addl,
@@ -909,44 +889,23 @@ SHIFT     SLL       GR2,=1         ; GR2 <<= 1
                 },
                 "GR0 += GR2",
             )
-            // SHIFT  SLL  GR2,=1     ; GR2 <<= 1
-            .label("SHIFT")
+            // NEXT      SLL       GR2,1          ; GR2 <<= 1
+            .label("NEXT")
             .code_with_comment(
                 Cmd::A {
                     code: A::Sll,
                     r: Reg::GR2,
-                    adr: Adr::LiteralDec(1),
+                    adr: Adr::Dec(1),
                     x: None,
                 },
                 "GR2 <<= 1",
             )
-            // SRL  GR1,=1     ; GR1 >>= 1
-            .code_with_comment(
-                Cmd::A {
-                    code: A::Srl,
-                    r: Reg::GR1,
-                    adr: Adr::LiteralDec(1),
-                    x: None,
-                },
-                "GR1 >>= 1",
-            )
-            // JNZ  LOOP       ; if GR1 != 0 then goto LOOP
-            .code_with_comment(
-                Cmd::P {
-                    code: P::Jnz,
-                    adr: Adr::label("LOOP"),
-                    x: None,
-                },
-                "if GR1 != 0 then goto LOOP",
-            )
-            // POP  GR3
-            .code(Cmd::Pop { r: Reg::GR3 })
-            // POP  GR2
-            .code(Cmd::Pop { r: Reg::GR2 })
-            // POP  GR1
-            .code(Cmd::Pop { r: Reg::GR1 })
-            // RET
-            .code(Cmd::Ret)
+            // JUMP      LOOP
+            .code(Cmd::P {
+                code: P::Jump,
+                adr: Adr::label("LOOP"),
+                x: None,
+            })
             // END
             .end()
     }

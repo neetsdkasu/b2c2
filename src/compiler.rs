@@ -645,10 +645,65 @@ mod subroutine {
         }
     }
 
-    fn get_func_cint<T: Gen>(_gen: &mut T) -> Src {
+    fn get_func_cint<T: Gen>(gen: &mut T) -> Src {
+        let ret_label = gen.jump_label();
+        let read_label = gen.jump_label();
+        let mi_label = gen.jump_label();
+        // GR1 .. adr of s_buf
+        // GR2 .. s_len
+        // GR0 .. ret
         Src {
             dependencies: Vec::new(),
-            statements: vec![],
+            statements: casl2::parse(&format!(
+                "\
+{prog} PUSH 0,GR1    ; {comment}
+       PUSH 0,GR2
+       PUSH 0,GR3
+       PUSH 0,GR4
+       PUSH 0,GR5
+       ADDL GR2,GR1
+       XOR GR0,GR0
+       XOR GR4,GR4
+       CPL GR1,GR2
+       JZE {ret}
+       LD GR3,0,GR1
+       CPL GR3,='+'
+       JNZ {mi}
+       LAD GR1,1,GR1
+       JUMP {read}
+{mi}   CPL GR3,='-'
+       JNZ {read}
+       LAD GR4,-1
+       LAD GR1,1,GR1
+{read} CPL GR1,GR2
+       JZE {ret}
+       LD GR3,0,GR1
+       SUBL GR3,='0'
+       JMI {ret}
+       CPL GR3,=9
+       JPL {ret}
+       LD GR5,GR0
+       SLL GR0,3
+       ADDL GR0,GR5
+       ADDL GR0,GR5
+       ADDL GR0,GR3
+       LAD GR1,1,GR1
+       JUMP {read}
+{ret}  XOR GR0,GR4
+       SUBL GR0,GR4
+       POP GR5
+       POP GR4
+       POP GR3
+       POP GR2
+       POP GR1
+       RET
+",
+                prog = ID::FuncCInt.label(),
+                comment = format!("{:?}", ID::FuncCInt),
+                ret = ret_label,
+                read = read_label,
+                mi = mi_label
+            )),
         }
     }
 }
