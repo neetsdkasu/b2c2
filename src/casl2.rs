@@ -330,6 +330,10 @@ impl Program {
                 .collect(),
         }
     }
+
+    pub fn take_code(self) -> Vec<Statement> {
+        self.statements
+    }
 }
 
 #[derive(Clone, Debug)]
