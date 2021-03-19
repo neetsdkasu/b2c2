@@ -19,42 +19,99 @@ pub fn compile(
 }
 
 struct Compiler {
+    // ソース定義の変数のID (真理値/整数/文字列の全体で一意)
     var_id: usize,
+
+    // IN/OUTで使用する文字列定数のID
     lit_id: usize,
+
+    // 組み込みサブルーチンのローカル変数のID (真理値は整数として扱う)
     local_int_var_id: usize,
+
+    // 組み込みサブルーチンのローカル変数のID (文字列のみ)
     local_str_var_id: usize,
+
+    // 式展開時などの一時変数のID (真理値/整数/文字列の全体で一意)
     temp_var_id: usize,
+
+    // ループや条件分岐に使うジャンプ先ラベルのID (全体で一意)
     jump_id: usize,
+
+    // 組み込みサブルーチンの入り口のラベルID
+    call_id: usize,
+
+    // 真理値変数のラベル対応を保持 (変数名, ラベル)
     bool_var_labels: HashMap<String, String>,
+
+    // 整数変数のラベル対応を保持 (変数名, ラベル)
     int_var_labels: HashMap<String, String>,
+
+    // 文字列変数のラベル対応を保持 (変数名, (長さラベル, 内容位置ラベル))
     str_var_labels: HashMap<String, (String, String)>,
+
+    // 真理値配列のラベル対応を保持 (配列名, (ラベル, 配列サイズ))
     bool_arr_labels: HashMap<String, (String, usize)>,
+
+    // 整数配列のラベル対応を保持 (配列名, (ラベル, 配列サイズ))
     int_arr_labels: HashMap<String, (String, usize)>,
+
+    // IN/OUTで使用する文字列定数のラベル対応を保持 (文字列定数, (長さラベル, 内容位置ラベル)))
     lit_str_labels: HashMap<String, (String, String)>,
+
+    // 式展開時の一時変数(整数/真理値)のラベルを保持 (スタック的利用) (ラベル)
     temp_int_var_labels: Vec<String>,
+
+    // 式展開時の一時変数(文字列)のラベルを保持 (スタック的利用) (長さラベル, 内容位置ラベル)
     temp_str_var_labels: Vec<(String, String)>,
+
+    // 組み込みサブルーチンの入り口のラベル対応を保持 (サブルーチンの固有名, 入り口ラベル)
+    subroutine_labels: HashMap<String, String>,
+
+    // 組み込みサブルーチンのコードを保持
+    subroutine_codes: Vec<Vec<casl2::Statement>>,
+
+    // ループや条件分岐の脱出先のラベルを保持 (まだ暫定的)
     next_statement_label: Option<casl2::Label>,
+
+    // 生成するCASL2コード本体
     statements: Vec<casl2::Statement>,
 }
 
 impl Compiler {
+    // プログラム名のラベルとしての正当性チェック
     fn is_valid_program_name(program_name: &str) -> bool {
         casl2::Label::from(program_name).is_valid()
 
         // 自動生成のラベルとの重複を避けるチェックが必要
-        // B123,I123,SL123,SB123,BA123,IA123,LL123,LB123 ..
+        // B** 真理値変数
+        // I** 整数変数
+        // T** 式展開時の一時変数(真理値/整数で共有)
+        // V** 組み込みサブルーチンのローカル変数(真理値/整数で共有)
+        // J** ループや条件分岐に使うジャンプ先ラベルのID
+        // C** 組み込みサブルーチンの入り口のラベル
         && (program_name.len() < 2 || !{
             let (head, tail) = program_name.split_at(1);
-            matches!(head, "B"|"I")
+            matches!(head, "B"|"I"|"T"|"V"|"J"|"C")
             && tail.chars().all(|ch| ch.is_ascii_digit())
         })
+        // SL** 文字列変数の長さ
+        // SB** 文字列変数の内容位置
+        // BA** 真理値配列
+        // IA** 整数配列
+        // LL** IN/OUTで使用の文字列定数の長さ
+        // LB** IN/OUTで使用の文字列定数の内容位置
+        // TL** 式展開時の一時的な文字列変数の長さ
+        // TB** 式展開時の一時的な文字列変数の内容位置
+        // VL** 組み込みサブルーチンのローカル変数の文字列変数の長さ
+        // VB** 組み込みサブルーチンのローカル変数の文字列変数の内容位置
         && (program_name.len() < 3 || !{
             let (head, tail) = program_name.split_at(2);
-            matches!(head, "SL"|"SB"|"BA"|"IA"|"LL"|"LB")
+            matches!(head, "SL"|"SB"|"BA"|"IA"|"LL"|"LB"|"TL"|"TB"|"VL"|"VB")
             && tail.chars().all(|ch| ch.is_ascii_digit())
         })
     }
 
+    // コンパイラの初期化
     fn new(program_name: &str) -> Result<Self, CompileError> {
         if !Self::is_valid_program_name(program_name) {
             return Err(format!("invalid Program Name: {}", program_name));
@@ -67,6 +124,7 @@ impl Compiler {
             local_str_var_id: 0,
             temp_var_id: 0,
             jump_id: 0,
+            call_id: 0,
             bool_var_labels: HashMap::new(),
             int_var_labels: HashMap::new(),
             str_var_labels: HashMap::new(),
@@ -75,6 +133,8 @@ impl Compiler {
             lit_str_labels: HashMap::new(),
             temp_int_var_labels: Vec::new(),
             temp_str_var_labels: Vec::new(),
+            subroutine_labels: HashMap::new(),
+            subroutine_codes: Vec::new(),
             next_statement_label: None,
             statements: vec![casl2::Statement::labeled(
                 program_name,
@@ -83,6 +143,7 @@ impl Compiler {
         })
     }
 
+    // IN/OUTで使用する文字列定数のラベル生成
     fn get_lit_str_labels(&mut self, literal: &str) -> (String, String) {
         if let Some(labels) = self.lit_str_labels.get(literal) {
             return labels.clone();
@@ -95,27 +156,56 @@ impl Compiler {
         labels
     }
 
+    // コンパイル最終工程
     fn finish(self) -> Vec<casl2::Statement> {
         let Self {
+            local_int_var_id,
+            local_str_var_id,
             bool_var_labels,
             int_var_labels,
             str_var_labels,
             bool_arr_labels,
             int_arr_labels,
             lit_str_labels,
+            temp_int_var_labels,
+            temp_str_var_labels,
             next_statement_label,
+            subroutine_codes,
             mut statements,
             ..
         } = self;
 
+        // RET ステートメント
         statements.push(casl2::Statement::Code {
             label: next_statement_label,
             command: casl2::Command::Ret,
             comment: None,
         });
 
-        // here: insert operator & function codes
+        // 組み込みサブルーチンのコード
+        for mut code in subroutine_codes.into_iter() {
+            statements.append(&mut code);
+        }
+        // 組み込みサブルーチン内で使う整数変数
+        for id in 1..=local_int_var_id {
+            statements.push(casl2::Statement::labeled(
+                &format!("T{}", id),
+                casl2::Command::Ds { size: 1 },
+            ));
+        }
+        // 組み込みサブルーチン内で使う文字列変数
+        for id in 1..=local_str_var_id {
+            statements.push(casl2::Statement::labeled(
+                &format!("TL{}", id),
+                casl2::Command::Ds { size: 1 },
+            ));
+            statements.push(casl2::Statement::labeled(
+                &format!("TB{}", id),
+                casl2::Command::Ds { size: 256 },
+            ));
+        }
 
+        // 真理値変数
         for label in bool_var_labels
             .into_iter()
             .map(|(_, v)| v)
@@ -127,6 +217,7 @@ impl Compiler {
             ));
         }
 
+        // 整数変数
         for label in int_var_labels
             .into_iter()
             .map(|(_, v)| v)
@@ -138,6 +229,7 @@ impl Compiler {
             ));
         }
 
+        // 文字列変数
         for (len_label, buf_label) in str_var_labels
             .into_iter()
             .map(|(_, v)| v)
@@ -153,6 +245,7 @@ impl Compiler {
             ));
         }
 
+        // 真理値配列(固定長)
         for (label, size) in bool_arr_labels
             .into_iter()
             .map(|(_, v)| v)
@@ -164,6 +257,7 @@ impl Compiler {
             ));
         }
 
+        // 整数配列(固定長)
         for (label, size) in int_arr_labels
             .into_iter()
             .map(|(_, v)| v)
@@ -175,6 +269,27 @@ impl Compiler {
             ));
         }
 
+        // 式展開等で使う一時変数(整数/真理値で共有)
+        for label in temp_int_var_labels.into_iter().collect::<BTreeSet<_>>() {
+            statements.push(casl2::Statement::labeled(
+                &label,
+                casl2::Command::Ds { size: 1 },
+            ));
+        }
+
+        // 式展開等で使う一時変数(文字列)
+        for (len_label, buf_label) in temp_str_var_labels.into_iter().collect::<BTreeSet<_>>() {
+            statements.push(casl2::Statement::labeled(
+                &len_label,
+                casl2::Command::Ds { size: 1 },
+            ));
+            statements.push(casl2::Statement::labeled(
+                &buf_label,
+                casl2::Command::Ds { size: 256 },
+            ));
+        }
+
+        // IN/OUTで使用する文字列定数
         for ((len_label, buf_label), literal) in lit_str_labels
             .into_iter()
             .map(|(k, v)| (v, k))
@@ -194,7 +309,9 @@ impl Compiler {
             ));
         }
 
+        // END ステートメント
         statements.push(casl2::Statement::code(casl2::Command::End));
+
         statements
     }
 
