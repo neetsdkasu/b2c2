@@ -427,6 +427,31 @@ impl Compiler {
             comment: None,
         });
     }
+
+    fn compile_expr(&mut self, expr: &parser::Expr) {
+        use parser::Expr::*;
+        match expr {
+            BinaryOperatorBoolean(_op, _lhs, _rhs) => todo!(),
+            BinaryOperatorInteger(_op, _lhs, _rhs) => todo!(),
+            BinaryOperatorString(_op, _lhs, _rhs) => todo!(),
+            CharOfLitString(_lit_str, _index) => todo!(),
+            CharOfVarString(_var_name, _index) => todo!(),
+            FunctionBoolean(_func, _param) => todo!(),
+            FunctionInteger(_func, _param) => todo!(),
+            FunctionString(_func, _param) => todo!(),
+            LitBoolean(_lit_bool) => todo!(),
+            LitInteger(_lit_int) => todo!(),
+            LitString(_lit_str) => todo!(),
+            UnaryOperatorInteger(_op, _value) => todo!(),
+            UnaryOperatorBoolean(_op, _value) => todo!(),
+            VarBoolean(_var_name) => todo!(),
+            VarInteger(_var_name) => todo!(),
+            VarString(_var_name) => todo!(),
+            VarArrayOfBoolean(_arr_name, _index) => todo!(),
+            VarArrayOfInteger(_arr_name, _index) => todo!(),
+            ParamList(_param_list) => todo!(),
+        }
+    }
 }
 
 #[cfg(test)]
