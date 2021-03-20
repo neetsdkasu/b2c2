@@ -680,64 +680,41 @@ mod parser {
     pub fn parse(src: &str) -> Result<Vec<Statement>, SyntaxError> {
         let mut ret = vec![];
         for (i, line) in src.lines().enumerate() {
-            let stmt = Statement::parse(line).map_err(|s| SyntaxError::new(i + 1, 0, s))?;
+            let stmt = Statement::parse(line).ok_or_else(|| {
+                SyntaxError::new(i + 1, 0, format!("invalid CASL2 statement: {}", line))
+            })?;
             ret.push(stmt);
         }
         Ok(ret)
     }
 
-    fn take_comment(src: &str) -> Result<Option<String>, TokenError> {
-        src.chars()
-            .next()
-            .filter(|ch| ch.is_ascii_whitespace())
-            .ok_or_else(|| "invalid comment".to_string())?;
-        Ok(take_comment_with(src).or_else(|| {
-            let s = src.trim_start();
-            if s.is_empty() {
-                None
-            } else {
-                Some(s.into())
-            }
-        }))
-    }
-
-    fn take_comment_with(src: &str) -> Option<String> {
-        let s = src.trim_start();
-        if let Some(';') = s.chars().next() {
-            if s.chars()
-                .nth(1)
-                .filter(|ch| ch.is_ascii_whitespace())
-                .is_some()
-            {
-                Some(s.chars().skip(2).collect())
-            } else {
-                Some(s.chars().skip(1).collect())
-            }
-        } else {
-            None
-        }
-    }
-
     impl Statement {
-        fn parse(src: &str) -> Result<Self, TokenError> {
-            if let Some(comment) = take_comment_with(src.trim_start()) {
-                return Ok(Statement::Comment(comment));
-            }
-            let (label, rest) = if let Ok((label, rest)) = Label::take(src) {
-                (Some(label), rest.trim_start().to_string())
-            } else {
-                if src
-                    .chars()
-                    .next()
-                    .filter(|ch| ch.is_ascii_whitespace())
-                    .is_none()
-                {
-                    return Err("invalid statement start".into());
+        fn parse(src: &str) -> Option<Self> {
+            let mut tokenizer = Tokenizer::new(src);
+
+            let mut label: Option<Label> = None;
+            if tokenizer.space() {
+                if let Some(comment) = tokenizer.comment() {
+                    return Some(Statement::Comment(comment));
                 }
-                (None, src.trim_start().to_string())
-            };
-            let (command, comment) = Command::take(&rest)?;
-            Ok(Statement::Code {
+            } else if let Some(word) = tokenizer.word() {
+                let word = Label::from(word);
+                if !word.is_valid() {
+                    return None;
+                }
+                if !tokenizer.space() {
+                    return None;
+                }
+                label = Some(word);
+            } else if let Some(comment) = tokenizer.comment() {
+                return Some(Statement::Comment(comment));
+            } else {
+                return None;
+            }
+
+            let (command, comment) = Command::parse(tokenizer)?;
+
+            Some(Statement::Code {
                 label,
                 command,
                 comment,
@@ -745,197 +722,20 @@ mod parser {
         }
     }
 
-    impl Label {
-        fn take(src: &str) -> Result<(Self, String), TokenError> {
-            let word: Vec<_> = src
-                .chars()
-                .take_while(|ch| !ch.is_ascii_whitespace() && *ch != ',')
-                .collect();
-            let label = Label(word.iter().collect());
-            if label.is_valid() {
-                let rest = src.chars().skip(word.len()).collect();
-                Ok((label, rest))
-            } else {
-                Err("invalid Label".into())
-            }
-        }
-    }
-
-    enum Args {
-        InOut(Label, Label),
-        R(Register, Register),
-        A(Register, Adr, Option<IndexRegister>),
-        P(Adr, Option<IndexRegister>),
-        Pop(Register),
-        Constants(Vec<Constant>),
-    }
-
-    impl Args {
-        fn take_label_and(
-            label: Label,
-            rest: String,
-        ) -> Result<(Option<Self>, Option<String>), TokenError> {
-            let mut chars = rest.chars();
-            if chars.next().filter(|ch| *ch == ',').is_some() {
-                let rest = chars.collect::<String>();
-                if let Ok((s_len, rest)) = Label::take(&rest) {
-                    Ok((Some(Self::InOut(label, s_len)), take_comment(&rest)?))
-                } else {
-                    IndexRegister::take(&rest)
-                        .ok_or_else(|| "invalid Args".into())
-                        .and_then(|(idx, rest)| {
-                            Ok((
-                                Some(Self::P(Adr::Label(label), Some(idx))),
-                                take_comment(&rest)?,
-                            ))
-                        })
-                }
-            } else {
-                Ok((Some(Self::P(Adr::Label(label), None)), take_comment(&rest)?))
-            }
-        }
-
-        fn take_reg_and(
-            r1: Register,
-            rest: String,
-        ) -> Result<(Option<Self>, Option<String>), TokenError> {
-            let mut chars = rest.chars();
-            if chars.next().filter(|ch| *ch == ',').is_some() {
-                let rest = chars.collect::<String>();
-                if let Some((r2, rest)) = Register::take(&rest) {
-                    return Ok((Some(Self::R(r1, r2)), take_comment(&rest)?));
-                }
-                let (adr, rest) = Adr::take(&rest).ok_or_else(|| "invalid Args".to_string())?;
-                let mut chars = rest.chars();
-                if chars.next().filter(|ch| *ch == ',').is_some() {
-                    let rest = chars.collect::<String>();
-                    IndexRegister::take(&rest)
-                        .ok_or_else(|| "invalid Args".into())
-                        .and_then(|(idx, rest)| {
-                            Ok((Some(Self::A(r1, adr, Some(idx))), take_comment(&rest)?))
-                        })
-                } else {
-                    Ok((Some(Self::A(r1, adr, None)), take_comment(&rest)?))
-                }
-            } else {
-                Ok((Some(Self::Pop(r1)), take_comment(&rest)?))
-            }
-        }
-
-        fn take(src: &str) -> Result<(Option<Self>, Option<String>), TokenError> {
-            if let Ok((label, rest)) = Label::take(src) {
-                return Self::take_label_and(label, rest);
-            }
-            if let Some((r1, rest)) = Register::take(src) {
-                return Self::take_reg_and(r1, rest);
-            }
-            todo!()
-        }
-
-        fn r_or_a(self, r: R, a: A) -> Result<Command, TokenError> {
-            match self {
-                Self::R(r1, r2) => Ok(Command::R { code: r, r1, r2 }),
-                Self::A(r, adr, x) => Ok(Command::A { code: a, r, adr, x }),
-                _ => Err("invalid command".into()),
-            }
-        }
-
-        fn a(self, a: A) -> Result<Command, TokenError> {
-            if let Self::A(r, adr, x) = self {
-                Ok(Command::A { code: a, r, adr, x })
-            } else {
-                Err("invalid command".into())
-            }
-        }
-
-        fn p(self, p: P) -> Result<Command, TokenError> {
-            if let Self::P(adr, x) = self {
-                Ok(Command::P { code: p, adr, x })
-            } else {
-                Err("invalid command".into())
-            }
-        }
-
-        fn pop(self) -> Result<Command, TokenError> {
-            if let Self::Pop(r) = self {
-                Ok(Command::Pop { r })
-            } else {
-                Err("invalid command".into())
-            }
-        }
-
-        fn inout(self, inout: InOut) -> Result<Command, TokenError> {
-            if let Self::InOut(pos, len) = self {
-                if matches!(inout, InOut::In) {
-                    Ok(Command::In { pos, len })
-                } else {
-                    Ok(Command::Out { pos, len })
-                }
-            } else {
-                Err("invalid command".into())
-            }
-        }
-    }
-
-    enum InOut {
-        In,
-        Out,
-    }
-
-    impl Register {
-        fn take(src: &str) -> Option<(Self, String)> {
-            use Register::*;
-            let word: Vec<_> = src
-                .chars()
-                .take_while(|ch| !ch.is_ascii_whitespace())
-                .collect();
-            match word.as_slice() {
-                ['G', 'R', ch] if ch.is_ascii_digit() => {
-                    let n = ch.to_digit(8)?;
-                    let rest = src.chars().skip(word.len()).collect();
-                    let gr = [GR0, GR1, GR2, GR3, GR4, GR5, GR6, GR7];
-                    Some((gr[n as usize], rest))
-                }
-                _ => None,
-            }
-        }
-    }
-
-    impl IndexRegister {
-        fn take(src: &str) -> Option<(IndexRegister, String)> {
-            use IndexRegister::*;
-            let (reg, rest) = Register::take(src)?;
-            match reg as usize {
-                i @ 1..=7 => {
-                    let gr = [GR1, GR2, GR3, GR4, GR5, GR6, GR7];
-                    Some((gr[i - 1], rest))
-                }
-                _ => None,
-            }
-        }
-    }
-
-    impl Adr {
-        fn take(src: &str) -> Option<(Self, String)> {
-            todo!()
-        }
-    }
-
     impl Command {
-        fn take(src: &str) -> Result<(Self, Option<String>), TokenError> {
-            let cmd_word: String = src
-                .chars()
-                .take_while(|ch| !ch.is_ascii_whitespace())
-                .collect();
-            let rest: String = src
-                .chars()
-                .skip(cmd_word.len())
-                .skip_while(|ch| ch.is_ascii_whitespace())
-                .collect();
-            let (args, comment) = Args::take(&rest)?;
-            let args = if let Some(args) = args {
-                args
-            } else {
+        fn parse(mut tokenizer: Tokenizer) -> Option<(Self, Option<String>)> {
+            let cmd_word = tokenizer.word()?;
+
+            if !tokenizer.space() {
+                let rest = tokenizer.rest();
+                if !rest.is_empty() {
+                    return None;
+                }
+            }
+
+            let values = tokenizer.values();
+
+            if values.is_empty() {
                 let command = match cmd_word.as_str() {
                     "START" => Command::Start { entry_point: None },
                     "RPUSH" => Command::Rpush,
@@ -943,45 +743,583 @@ mod parser {
                     "RET" => Command::Ret,
                     "END" => Command::End,
                     "NOP" => Command::Nop,
-                    _ => return Err("invalid command".into()),
+                    _ => return None,
                 };
-                return Ok((command, comment));
+                if !tokenizer.space() {
+                    if let Some(comment) = tokenizer.comment() {
+                        return Some((command, Some(comment)));
+                    }
+                }
+                if tokenizer.rest().is_empty() {
+                    return Some((command, None));
+                }
+                return None;
+            }
+
+            let comment = if tokenizer.space() {
+                if let Some(comment) = tokenizer.comment() {
+                    Some(comment)
+                } else {
+                    let rest = tokenizer.rest();
+                    if rest.is_empty() {
+                        None
+                    } else {
+                        Some(rest)
+                    }
+                }
+            } else {
+                let rest = tokenizer.rest();
+                if rest.is_empty() {
+                    None
+                } else {
+                    return None;
+                }
             };
+
             let command = match cmd_word.as_str() {
-                "LD" => args.r_or_a(R::Ld, A::Ld)?,
-                "ST" => args.a(A::St)?,
-                "LAD" => args.a(A::Lad)?,
-                "ADDA" => args.r_or_a(R::Adda, A::Adda)?,
-                "ADDL" => args.r_or_a(R::Addl, A::Addl)?,
-                "SUBA" => args.r_or_a(R::Suba, A::Suba)?,
-                "SUBL" => args.r_or_a(R::Subl, A::Subl)?,
-                "AND" => args.r_or_a(R::And, A::And)?,
-                "OR" => args.r_or_a(R::Or, A::Or)?,
-                "XOR" => args.r_or_a(R::Xor, A::Xor)?,
-                "CPA" => args.r_or_a(R::Cpa, A::Cpa)?,
-                "CPL" => args.r_or_a(R::Cpl, A::Cpl)?,
-                "SLA" => args.a(A::Sla)?,
-                "SRA" => args.a(A::Sra)?,
-                "SLL" => args.a(A::Sll)?,
-                "SRL" => args.a(A::Srl)?,
-                "JPL" => args.p(P::Jpl)?,
-                "JMI" => args.p(P::Jmi)?,
-                "JNZ" => args.p(P::Jnz)?,
-                "JZE" => args.p(P::Jze)?,
-                "JOV" => args.p(P::Jov)?,
-                "JUMP" => args.p(P::Jump)?,
-                "PUSH" => args.p(P::Push)?,
-                "CALL" => args.p(P::Call)?,
-                "SVC" => args.p(P::Svc)?,
-                // "START"
-                "POP" => args.pop()?,
-                "IN" => args.inout(InOut::In)?,
-                "OUT" => args.inout(InOut::Out)?,
-                // "DC"
-                // "DS"
-                _ => todo!(),
+                "LD" => Self::parse_r_or_a(R::Ld, A::Ld, &values)?,
+                "ST" => Self::parse_a(A::St, &values)?,
+                "LAD" => Self::parse_a(A::Lad, &values)?,
+                "ADDA" => Self::parse_r_or_a(R::Adda, A::Adda, &values)?,
+                "ADDL" => Self::parse_r_or_a(R::Addl, A::Addl, &values)?,
+                "SUBA" => Self::parse_r_or_a(R::Suba, A::Suba, &values)?,
+                "SUBL" => Self::parse_r_or_a(R::Subl, A::Subl, &values)?,
+                "AND" => Self::parse_r_or_a(R::And, A::And, &values)?,
+                "OR" => Self::parse_r_or_a(R::Or, A::Or, &values)?,
+                "XOR" => Self::parse_r_or_a(R::Xor, A::Xor, &values)?,
+                "CPA" => Self::parse_r_or_a(R::Cpa, A::Cpa, &values)?,
+                "CPL" => Self::parse_r_or_a(R::Cpl, A::Cpl, &values)?,
+                "SLA" => Self::parse_a(A::Sla, &values)?,
+                "SRA" => Self::parse_a(A::Sra, &values)?,
+                "SLL" => Self::parse_a(A::Sll, &values)?,
+                "SRL" => Self::parse_a(A::Srl, &values)?,
+                "JPL" => Self::parse_p(P::Jpl, &values)?,
+                "JMI" => Self::parse_p(P::Jmi, &values)?,
+                "JNZ" => Self::parse_p(P::Jnz, &values)?,
+                "JZE" => Self::parse_p(P::Jze, &values)?,
+                "JOV" => Self::parse_p(P::Jov, &values)?,
+                "JUMP" => Self::parse_p(P::Jump, &values)?,
+                "PUSH" => Self::parse_p(P::Push, &values)?,
+                "CALL" => Self::parse_p(P::Call, &values)?,
+                "SVC" => Self::parse_p(P::Svc, &values)?,
+                "START" => Self::parse_start(&values)?,
+                "POP" => Self::parse_pop(&values)?,
+                "IN" => Self::parse_in(&values)?,
+                "OUT" => Self::parse_out(&values)?,
+                "DC" => Self::parse_dc(&values)?,
+                "DS" => Self::parse_ds(&values)?,
+                _ => return None,
             };
-            Ok((command, comment))
+
+            Some((command, comment))
+        }
+
+        fn parse_dc(values: &[Token]) -> Option<Command> {
+            let mut constants = vec![];
+            for v in values {
+                constants.push(Constant::parse(v)?);
+            }
+            Some(Command::Dc { constants })
+        }
+
+        fn parse_ds(values: &[Token]) -> Option<Command> {
+            if let [Token::Dec(v)] = values {
+                Some(Command::Ds { size: *v as u16 })
+            } else {
+                None
+            }
+        }
+
+        fn parse_start(values: &[Token]) -> Option<Command> {
+            if let [label] = values {
+                let label = Label::parse(label)?;
+                Some(Command::Start {
+                    entry_point: Some(label),
+                })
+            } else {
+                None
+            }
+        }
+
+        fn parse_a(code: A, values: &[Token]) -> Option<Command> {
+            match values {
+                [r, adr] => {
+                    let r = Register::parse(r)?;
+                    let adr = Adr::parse(adr)?;
+                    Some(Command::A {
+                        code,
+                        r,
+                        adr,
+                        x: None,
+                    })
+                }
+                [r, adr, x] => {
+                    let r = Register::parse(r)?;
+                    let adr = Adr::parse(adr)?;
+                    let x = IndexRegister::parse(x)?;
+                    Some(Command::A {
+                        code,
+                        r,
+                        adr,
+                        x: Some(x),
+                    })
+                }
+                _ => None,
+            }
+        }
+
+        fn parse_p(code: P, values: &[Token]) -> Option<Command> {
+            match values {
+                [adr] => {
+                    let adr = Adr::parse(adr)?;
+                    Some(Command::P { code, adr, x: None })
+                }
+                [adr, x] => {
+                    let adr = Adr::parse(adr)?;
+                    let x = IndexRegister::parse(x)?;
+                    Some(Command::P {
+                        code,
+                        adr,
+                        x: Some(x),
+                    })
+                }
+                _ => None,
+            }
+        }
+
+        fn parse_pop(values: &[Token]) -> Option<Command> {
+            if let [r] = values {
+                let r = Register::parse(r)?;
+                Some(Command::Pop { r })
+            } else {
+                None
+            }
+        }
+
+        fn parse_in(values: &[Token]) -> Option<Command> {
+            if let [pos, len] = values {
+                let pos = Label::parse(pos)?;
+                let len = Label::parse(len)?;
+                Some(Command::In { pos, len })
+            } else {
+                None
+            }
+        }
+
+        fn parse_out(values: &[Token]) -> Option<Command> {
+            if let [pos, len] = values {
+                let pos = Label::parse(pos)?;
+                let len = Label::parse(len)?;
+                Some(Command::Out { pos, len })
+            } else {
+                None
+            }
+        }
+
+        fn parse_r_or_a(r: R, a: A, values: &[Token]) -> Option<Command> {
+            if let Some(command) = Self::parse_a(a, values) {
+                return Some(command);
+            }
+            if let [r1, r2] = values {
+                let r1 = Register::parse(r1)?;
+                let r2 = Register::parse(r2)?;
+                Some(Command::R { code: r, r1, r2 })
+            } else {
+                None
+            }
+        }
+    }
+
+    impl Constant {
+        fn parse(token: &Token) -> Option<Self> {
+            let c = match token {
+                word @ Token::Word(_) => Label::parse(word)?.into(),
+                Token::Dec(v) => Self::Dec(*v),
+                Token::Hex(v) => Self::Hex(*v),
+                Token::Str(s) => Self::Str(s.clone()),
+                Token::LitDec(_) | Token::LitHex(_) | Token::LitStr(_) => return None,
+            };
+            Some(c)
+        }
+    }
+
+    impl Label {
+        fn parse(token: &Token) -> Option<Self> {
+            if let Token::Word(w) = token {
+                let label = Self::from(w);
+                if label.is_valid() {
+                    return Some(label);
+                }
+            }
+            None
+        }
+    }
+
+    impl Adr {
+        fn parse(token: &Token) -> Option<Self> {
+            let adr = match token {
+                word @ Token::Word(_) => Label::parse(word)?.into(),
+                Token::Dec(v) => Self::Dec(*v),
+                Token::Hex(v) => Self::Hex(*v),
+                Token::Str(_) => return None,
+                Token::LitDec(v) => Self::LiteralDec(*v),
+                Token::LitHex(v) => Self::LiteralHex(*v),
+                Token::LitStr(s) => Self::LiteralStr(s.clone()),
+            };
+            Some(adr)
+        }
+    }
+
+    impl Register {
+        fn parse(token: &Token) -> Option<Self> {
+            let s = if let Token::Word(w) = token {
+                w
+            } else {
+                return None;
+            };
+            match s.as_str() {
+                "GR0" => Some(Self::GR0),
+                "GR1" => Some(Self::GR1),
+                "GR2" => Some(Self::GR2),
+                "GR3" => Some(Self::GR3),
+                "GR4" => Some(Self::GR4),
+                "GR5" => Some(Self::GR5),
+                "GR6" => Some(Self::GR6),
+                "GR7" => Some(Self::GR7),
+                _ => None,
+            }
+        }
+    }
+
+    impl IndexRegister {
+        fn parse(token: &Token) -> Option<Self> {
+            let s = if let Token::Word(w) = token {
+                w
+            } else {
+                return None;
+            };
+            match s.as_str() {
+                "GR1" => Some(Self::GR1),
+                "GR2" => Some(Self::GR2),
+                "GR3" => Some(Self::GR3),
+                "GR4" => Some(Self::GR4),
+                "GR5" => Some(Self::GR5),
+                "GR6" => Some(Self::GR6),
+                "GR7" => Some(Self::GR7),
+                _ => None,
+            }
+        }
+    }
+
+    struct Tokenizer<'a> {
+        chars: std::str::Chars<'a>,
+        stack: Vec<char>,
+        temp: String,
+    }
+
+    enum Token {
+        Word(String),
+        Dec(i16),
+        Hex(u16),
+        Str(String),
+        LitDec(i16),
+        LitHex(u16),
+        LitStr(String),
+    }
+
+    impl<'a> Tokenizer<'a> {
+        fn new(s: &'a str) -> Self {
+            Self {
+                chars: s.chars(),
+                stack: Vec::new(),
+                temp: String::new(),
+            }
+        }
+
+        fn next(&mut self) -> Option<char> {
+            if let Some(ch) = self.stack.pop() {
+                self.temp.push(ch);
+                Some(ch)
+            } else if let Some(ch) = self.chars.next() {
+                self.temp.push(ch);
+                Some(ch)
+            } else {
+                None
+            }
+        }
+
+        fn push(&mut self) {
+            if let Some(ch) = self.temp.pop() {
+                self.stack.push(ch);
+            }
+        }
+
+        fn recover(&mut self) {
+            while let Some(ch) = self.temp.pop() {
+                self.stack.push(ch);
+            }
+        }
+
+        fn take(&mut self) -> String {
+            self.temp.drain(..).collect()
+        }
+
+        fn clear(&mut self) {
+            self.temp.clear();
+        }
+
+        fn value(&mut self) -> Option<Token> {
+            if let Some(w) = self.word() {
+                return Some(Token::Word(w));
+            }
+            if let Some(i) = self.integer() {
+                return Some(Token::Dec(i));
+            }
+            if let Some(h) = self.hex() {
+                return Some(Token::Hex(h));
+            }
+            if let Some(s) = self.string() {
+                return Some(Token::Str(s));
+            }
+            if let Some(i) = self.lit_integer() {
+                return Some(Token::LitDec(i));
+            }
+            if let Some(h) = self.lit_hex() {
+                return Some(Token::LitHex(h));
+            }
+            if let Some(s) = self.lit_string() {
+                return Some(Token::LitStr(s));
+            }
+            None
+        }
+
+        fn values(&mut self) -> Vec<Token> {
+            let mut ret = vec![];
+            if let Some(t) = self.value() {
+                ret.push(t);
+            } else {
+                return ret;
+            }
+            loop {
+                if !self.comma() {
+                    break;
+                }
+                if let Some(t) = self.value() {
+                    ret.push(t);
+                } else {
+                    break;
+                }
+            }
+            ret
+        }
+
+        fn comment(&mut self) -> Option<String> {
+            if !matches!(self.next(), Some(';')) {
+                self.recover();
+                return None;
+            }
+            while self.next().is_some() {}
+            let comment = if matches!(
+                self.temp.chars().nth(1),
+                Some(ch) if ch.is_ascii_whitespace()
+            ) {
+                self.temp.chars().skip(2).collect()
+            } else {
+                self.temp.chars().skip(1).collect()
+            };
+            self.clear();
+            Some(comment)
+        }
+
+        fn rest(&mut self) -> String {
+            while self.next().is_some() {}
+            self.take()
+        }
+
+        fn word(&mut self) -> Option<String> {
+            if !matches!(self.next(), Some(ch) if ch.is_ascii_uppercase()) {
+                self.recover();
+                return None;
+            }
+            while let Some(ch) = self.next() {
+                if !ch.is_ascii_uppercase() && !ch.is_ascii_digit() {
+                    self.push();
+                    break;
+                }
+            }
+            Some(self.take())
+        }
+
+        fn space(&mut self) -> bool {
+            if !matches!(self.next(),Some(ch)if ch.is_ascii_whitespace()) {
+                self.recover();
+                return false;
+            }
+            while let Some(ch) = self.next() {
+                if !ch.is_ascii_whitespace() {
+                    self.push();
+                    break;
+                }
+            }
+            self.clear();
+            true
+        }
+
+        fn integer(&mut self) -> Option<i16> {
+            if !matches!(self.next(),
+                Some(ch) if ch == '-' || ch.is_ascii_digit())
+            {
+                self.recover();
+                return None;
+            }
+            while let Some(ch) = self.next() {
+                if !ch.is_ascii_digit() {
+                    self.push();
+                    break;
+                }
+            }
+            if let Ok(value) = self.temp.parse::<i64>() {
+                self.clear();
+                Some(value as i16)
+            } else {
+                self.recover();
+                None
+            }
+        }
+
+        fn lit_integer(&mut self) -> Option<i16> {
+            if !matches!(self.next(), Some('=')) {
+                self.recover();
+                return None;
+            }
+            if !matches!(self.next(),
+                Some(ch) if ch == '-' || ch.is_ascii_digit())
+            {
+                self.recover();
+                return None;
+            }
+            while let Some(ch) = self.next() {
+                if !ch.is_ascii_digit() {
+                    self.push();
+                    break;
+                }
+            }
+            let s: String = self.temp.chars().skip(1).collect();
+            if let Ok(value) = s.parse::<i64>() {
+                self.clear();
+                Some(value as i16)
+            } else {
+                self.recover();
+                None
+            }
+        }
+
+        fn lit_hex(&mut self) -> Option<u16> {
+            if !matches!(self.next(), Some('=')) {
+                self.recover();
+                return None;
+            }
+            if !matches!(self.next(), Some('#')) {
+                self.recover();
+                return None;
+            }
+            for _ in 0..4 {
+                if !matches!(
+                    self.next(),
+                    Some(ch) if ch.is_ascii_digit()
+                                || (ch.is_ascii_uppercase() && ch.is_ascii_hexdigit())
+                ) {
+                    self.recover();
+                    return None;
+                }
+            }
+            let h: String = self.temp.chars().skip(2).collect();
+            if let Ok(value) = u16::from_str_radix(&h, 16) {
+                self.clear();
+                Some(value)
+            } else {
+                self.recover();
+                None
+            }
+        }
+
+        fn hex(&mut self) -> Option<u16> {
+            if !matches!(self.next(), Some('#')) {
+                self.recover();
+                return None;
+            }
+            for _ in 0..4 {
+                if !matches!(
+                    self.next(),
+                    Some(ch) if ch.is_ascii_digit()
+                                || (ch.is_ascii_uppercase() && ch.is_ascii_hexdigit())
+                ) {
+                    self.recover();
+                    return None;
+                }
+            }
+            let h: String = self.temp.chars().skip(1).collect();
+            if let Ok(value) = u16::from_str_radix(&h, 16) {
+                self.clear();
+                Some(value)
+            } else {
+                self.recover();
+                None
+            }
+        }
+
+        fn string(&mut self) -> Option<String> {
+            use crate::jis_x_201;
+            if !matches!(self.next(), Some('\'')) {
+                self.recover();
+                return None;
+            }
+            let mut quote = false;
+            let mut text = String::new();
+            while let Some(ch) = self.next() {
+                if !jis_x_201::contains(ch) {
+                    self.recover();
+                    return None;
+                }
+                if quote {
+                    if ch == '\'' {
+                        quote = false;
+                        text.push(ch);
+                    } else {
+                        self.push();
+                        break;
+                    }
+                } else if ch == '\'' {
+                    quote = true;
+                } else {
+                    text.push(ch);
+                }
+            }
+            if quote {
+                self.clear();
+                Some(text)
+            } else {
+                self.recover();
+                None
+            }
+        }
+
+        fn lit_string(&mut self) -> Option<String> {
+            if !matches!(self.next(), Some('=')) {
+                self.recover();
+                return None;
+            }
+            self.string()
+        }
+
+        fn comma(&mut self) -> bool {
+            if matches!(self.next(), Some(',')) {
+                self.clear();
+                true
+            } else {
+                self.recover();
+                false
+            }
         }
     }
 }
@@ -1014,8 +1352,10 @@ NEXT      SLL       GR2,1          ; GR2 <<= 1
     fn it_works() {
         let statements = get_statements();
         let program = get_program();
+        let parsed_statements = parse(SRC).unwrap();
 
         assert_eq!(statements, program.statements);
+        assert_eq!(statements, parsed_statements);
 
         assert_eq!(SRC, &program.to_string());
     }
