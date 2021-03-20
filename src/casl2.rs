@@ -686,15 +686,19 @@ mod parser {
         Ok(ret)
     }
 
-    fn take_comment(src: &str) -> Option<String> {
-        take_comment_with(src).or_else(|| {
+    fn take_comment(src: &str) -> Result<Option<String>, TokenError> {
+        src.chars()
+            .next()
+            .filter(|ch| ch.is_ascii_whitespace())
+            .ok_or_else(|| "invalid comment".to_string())?;
+        Ok(take_comment_with(src).or_else(|| {
             let s = src.trim_start();
             if s.is_empty() {
                 None
             } else {
                 Some(s.into())
             }
-        })
+        }))
     }
 
     fn take_comment_with(src: &str) -> Option<String> {
@@ -775,19 +779,19 @@ mod parser {
             if chars.next().filter(|ch| *ch == ',').is_some() {
                 let rest = chars.collect::<String>();
                 if let Ok((s_len, rest)) = Label::take(&rest) {
-                    Ok((Some(Self::InOut(label, s_len)), take_comment(&rest)))
+                    Ok((Some(Self::InOut(label, s_len)), take_comment(&rest)?))
                 } else {
                     IndexRegister::take(&rest)
-                        .map(|(idx, rest)| {
-                            (
-                                Some(Self::P(Adr::Label(label), Some(idx))),
-                                take_comment(&rest),
-                            )
-                        })
                         .ok_or_else(|| "invalid Args".into())
+                        .and_then(|(idx, rest)| {
+                            Ok((
+                                Some(Self::P(Adr::Label(label), Some(idx))),
+                                take_comment(&rest)?,
+                            ))
+                        })
                 }
             } else {
-                Ok((Some(Self::P(Adr::Label(label), None)), take_comment(&rest)))
+                Ok((Some(Self::P(Adr::Label(label), None)), take_comment(&rest)?))
             }
         }
 
@@ -799,20 +803,22 @@ mod parser {
             if chars.next().filter(|ch| *ch == ',').is_some() {
                 let rest = chars.collect::<String>();
                 if let Some((r2, rest)) = Register::take(&rest) {
-                    return Ok((Some(Self::R(r1, r2)), take_comment(&rest)));
+                    return Ok((Some(Self::R(r1, r2)), take_comment(&rest)?));
                 }
                 let (adr, rest) = Adr::take(&rest).ok_or_else(|| "invalid Args".to_string())?;
                 let mut chars = rest.chars();
                 if chars.next().filter(|ch| *ch == ',').is_some() {
                     let rest = chars.collect::<String>();
                     IndexRegister::take(&rest)
-                        .map(|(idx, rest)| (Some(Self::A(r1, adr, Some(idx))), take_comment(&rest)))
                         .ok_or_else(|| "invalid Args".into())
+                        .and_then(|(idx, rest)| {
+                            Ok((Some(Self::A(r1, adr, Some(idx))), take_comment(&rest)?))
+                        })
                 } else {
-                    Ok((Some(Self::A(r1, adr, None)), take_comment(&rest)))
+                    Ok((Some(Self::A(r1, adr, None)), take_comment(&rest)?))
                 }
             } else {
-                Ok((Some(Self::Pop(r1)), take_comment(&rest)))
+                Ok((Some(Self::Pop(r1)), take_comment(&rest)?))
             }
         }
 
