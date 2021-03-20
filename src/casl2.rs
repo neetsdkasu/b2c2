@@ -733,7 +733,7 @@ mod parser {
                 }
             }
 
-            let values = tokenizer.values();
+            let values = tokenizer.values()?;
 
             if values.is_empty() {
                 let command = match cmd_word.as_str() {
@@ -1093,12 +1093,13 @@ mod parser {
             None
         }
 
-        fn values(&mut self) -> Vec<Token> {
+        fn values(&mut self) -> Option<Vec<Token>> {
             let mut ret = vec![];
             if let Some(t) = self.value() {
                 ret.push(t);
             } else {
-                return ret;
+                // オペランドなし
+                return Some(ret);
             }
             loop {
                 if !self.comma() {
@@ -1107,10 +1108,11 @@ mod parser {
                 if let Some(t) = self.value() {
                     ret.push(t);
                 } else {
-                    break;
+                    // カンマのあとに値がないのはおかしいので
+                    return None;
                 }
             }
-            ret
+            Some(ret)
         }
 
         fn comment(&mut self) -> Option<String> {
