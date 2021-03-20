@@ -1093,18 +1093,16 @@ mod parser {
             None
         }
 
+        // 破壊的操作、recover不可能
         fn values(&mut self) -> Option<Vec<Token>> {
             let mut ret = vec![];
             if let Some(t) = self.value() {
                 ret.push(t);
             } else {
-                // オペランドなし
+                // オペランドなし (あるいはシンタックスエラー)
                 return Some(ret);
             }
-            loop {
-                if !self.comma() {
-                    break;
-                }
+            while self.comma() {
                 if let Some(t) = self.value() {
                     ret.push(t);
                 } else {
