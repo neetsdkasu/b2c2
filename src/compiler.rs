@@ -703,7 +703,8 @@ mod subroutine {
                 ret = ret_label,
                 read = read_label,
                 mi = mi_label
-            )),
+            ))
+            .unwrap(),
         }
     }
 }

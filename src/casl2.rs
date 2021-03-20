@@ -673,9 +673,310 @@ pub use self::parser::parse;
 
 mod parser {
     use super::*;
+    use crate::SyntaxError;
 
-    pub fn parse(_src: &str) -> Vec<Statement> {
-        todo!()
+    type TokenError = String;
+
+    pub fn parse(src: &str) -> Result<Vec<Statement>, SyntaxError> {
+        let mut ret = vec![];
+        for (i, line) in src.lines().enumerate() {
+            let stmt = Statement::parse(line).map_err(|s| SyntaxError::new(i + 1, 0, s))?;
+            ret.push(stmt);
+        }
+        Ok(ret)
+    }
+
+    fn take_comment(src: &str) -> Option<String> {
+        take_comment_with(src).or_else(|| {
+            let s = src.trim_start();
+            if s.is_empty() {
+                None
+            } else {
+                Some(s.into())
+            }
+        })
+    }
+
+    fn take_comment_with(src: &str) -> Option<String> {
+        let s = src.trim_start();
+        if let Some(';') = s.chars().next() {
+            if s.chars()
+                .nth(1)
+                .filter(|ch| ch.is_ascii_whitespace())
+                .is_some()
+            {
+                Some(s.chars().skip(2).collect())
+            } else {
+                Some(s.chars().skip(1).collect())
+            }
+        } else {
+            None
+        }
+    }
+
+    impl Statement {
+        fn parse(src: &str) -> Result<Self, TokenError> {
+            if let Some(comment) = take_comment_with(src.trim_start()) {
+                return Ok(Statement::Comment(comment));
+            }
+            let (label, rest) = if let Ok((label, rest)) = Label::take(src) {
+                (Some(label), rest.trim_start().to_string())
+            } else {
+                if src
+                    .chars()
+                    .next()
+                    .filter(|ch| ch.is_ascii_whitespace())
+                    .is_none()
+                {
+                    return Err("invalid statement start".into());
+                }
+                (None, src.trim_start().to_string())
+            };
+            let (command, comment) = Command::take(&rest)?;
+            Ok(Statement::Code {
+                label,
+                command,
+                comment,
+            })
+        }
+    }
+
+    impl Label {
+        fn take(src: &str) -> Result<(Self, String), TokenError> {
+            let word: Vec<_> = src
+                .chars()
+                .take_while(|ch| !ch.is_ascii_whitespace() && *ch != ',')
+                .collect();
+            let label = Label(word.iter().collect());
+            if label.is_valid() {
+                let rest = src.chars().skip(word.len()).collect();
+                Ok((label, rest))
+            } else {
+                Err("invalid Label".into())
+            }
+        }
+    }
+
+    enum Args {
+        InOut(Label, Label),
+        R(Register, Register),
+        A(Register, Adr, Option<IndexRegister>),
+        P(Adr, Option<IndexRegister>),
+        Pop(Register),
+        Constants(Vec<Constant>),
+    }
+
+    impl Args {
+        fn take_label_and(
+            label: Label,
+            rest: String,
+        ) -> Result<(Option<Self>, Option<String>), TokenError> {
+            let mut chars = rest.chars();
+            if chars.next().filter(|ch| *ch == ',').is_some() {
+                let rest = chars.collect::<String>();
+                if let Ok((s_len, rest)) = Label::take(&rest) {
+                    Ok((Some(Self::InOut(label, s_len)), take_comment(&rest)))
+                } else {
+                    IndexRegister::take(&rest)
+                        .map(|(idx, rest)| {
+                            (
+                                Some(Self::P(Adr::Label(label), Some(idx))),
+                                take_comment(&rest),
+                            )
+                        })
+                        .ok_or_else(|| "invalid Args".into())
+                }
+            } else {
+                Ok((Some(Self::P(Adr::Label(label), None)), take_comment(&rest)))
+            }
+        }
+
+        fn take_reg_and(
+            r1: Register,
+            rest: String,
+        ) -> Result<(Option<Self>, Option<String>), TokenError> {
+            let mut chars = rest.chars();
+            if chars.next().filter(|ch| *ch == ',').is_some() {
+                let rest = chars.collect::<String>();
+                if let Some((r2, rest)) = Register::take(&rest) {
+                    return Ok((Some(Self::R(r1, r2)), take_comment(&rest)));
+                }
+                let (adr, rest) = Adr::take(&rest).ok_or_else(|| "invalid Args".to_string())?;
+                let mut chars = rest.chars();
+                if chars.next().filter(|ch| *ch == ',').is_some() {
+                    let rest = chars.collect::<String>();
+                    IndexRegister::take(&rest)
+                        .map(|(idx, rest)| (Some(Self::A(r1, adr, Some(idx))), take_comment(&rest)))
+                        .ok_or_else(|| "invalid Args".into())
+                } else {
+                    Ok((Some(Self::A(r1, adr, None)), take_comment(&rest)))
+                }
+            } else {
+                Ok((Some(Self::Pop(r1)), take_comment(&rest)))
+            }
+        }
+
+        fn take(src: &str) -> Result<(Option<Self>, Option<String>), TokenError> {
+            if let Ok((label, rest)) = Label::take(src) {
+                return Self::take_label_and(label, rest);
+            }
+            if let Some((r1, rest)) = Register::take(src) {
+                return Self::take_reg_and(r1, rest);
+            }
+            todo!()
+        }
+
+        fn r_or_a(self, r: R, a: A) -> Result<Command, TokenError> {
+            match self {
+                Self::R(r1, r2) => Ok(Command::R { code: r, r1, r2 }),
+                Self::A(r, adr, x) => Ok(Command::A { code: a, r, adr, x }),
+                _ => Err("invalid command".into()),
+            }
+        }
+
+        fn a(self, a: A) -> Result<Command, TokenError> {
+            if let Self::A(r, adr, x) = self {
+                Ok(Command::A { code: a, r, adr, x })
+            } else {
+                Err("invalid command".into())
+            }
+        }
+
+        fn p(self, p: P) -> Result<Command, TokenError> {
+            if let Self::P(adr, x) = self {
+                Ok(Command::P { code: p, adr, x })
+            } else {
+                Err("invalid command".into())
+            }
+        }
+
+        fn pop(self) -> Result<Command, TokenError> {
+            if let Self::Pop(r) = self {
+                Ok(Command::Pop { r })
+            } else {
+                Err("invalid command".into())
+            }
+        }
+
+        fn inout(self, inout: InOut) -> Result<Command, TokenError> {
+            if let Self::InOut(pos, len) = self {
+                if matches!(inout, InOut::In) {
+                    Ok(Command::In { pos, len })
+                } else {
+                    Ok(Command::Out { pos, len })
+                }
+            } else {
+                Err("invalid command".into())
+            }
+        }
+    }
+
+    enum InOut {
+        In,
+        Out,
+    }
+
+    impl Register {
+        fn take(src: &str) -> Option<(Self, String)> {
+            use Register::*;
+            let word: Vec<_> = src
+                .chars()
+                .take_while(|ch| !ch.is_ascii_whitespace())
+                .collect();
+            match word.as_slice() {
+                ['G', 'R', ch] if ch.is_ascii_digit() => {
+                    let n = ch.to_digit(8)?;
+                    let rest = src.chars().skip(word.len()).collect();
+                    let gr = [GR0, GR1, GR2, GR3, GR4, GR5, GR6, GR7];
+                    Some((gr[n as usize], rest))
+                }
+                _ => None,
+            }
+        }
+    }
+
+    impl IndexRegister {
+        fn take(src: &str) -> Option<(IndexRegister, String)> {
+            use IndexRegister::*;
+            let (reg, rest) = Register::take(src)?;
+            match reg as usize {
+                i @ 1..=7 => {
+                    let gr = [GR1, GR2, GR3, GR4, GR5, GR6, GR7];
+                    Some((gr[i - 1], rest))
+                }
+                _ => None,
+            }
+        }
+    }
+
+    impl Adr {
+        fn take(src: &str) -> Option<(Self, String)> {
+            todo!()
+        }
+    }
+
+    impl Command {
+        fn take(src: &str) -> Result<(Self, Option<String>), TokenError> {
+            let cmd_word: String = src
+                .chars()
+                .take_while(|ch| !ch.is_ascii_whitespace())
+                .collect();
+            let rest: String = src
+                .chars()
+                .skip(cmd_word.len())
+                .skip_while(|ch| ch.is_ascii_whitespace())
+                .collect();
+            let (args, comment) = Args::take(&rest)?;
+            let args = if let Some(args) = args {
+                args
+            } else {
+                let command = match cmd_word.as_str() {
+                    "START" => Command::Start { entry_point: None },
+                    "RPUSH" => Command::Rpush,
+                    "RPOP" => Command::Rpop,
+                    "RET" => Command::Ret,
+                    "END" => Command::End,
+                    "NOP" => Command::Nop,
+                    _ => return Err("invalid command".into()),
+                };
+                return Ok((command, comment));
+            };
+            let command = match cmd_word.as_str() {
+                "LD" => args.r_or_a(R::Ld, A::Ld)?,
+                "ST" => args.a(A::St)?,
+                "LAD" => args.a(A::Lad)?,
+                "ADDA" => args.r_or_a(R::Adda, A::Adda)?,
+                "ADDL" => args.r_or_a(R::Addl, A::Addl)?,
+                "SUBA" => args.r_or_a(R::Suba, A::Suba)?,
+                "SUBL" => args.r_or_a(R::Subl, A::Subl)?,
+                "AND" => args.r_or_a(R::And, A::And)?,
+                "OR" => args.r_or_a(R::Or, A::Or)?,
+                "XOR" => args.r_or_a(R::Xor, A::Xor)?,
+                "CPA" => args.r_or_a(R::Cpa, A::Cpa)?,
+                "CPL" => args.r_or_a(R::Cpl, A::Cpl)?,
+                "SLA" => args.a(A::Sla)?,
+                "SRA" => args.a(A::Sra)?,
+                "SLL" => args.a(A::Sll)?,
+                "SRL" => args.a(A::Srl)?,
+                "JPL" => args.p(P::Jpl)?,
+                "JMI" => args.p(P::Jmi)?,
+                "JNZ" => args.p(P::Jnz)?,
+                "JZE" => args.p(P::Jze)?,
+                "JOV" => args.p(P::Jov)?,
+                "JUMP" => args.p(P::Jump)?,
+                "PUSH" => args.p(P::Push)?,
+                "CALL" => args.p(P::Call)?,
+                "SVC" => args.p(P::Svc)?,
+                // "START"
+                "POP" => args.pop()?,
+                "IN" => args.inout(InOut::In)?,
+                "OUT" => args.inout(InOut::Out)?,
+                // "DC"
+                // "DS"
+                _ => todo!(),
+            };
+            Ok((command, comment))
+        }
     }
 }
 
@@ -747,7 +1048,7 @@ NEXT      SLL       GR2,1          ; GR2 <<= 1
                     r1: Reg::GR0,
                     r2: Reg::GR0,
                 },
-                "GR0 = 0"
+                "GR0 = 0",
             ),
             // LOOP      SRL       GR1,1          ; GR1 >>= 1
             Stmt::labeled_with_comment(
@@ -758,24 +1059,20 @@ NEXT      SLL       GR2,1          ; GR2 <<= 1
                     adr: Adr::Dec(1),
                     x: None,
                 },
-                "GR1 >>= 1"
+                "GR1 >>= 1",
             ),
             // JOV       ADD
-            Stmt::code(
-                Cmd::P {
-                    code: P::Jov,
-                    adr: Adr::label("ADD"),
-                    x: None,
-                }
-            ),
+            Stmt::code(Cmd::P {
+                code: P::Jov,
+                adr: Adr::label("ADD"),
+                x: None,
+            }),
             // JZE       NEXT
-            Stmt::code(
-                Cmd::P {
-                    code: P::Jze,
-                    adr: Adr::label("NEXT"),
-                    x: None,
-                }
-            ),
+            Stmt::code(Cmd::P {
+                code: P::Jze,
+                adr: Adr::label("NEXT"),
+                x: None,
+            }),
             // POP       GR2
             Stmt::code(Cmd::Pop { r: Reg::GR2 }),
             // POP       GR1
@@ -790,7 +1087,7 @@ NEXT      SLL       GR2,1          ; GR2 <<= 1
                     r1: Reg::GR0,
                     r2: Reg::GR2,
                 },
-                "GR0 += GR2"
+                "GR0 += GR2",
             ),
             // NEXT      SLL       GR2,1          ; GR2 <<= 1
             Stmt::labeled_with_comment(
@@ -801,16 +1098,14 @@ NEXT      SLL       GR2,1          ; GR2 <<= 1
                     adr: Adr::Dec(1),
                     x: None,
                 },
-                "GR2 <<= 1"
+                "GR2 <<= 1",
             ),
             // JUMP      LOOP
-            Stmt::code(
-                Cmd::P {
-                    code: P::Jump,
-                    adr: Adr::label("LOOP"),
-                    x: None,
-                }
-            ),
+            Stmt::code(Cmd::P {
+                code: P::Jump,
+                adr: Adr::label("LOOP"),
+                x: None,
+            }),
             // END
             Stmt::code(Cmd::End),
         ]
