@@ -1048,7 +1048,7 @@ mod parser {
             }
         }
 
-        fn push(&mut self) {
+        fn back(&mut self) {
             if let Some(ch) = self.temp.pop() {
                 self.stack.push(ch);
             }
@@ -1143,7 +1143,7 @@ mod parser {
             }
             while let Some(ch) = self.next() {
                 if !ch.is_ascii_uppercase() && !ch.is_ascii_digit() {
-                    self.push();
+                    self.back();
                     break;
                 }
             }
@@ -1157,7 +1157,7 @@ mod parser {
             }
             while let Some(ch) = self.next() {
                 if !ch.is_ascii_whitespace() {
-                    self.push();
+                    self.back();
                     break;
                 }
             }
@@ -1174,7 +1174,7 @@ mod parser {
             }
             while let Some(ch) = self.next() {
                 if !ch.is_ascii_digit() {
-                    self.push();
+                    self.back();
                     break;
                 }
             }
@@ -1200,7 +1200,7 @@ mod parser {
             }
             while let Some(ch) = self.next() {
                 if !ch.is_ascii_digit() {
-                    self.push();
+                    self.back();
                     break;
                 }
             }
@@ -1286,7 +1286,7 @@ mod parser {
                         quote = false;
                         text.push(ch);
                     } else {
-                        self.push();
+                        self.back();
                         break;
                     }
                 } else if ch == '\'' {
