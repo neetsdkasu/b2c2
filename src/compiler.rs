@@ -1,6 +1,6 @@
 use crate::casl2;
 use crate::parser;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 type CompileError = String;
 
@@ -52,7 +52,7 @@ struct Compiler {
     // IN/OUTで使用する文字列定数のラベル対応を保持 (文字列定数, (長さラベル, 内容位置ラベル)))
     lit_str_labels: HashMap<String, (String, String)>,
 
-    // 式展開時の一時変数(整数/真理値)のラベルを保持 (スタック的利用) (ラベル)
+    // 式展開時の一時変数(整数/真理値)のラベルを保持 (スタック的利用) (ラベル) (主にForループの終点とステップで使用)
     temp_int_var_labels: Vec<String>,
 
     // 式展開時の一時変数(文字列)のラベルを保持 (スタック的利用) (長さラベル, 内容位置ラベル)
@@ -66,6 +66,23 @@ struct Compiler {
 
     // Exitステートメントで参照する脱出ラベル対応を保持 (exit_id, 脱出ラベル)
     exit_labels: HashMap<usize, String>,
+
+    // 式展開でレジスタの使用状況把握
+    //  最下位ビットがGR0, 最上位ビットがGR7
+    //    (1 << GR0),  (1 << GR7)
+    //    (ただし、実際にはGR0の使用状況は管理しないでGR1～7のみ管理)
+    //  ビットが立っている場合は使用中(register_dequeにある)
+    //  ビットが立っていない場合はアイドル中、番号の大きいレジスタから使用していく
+    registers_used: u8,
+
+    // 式展開でレジスタの使用状況把握
+    //  使用するレジスタを後尾に追加し、使用し終わったら後尾から取り出す
+    //  アイドルレジスタが１つもない場合、
+    //     先頭のレジスタを取り出して使用する(後尾に追加する)
+    //     このレジスタの内容はコールスタックに積んでおき、必要のタイミングでスタックから取り出す
+    //  先頭：　現在の式展開中の箇所から"遠い"箇所で使用してるレジスタ
+    //  後尾: 現在の式展開中の箇所から"近い"箇所で使用してるレジスタ
+    registers_deque: VecDeque<casl2::Register>,
 
     // ループや条件分岐の脱出先のコードにラベルをつけるためその脱出ラベルを保持
     next_statement_label: Option<casl2::Label>,
@@ -82,7 +99,7 @@ impl Compiler {
         // 自動生成のラベルとの重複を避けるチェックが必要
         // B** 真理値変数
         // I** 整数変数
-        // T** 式展開時の一時変数(真理値/整数で共有)
+        // T** 式展開時の一時変数(真理値/整数で共有)(主にForループの終点とステップで使用)
         // V** 組み込みサブルーチンのローカル変数
         // J** ループや条件分岐に使うジャンプ先ラベルのID
         // C** 組み込みサブルーチンの入り口のラベル
@@ -129,6 +146,8 @@ impl Compiler {
             subroutine_codes: HashMap::new(),
             loop_labels: HashMap::new(),
             exit_labels: HashMap::new(),
+            registers_used: 0,
+            registers_deque: VecDeque::with_capacity(7),
             next_statement_label: None,
             statements: vec![casl2::Statement::labeled(
                 program_name,
@@ -644,8 +663,41 @@ impl Compiler {
         });
     }
 
+    // レジスタのアイドル状態を取得
+    fn is_idle_register(&self, reg: casl2::Register) -> bool {
+        (self.registers_used & (1 << reg as isize)) == 0
+    }
+
+    // アイドル中のレジスタを取得
+    fn get_idle_register(&mut self) -> casl2::Register {
+        use casl2::Register::{self, *};
+        const REG: [Register; 7] = [GR7, GR6, GR5, GR4, GR3, GR2, GR1];
+        for &reg in REG.iter() {
+            if self.is_idle_register(reg) {
+                self.registers_used |= 1 << reg as isize;
+                self.registers_deque.push_back(reg);
+                return reg;
+            }
+        }
+        // VecDeque::rotate_left()は実装見る限り、copyで内部バッファ全体を回している…？
+        //   (おそらく、copyはキャパシティのメモリ全体使うため？)
+        //   まぁ大したコストじゃないし、rotate_left(1)呼び出しでもいいのかもだが
+        //   まぁpop_frontとpush_backもcopyコストかかるといえばそうだが
+        let reg = self.registers_deque.pop_front().expect("BUG");
+        self.registers_deque.push_back(reg);
+        reg
+    }
+
+    // 使用中のレジスタをアイドル扱いにする
+    fn set_register_idle(&mut self, reg: casl2::Register) {
+        assert!(!self.is_idle_register(reg));
+        self.registers_used ^= 1 << reg as isize;
+        let _popped = self.registers_deque.pop_back().expect("BUG");
+        assert_eq!(_popped, reg);
+    }
+
     // 式の展開
-    fn compile_expr(&mut self, expr: &parser::Expr) {
+    fn compile_expr(&mut self, expr: &parser::Expr) -> casl2::Register {
         use parser::Expr::*;
         match expr {
             BinaryOperatorBoolean(_op, _lhs, _rhs) => todo!(),
