@@ -220,6 +220,39 @@ pub enum IndexRegister {
     GR7 = 7,
 }
 
+impl From<IndexRegister> for Register {
+    fn from(r: IndexRegister) -> Self {
+        use IndexRegister::*;
+        match r {
+            GR1 => Self::GR1,
+            GR2 => Self::GR2,
+            GR3 => Self::GR3,
+            GR4 => Self::GR4,
+            GR5 => Self::GR5,
+            GR6 => Self::GR6,
+            GR7 => Self::GR7,
+        }
+    }
+}
+
+impl std::convert::TryFrom<Register> for IndexRegister {
+    type Error = i32;
+    fn try_from(r: Register) -> Result<Self, Self::Error> {
+        use Register::*;
+        let ir = match r {
+            GR0 => return Err(0),
+            GR1 => Self::GR1,
+            GR2 => Self::GR2,
+            GR3 => Self::GR3,
+            GR4 => Self::GR4,
+            GR5 => Self::GR5,
+            GR6 => Self::GR6,
+            GR7 => Self::GR7,
+        };
+        Ok(ir)
+    }
+}
+
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum R {
     Ld,
@@ -681,7 +714,7 @@ mod parser {
         let mut ret = vec![];
         for (i, line) in src.lines().enumerate() {
             let stmt = Statement::parse(line).ok_or_else(|| {
-                SyntaxError::new(i + 1, 0, format!("invalid CASL2 statement: {}", line))
+                SyntaxError::new(i + 1, 0, format!("invalid CASL2 statement: {{{}}}", line))
             })?;
             ret.push(stmt);
         }

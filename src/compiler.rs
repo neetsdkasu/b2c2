@@ -1,5 +1,6 @@
 use crate::casl2;
 use crate::parser;
+use crate::tokenizer;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 type CompileError = String;
@@ -87,6 +88,9 @@ struct Compiler {
     // ループや条件分岐の脱出先のコードにラベルをつけるためその脱出ラベルを保持
     next_statement_label: Option<casl2::Label>,
 
+    // 次のcasl2ステートメントにコメントをつける
+    next_statement_comment: Option<String>,
+
     // 生成するCASL2コード本体
     statements: Vec<casl2::Statement>,
 }
@@ -149,6 +153,7 @@ impl Compiler {
             registers_used: 0,
             registers_deque: VecDeque::with_capacity(7),
             next_statement_label: None,
+            next_statement_comment: None,
             statements: vec![casl2::Statement::labeled(
                 program_name,
                 casl2::Command::Start { entry_point: None },
@@ -392,10 +397,7 @@ impl Compiler {
                 index: _,
                 value: _,
             } => todo!(),
-            AssignInteger {
-                var_name: _,
-                value: _,
-            } => todo!(),
+            AssignInteger { var_name, value } => self.compile_assign_integer(var_name, value),
             AssignString {
                 var_name: _,
                 value: _,
@@ -506,6 +508,24 @@ impl Compiler {
         }
     }
 
+    // Assign Integer ステートメント
+    // int_var = int_expr
+    fn compile_assign_integer(&mut self, var_name: &str, value: &parser::Expr) {
+        self.next_statement_comment = Some(format!("{} = {{value}}", var_name));
+        let reg = self.compile_expr(value);
+        let var_label = self.int_var_labels.get(var_name).expect("BUG");
+
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::A {
+                code: casl2::A::St,
+                r: reg,
+                adr: casl2::Adr::label(var_label),
+                x: None,
+            }));
+
+        self.set_register_idle(reg);
+    }
+
     // Dim ステートメント
     fn compile_dim(&mut self, var_name: &str, var_type: &parser::VarType) {
         use parser::VarType;
@@ -539,50 +559,31 @@ impl Compiler {
     // Input ステートメント
     // 整数変数へのコンソール入力
     fn compile_input_integer(&mut self, var_name: &str) {
-        let cint = self.load_subroutine(subroutine::ID::FuncCInt);
+        let cint_label = self.load_subroutine(subroutine::ID::FuncCInt);
         let s_labels = self.get_temp_str_var_label();
         let (ref s_pos, ref s_len) = &s_labels;
-        let var = self.int_var_labels.get(var_name).expect("BUG");
+        let var_label = self.int_var_labels.get(var_name).expect("BUG");
 
-        // IN S_POS,S_LEN
-        self.statements.push(casl2::Statement::code_with_comment(
-            casl2::Command::In {
-                pos: s_pos.into(),
-                len: s_len.into(),
-            },
-            &format!("Input {}", var_name),
-        ));
-        // LAD GR1,S_POS
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::A {
-                code: casl2::A::Lad,
-                r: casl2::Register::GR1,
-                adr: casl2::Adr::label(s_pos),
-                x: None,
-            }));
-        // LD GR2,S_LEN
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::A {
-                code: casl2::A::Ld,
-                r: casl2::Register::GR2,
-                adr: casl2::Adr::label(s_len),
-                x: None,
-            }));
-        // CALL CINT
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::P {
-                code: casl2::P::Call,
-                adr: casl2::Adr::label(&cint),
-                x: None,
-            }));
-        // ST GR0,VAR
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::A {
-                code: casl2::A::St,
-                r: casl2::Register::GR0,
-                adr: casl2::Adr::label(var),
-                x: None,
-            }));
+        let code = casl2::parse(
+            format!(
+                r#"
+    IN {pos},{len}  ; {comment}
+    LAD GR1,{pos}
+    LD GR2,{len}
+    CALL {cint}
+    ST GR0,{var}
+"#,
+                pos = s_pos,
+                len = s_len,
+                cint = cint_label,
+                var = var_label,
+                comment = format!("Input {}", var_name)
+            )
+            .trim_start_matches('\n'),
+        )
+        .unwrap();
+
+        self.statements.extend(code);
 
         self.return_temp_str_var_label(s_labels);
     }
@@ -671,21 +672,40 @@ impl Compiler {
     // アイドル中のレジスタを取得
     fn get_idle_register(&mut self) -> casl2::Register {
         use casl2::Register::{self, *};
+        use std::convert::TryFrom;
         const REG: [Register; 7] = [GR7, GR6, GR5, GR4, GR3, GR2, GR1];
         for &reg in REG.iter() {
             if self.is_idle_register(reg) {
-                self.registers_used |= 1 << reg as isize;
-                self.registers_deque.push_back(reg);
+                self.set_register_used(reg);
                 return reg;
             }
         }
-        // VecDeque::rotate_left()は実装見る限り、copyで内部バッファ全体を回している…？
-        //   (おそらく、copyはキャパシティのメモリ全体使うため？)
-        //   まぁ大したコストじゃないし、rotate_left(1)呼び出しでもいいのかもだが
-        //   まぁpop_frontとpush_backもcopyコストかかるといえばそうだが
-        let reg = self.registers_deque.pop_front().expect("BUG");
-        self.registers_deque.push_back(reg);
+        self.registers_deque.rotate_left(1);
+        let reg = *self.registers_deque.back().expect("BUG");
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::P {
+                code: casl2::P::Push,
+                adr: casl2::Adr::Dec(0),
+                x: Some(TryFrom::try_from(reg).expect("BUG")),
+            }));
         reg
+    }
+
+    // アイドル化している場合にコールスタックに積まれてる値を戻す
+    fn restore_register(&mut self, reg: casl2::Register) {
+        if !self.is_idle_register(reg) {
+            return;
+        }
+        self.set_register_used(reg);
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::Pop { r: reg }));
+    }
+
+    // アイドル中のレスジスタを使用中に変更
+    fn set_register_used(&mut self, reg: casl2::Register) {
+        assert!(self.is_idle_register(reg));
+        self.registers_used |= 1 << reg as isize;
+        self.registers_deque.push_back(reg);
     }
 
     // 使用中のレジスタをアイドル扱いにする
@@ -706,7 +726,7 @@ impl Compiler {
             CharOfLitString(_lit_str, _index) => todo!(),
             CharOfVarString(_var_name, _index) => todo!(),
             FunctionBoolean(_func, _param) => todo!(),
-            FunctionInteger(_func, _param) => todo!(),
+            FunctionInteger(func, param) => self.compile_function_integer(func, param),
             FunctionString(_func, _param) => todo!(),
             LitBoolean(_lit_bool) => todo!(),
             LitInteger(_lit_int) => todo!(),
@@ -720,6 +740,67 @@ impl Compiler {
             VarArrayOfInteger(_arr_name, _index) => todo!(),
             ParamList(_param_list) => todo!(),
         }
+    }
+
+    // Function integer
+    // 戻り値が整数の関数 (※引数の型とかは関数による…オーバーロードもあるか？)
+    fn compile_function_integer(
+        &mut self,
+        func: &tokenizer::Function,
+        param: &parser::Expr,
+    ) -> casl2::Register {
+        use tokenizer::Function::*;
+        match func {
+            CInt => todo!(),
+            Max => self.compile_function_integer_max(param),
+            Min => todo!(),
+            CBool | CStr | Len => unreachable!("BUG"),
+        }
+    }
+
+    // Function integer Max
+    fn compile_function_integer_max(&mut self, param: &parser::Expr) -> casl2::Register {
+        let list = match param {
+            parser::Expr::ParamList(list) if list.len() == 2 => list,
+            _ => unreachable!("BUG"),
+        };
+        let (lhs, rhs) = match list.as_slice() {
+            [lhs, rhs] => (lhs, rhs),
+            _ => unreachable!("BUG"),
+        };
+        let lhs_reg = self.compile_expr(lhs);
+        let rhs_reg = self.compile_expr(rhs);
+
+        assert_ne!(lhs_reg, rhs_reg); // たぶん、大丈夫…
+
+        self.restore_register(lhs_reg);
+
+        let max_label = self.load_subroutine(subroutine::ID::FuncMax);
+
+        let code = casl2::parse(
+            format!(
+                r#"
+    PUSH 0,GR1
+    PUSH 0,GR2
+    LD GR1,{lhs}
+    LD GR2,{rhs}
+    CALL {max}
+    POP GR2
+    POP GR1
+    LD {lhs},GR0
+"#,
+                lhs = lhs_reg,
+                rhs = rhs_reg,
+                max = max_label
+            )
+            .trim_start_matches('\n'),
+        )
+        .unwrap();
+
+        self.statements.extend(code);
+
+        self.set_register_idle(rhs_reg);
+        lhs_reg
     }
 }
 
@@ -739,6 +820,7 @@ mod subroutine {
     #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Debug)]
     pub enum ID {
         FuncCInt,
+        FuncMax,
     }
 
     impl ID {
@@ -760,20 +842,22 @@ mod subroutine {
     pub fn get_src<T: Gen>(gen: &mut T, id: ID) -> Src {
         match id {
             ID::FuncCInt => get_func_cint(gen),
+            ID::FuncMax => todo!(),
         }
     }
 
     fn get_func_cint<T: Gen>(gen: &mut T) -> Src {
-        let ret_label = gen.jump_label();
-        let read_label = gen.jump_label();
         let mi_label = gen.jump_label();
+        let read_label = gen.jump_label();
+        let ret_label = gen.jump_label();
         // GR1 .. adr of s_buf
         // GR2 .. s_len
         // GR0 .. ret
         Src {
             dependencies: Vec::new(),
-            statements: casl2::parse(&format!(
-                "\
+            statements: casl2::parse(
+                format!(
+                    r#"
 {prog} PUSH 0,GR1    ; {comment}
        PUSH 0,GR2
        PUSH 0,GR3
@@ -815,13 +899,15 @@ mod subroutine {
        POP GR2
        POP GR1
        RET
-",
-                prog = ID::FuncCInt.label(),
-                comment = format!("{:?}", ID::FuncCInt),
-                ret = ret_label,
-                read = read_label,
-                mi = mi_label
-            ))
+"#,
+                    prog = ID::FuncCInt.label(),
+                    comment = format!("{:?}", ID::FuncCInt),
+                    ret = ret_label,
+                    read = read_label,
+                    mi = mi_label
+                )
+                .trim_start_matches('\n'),
+            )
             .unwrap(),
         }
     }
