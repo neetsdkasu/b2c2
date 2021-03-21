@@ -59,7 +59,7 @@ struct Compiler {
     temp_str_var_labels: Vec<(String, String)>,
 
     // 組み込みサブルーチンのコードを保持 (サブルーチンの固有名, コード)
-    subroutine_codes: BTreeMap<subroutine::ID, Vec<casl2::Statement>>,
+    subroutine_codes: HashMap<subroutine::ID, Vec<casl2::Statement>>,
 
     // Continueで参照する継続ラベル対応を保持 (exit_id, 継続ラベル)
     loop_labels: HashMap<usize, String>,
@@ -126,7 +126,7 @@ impl Compiler {
             lit_str_labels: HashMap::new(),
             temp_int_var_labels: Vec::new(),
             temp_str_var_labels: Vec::new(),
-            subroutine_codes: BTreeMap::new(),
+            subroutine_codes: HashMap::new(),
             loop_labels: HashMap::new(),
             exit_labels: HashMap::new(),
             next_statement_label: None,
@@ -233,43 +233,46 @@ impl Compiler {
         });
 
         // 組み込みサブルーチンのコード
-        for (_, mut code) in subroutine_codes.into_iter() {
+        for (_, mut code) in subroutine_codes.into_iter().collect::<BTreeMap<_, _>>() {
             statements.append(&mut code);
         }
 
         // 真理値変数 B**
-        for label in bool_var_labels
+        for (label, var_name) in bool_var_labels
             .into_iter()
-            .map(|(_, v)| v)
+            .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
-            statements.push(casl2::Statement::labeled(
+            statements.push(casl2::Statement::labeled_with_comment(
                 &label,
                 casl2::Command::Ds { size: 1 },
+                &var_name,
             ));
         }
 
         // 整数変数 I**
-        for label in int_var_labels
+        for (label, var_name) in int_var_labels
             .into_iter()
-            .map(|(_, v)| v)
+            .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
-            statements.push(casl2::Statement::labeled(
+            statements.push(casl2::Statement::labeled_with_comment(
                 &label,
                 casl2::Command::Ds { size: 1 },
+                &var_name,
             ));
         }
 
         // 文字列変数 SL** SB**
-        for (len_label, buf_label) in str_var_labels
+        for ((len_label, buf_label), var_name) in str_var_labels
             .into_iter()
-            .map(|(_, v)| v)
+            .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
-            statements.push(casl2::Statement::labeled(
+            statements.push(casl2::Statement::labeled_with_comment(
                 &len_label,
                 casl2::Command::Ds { size: 1 },
+                &var_name,
             ));
             statements.push(casl2::Statement::labeled(
                 &buf_label,
@@ -278,26 +281,28 @@ impl Compiler {
         }
 
         // 真理値配列(固定長) BA**
-        for (label, size) in bool_arr_labels
+        for ((label, size), var_name) in bool_arr_labels
             .into_iter()
-            .map(|(_, v)| v)
+            .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
-            statements.push(casl2::Statement::labeled(
+            statements.push(casl2::Statement::labeled_with_comment(
                 &label,
                 casl2::Command::Ds { size: size as u16 },
+                &var_name,
             ));
         }
 
         // 整数配列(固定長) IA**
-        for (label, size) in int_arr_labels
+        for ((label, size), var_name) in int_arr_labels
             .into_iter()
-            .map(|(_, v)| v)
+            .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
-            statements.push(casl2::Statement::labeled(
+            statements.push(casl2::Statement::labeled_with_comment(
                 &label,
                 casl2::Command::Ds { size: size as u16 },
+                &var_name,
             ));
         }
 
@@ -679,7 +684,7 @@ impl subroutine::Gen for Compiler {
 mod subroutine {
     use crate::casl2;
 
-    #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
+    #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Debug)]
     pub enum ID {
         FuncCInt,
     }
@@ -782,11 +787,15 @@ mod test {
 
         compiler.compile_input_integer("intVar1");
 
+        compiler.compile_print_lit_boolean(true);
+        compiler.compile_print_lit_integer(1234);
+        compiler.compile_print_lit_string("ABCD");
+
         let statements = compiler.finish();
 
-        // statements.iter().for_each(|line| {
-        // eprintln!("{}", line);
-        // });
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
 
         assert!(!statements.is_empty()); // dummy assert
     }
@@ -919,16 +928,48 @@ mod test {
             vec![
                 casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
                 casl2::Statement::code(casl2::Command::Ret),
-                casl2::Statement::labeled("B2", casl2::Command::Ds { size: 1 }),
-                casl2::Statement::labeled("B5", casl2::Command::Ds { size: 1 }),
-                casl2::Statement::labeled("I3", casl2::Command::Ds { size: 1 }),
-                casl2::Statement::labeled("I8", casl2::Command::Ds { size: 1 }),
-                casl2::Statement::labeled("SL1", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled_with_comment(
+                    "B2",
+                    casl2::Command::Ds { size: 1 },
+                    "boolVar1"
+                ),
+                casl2::Statement::labeled_with_comment(
+                    "B5",
+                    casl2::Command::Ds { size: 1 },
+                    "boolVar2"
+                ),
+                casl2::Statement::labeled_with_comment(
+                    "I3",
+                    casl2::Command::Ds { size: 1 },
+                    "intVar2"
+                ),
+                casl2::Statement::labeled_with_comment(
+                    "I8",
+                    casl2::Command::Ds { size: 1 },
+                    "intVar1"
+                ),
+                casl2::Statement::labeled_with_comment(
+                    "SL1",
+                    casl2::Command::Ds { size: 1 },
+                    "strVar1"
+                ),
                 casl2::Statement::labeled("SB1", casl2::Command::Ds { size: 256 }),
-                casl2::Statement::labeled("SL6", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled_with_comment(
+                    "SL6",
+                    casl2::Command::Ds { size: 1 },
+                    "strVar2"
+                ),
                 casl2::Statement::labeled("SB6", casl2::Command::Ds { size: 256 }),
-                casl2::Statement::labeled("BA4", casl2::Command::Ds { size: 32 }),
-                casl2::Statement::labeled("IA7", casl2::Command::Ds { size: 155 }),
+                casl2::Statement::labeled_with_comment(
+                    "BA4",
+                    casl2::Command::Ds { size: 32 },
+                    "boolArr1"
+                ),
+                casl2::Statement::labeled_with_comment(
+                    "IA7",
+                    casl2::Command::Ds { size: 155 },
+                    "intArr1"
+                ),
                 casl2::Statement::code(casl2::Command::End),
             ]
         );
@@ -1208,11 +1249,23 @@ mod test {
                     "Print strVar1"
                 ),
                 casl2::Statement::code(casl2::Command::Ret),
-                casl2::Statement::labeled("SL1", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled_with_comment(
+                    "SL1",
+                    casl2::Command::Ds { size: 1 },
+                    "strVar1"
+                ),
                 casl2::Statement::labeled("SB1", casl2::Command::Ds { size: 256 }),
-                casl2::Statement::labeled("SL2", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled_with_comment(
+                    "SL2",
+                    casl2::Command::Ds { size: 1 },
+                    "strVar2"
+                ),
                 casl2::Statement::labeled("SB2", casl2::Command::Ds { size: 256 }),
-                casl2::Statement::labeled("SL3", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled_with_comment(
+                    "SL3",
+                    casl2::Command::Ds { size: 1 },
+                    "strVar3"
+                ),
                 casl2::Statement::labeled("SB3", casl2::Command::Ds { size: 256 }),
                 casl2::Statement::code(casl2::Command::End),
             ]
@@ -1256,14 +1309,46 @@ mod test {
                     "Input strVar1"
                 ),
                 casl2::Statement::code(casl2::Command::Ret),
-                casl2::Statement::labeled("SL1", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled_with_comment(
+                    "SL1",
+                    casl2::Command::Ds { size: 1 },
+                    "strVar1"
+                ),
                 casl2::Statement::labeled("SB1", casl2::Command::Ds { size: 256 }),
-                casl2::Statement::labeled("SL2", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled_with_comment(
+                    "SL2",
+                    casl2::Command::Ds { size: 1 },
+                    "strVar2"
+                ),
                 casl2::Statement::labeled("SB2", casl2::Command::Ds { size: 256 }),
-                casl2::Statement::labeled("SL3", casl2::Command::Ds { size: 1 }),
+                casl2::Statement::labeled_with_comment(
+                    "SL3",
+                    casl2::Command::Ds { size: 1 },
+                    "strVar3"
+                ),
                 casl2::Statement::labeled("SB3", casl2::Command::Ds { size: 256 }),
                 casl2::Statement::code(casl2::Command::End),
             ]
         );
+    }
+
+    #[test]
+    fn compiler_compile_input_integer_works() {
+        let mut compiler = Compiler::new("TEST").unwrap();
+
+        compiler.compile_dim("intVar1", &parser::VarType::Integer);
+
+        compiler.compile_input_integer("intVar1");
+
+        assert_eq!(compiler.subroutine_codes.len(), 1);
+        assert_eq!(compiler.temp_str_var_labels.len(), 1);
+
+        let statements = compiler.finish();
+
+        // statements.iter().for_each(|line| {
+        // eprintln!("{}", line);
+        // });
+
+        assert!(!statements.is_empty()); // dummy assert
     }
 }
