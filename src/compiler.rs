@@ -192,6 +192,22 @@ impl Compiler {
         labels
     }
 
+    fn load_subroutine(&mut self, req_id: subroutine::ID) -> String {
+        let mut loading_ids = vec![req_id];
+        while let Some(id) = loading_ids.pop() {
+            if self.subroutine_codes.contains_key(&id) {
+                continue;
+            }
+            let subroutine::Src {
+                mut dependencies,
+                statements,
+            } = subroutine::get_src(self, id);
+            loading_ids.append(&mut dependencies);
+            self.subroutine_codes.insert(id, statements);
+        }
+        req_id.label()
+    }
+
     // コンパイル最終工程
     fn finish(self) -> Vec<casl2::Statement> {
         let Self {
@@ -498,8 +514,53 @@ impl Compiler {
 
     // Input ステートメント
     // 整数変数へのコンソール入力
-    fn compile_input_integer(&mut self, _var_name: &str) {
-        todo!();
+    fn compile_input_integer(&mut self, var_name: &str) {
+        let cint = self.load_subroutine(subroutine::ID::FuncCInt);
+        let s_labels = self.get_temp_str_var_label();
+        let (ref s_pos, ref s_len) = &s_labels;
+        let var = self.int_var_labels.get(var_name).expect("BUG");
+
+        // IN S_POS,S_LEN
+        self.statements.push(casl2::Statement::code_with_comment(
+            casl2::Command::In {
+                pos: s_pos.into(),
+                len: s_len.into(),
+            },
+            &format!("Input {}", var_name),
+        ));
+        // LAD GR1,S_POS
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::A {
+                code: casl2::A::Lad,
+                r: casl2::Register::GR1,
+                adr: casl2::Adr::label(s_pos),
+                x: None,
+            }));
+        // LD GR2,S_LEN
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::A {
+                code: casl2::A::Ld,
+                r: casl2::Register::GR2,
+                adr: casl2::Adr::label(s_len),
+                x: None,
+            }));
+        // CALL CINT
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::P {
+                code: casl2::P::Call,
+                adr: casl2::Adr::label(&cint),
+                x: None,
+            }));
+        // ST GR0,VAR
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::A {
+                code: casl2::A::St,
+                r: casl2::Register::GR0,
+                adr: casl2::Adr::label(var),
+                x: None,
+            }));
+
+        self.return_temp_str_var_label(s_labels);
     }
 
     // Input ステートメント
@@ -513,7 +574,7 @@ impl Compiler {
                 pos: buf_label.into(),
                 len: len_label.into(),
             },
-            comment: None,
+            comment: Some(format!("Input {}", var_name)),
         });
     }
 
@@ -529,7 +590,7 @@ impl Compiler {
                 pos: buf_label.into(),
                 len: len_label.into(),
             },
-            comment: None,
+            comment: Some(format!("Print {}", s)),
         });
     }
 
@@ -544,7 +605,7 @@ impl Compiler {
                 pos: buf_label.into(),
                 len: len_label.into(),
             },
-            comment: None,
+            comment: Some(format!("Print {}", value)),
         });
     }
 
@@ -559,7 +620,7 @@ impl Compiler {
                 pos: buf_label.into(),
                 len: len_label.into(),
             },
-            comment: None,
+            comment: Some(format!(r#"Print "{}""#, value.replace('"', r#""""#))),
         });
     }
 
@@ -574,7 +635,7 @@ impl Compiler {
                 pos: buf_label.into(),
                 len: len_label.into(),
             },
-            comment: None,
+            comment: Some(format!("Print {}", var_name)),
         });
     }
 
@@ -630,8 +691,8 @@ mod subroutine {
     }
 
     pub struct Src {
-        dependencies: Vec<ID>,
-        statements: Vec<casl2::Statement>,
+        pub dependencies: Vec<ID>,
+        pub statements: Vec<casl2::Statement>,
     }
 
     pub trait Gen {
@@ -715,7 +776,19 @@ mod test {
 
     #[test]
     fn it_works() {
-        assert!(true);
+        let mut compiler = Compiler::new("TEST").unwrap();
+
+        compiler.compile_dim("intVar1", &parser::VarType::Integer);
+
+        compiler.compile_input_integer("intVar1");
+
+        let statements = compiler.finish();
+
+        // statements.iter().for_each(|line| {
+        // eprintln!("{}", line);
+        // });
+
+        assert!(!statements.is_empty()); // dummy assert
     }
 
     #[test]
@@ -874,22 +947,34 @@ mod test {
             compiler.finish(),
             vec![
                 casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
-                casl2::Statement::code(casl2::Command::Out {
-                    pos: "LB1".into(),
-                    len: "LL1".into()
-                }),
-                casl2::Statement::code(casl2::Command::Out {
-                    pos: "LB2".into(),
-                    len: "LL2".into()
-                }),
-                casl2::Statement::code(casl2::Command::Out {
-                    pos: "LB2".into(),
-                    len: "LL2".into()
-                }),
-                casl2::Statement::code(casl2::Command::Out {
-                    pos: "LB1".into(),
-                    len: "LL1".into()
-                }),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::Out {
+                        pos: "LB1".into(),
+                        len: "LL1".into()
+                    },
+                    "Print True"
+                ),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::Out {
+                        pos: "LB2".into(),
+                        len: "LL2".into()
+                    },
+                    "Print False"
+                ),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::Out {
+                        pos: "LB2".into(),
+                        len: "LL2".into()
+                    },
+                    "Print False"
+                ),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::Out {
+                        pos: "LB1".into(),
+                        len: "LL1".into()
+                    },
+                    "Print True"
+                ),
                 casl2::Statement::code(casl2::Command::Ret),
                 casl2::Statement::labeled(
                     "LL1",
@@ -933,22 +1018,34 @@ mod test {
             compiler.finish(),
             vec![
                 casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
-                casl2::Statement::code(casl2::Command::Out {
-                    pos: "LB1".into(),
-                    len: "LL1".into()
-                }),
-                casl2::Statement::code(casl2::Command::Out {
-                    pos: "LB2".into(),
-                    len: "LL2".into()
-                }),
-                casl2::Statement::code(casl2::Command::Out {
-                    pos: "LB3".into(),
-                    len: "LL3".into()
-                }),
-                casl2::Statement::code(casl2::Command::Out {
-                    pos: "LB1".into(),
-                    len: "LL1".into()
-                }),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::Out {
+                        pos: "LB1".into(),
+                        len: "LL1".into()
+                    },
+                    "Print 1234"
+                ),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::Out {
+                        pos: "LB2".into(),
+                        len: "LL2".into()
+                    },
+                    "Print 999"
+                ),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::Out {
+                        pos: "LB3".into(),
+                        len: "LL3".into()
+                    },
+                    "Print -100"
+                ),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::Out {
+                        pos: "LB1".into(),
+                        len: "LL1".into()
+                    },
+                    "Print 1234"
+                ),
                 casl2::Statement::code(casl2::Command::Ret),
                 casl2::Statement::labeled(
                     "LL1",
@@ -1004,22 +1101,34 @@ mod test {
             compiler.finish(),
             vec![
                 casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
-                casl2::Statement::code(casl2::Command::Out {
-                    pos: "LB1".into(),
-                    len: "LL1".into()
-                }),
-                casl2::Statement::code(casl2::Command::Out {
-                    pos: "LB2".into(),
-                    len: "LL2".into()
-                }),
-                casl2::Statement::code(casl2::Command::Out {
-                    pos: "LB3".into(),
-                    len: "LL3".into()
-                }),
-                casl2::Statement::code(casl2::Command::Out {
-                    pos: "LB1".into(),
-                    len: "LL1".into()
-                }),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::Out {
+                        pos: "LB1".into(),
+                        len: "LL1".into()
+                    },
+                    r#"Print "ABCD""#
+                ),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::Out {
+                        pos: "LB2".into(),
+                        len: "LL2".into()
+                    },
+                    r#"Print "hey you!""#
+                ),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::Out {
+                        pos: "LB3".into(),
+                        len: "LL3".into()
+                    },
+                    r#"Print """#
+                ),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::Out {
+                        pos: "LB1".into(),
+                        len: "LL1".into()
+                    },
+                    r#"Print "ABCD""#
+                ),
                 casl2::Statement::code(casl2::Command::Ret),
                 casl2::Statement::labeled(
                     "LL1",
@@ -1077,18 +1186,27 @@ mod test {
             compiler.finish(),
             vec![
                 casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
-                casl2::Statement::code(casl2::Command::Out {
-                    pos: "SB3".into(),
-                    len: "SL3".into()
-                }),
-                casl2::Statement::code(casl2::Command::Out {
-                    pos: "SB2".into(),
-                    len: "SL2".into()
-                }),
-                casl2::Statement::code(casl2::Command::Out {
-                    pos: "SB1".into(),
-                    len: "SL1".into()
-                }),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::Out {
+                        pos: "SB3".into(),
+                        len: "SL3".into()
+                    },
+                    "Print strVar3"
+                ),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::Out {
+                        pos: "SB2".into(),
+                        len: "SL2".into()
+                    },
+                    "Print strVar2"
+                ),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::Out {
+                        pos: "SB1".into(),
+                        len: "SL1".into()
+                    },
+                    "Print strVar1"
+                ),
                 casl2::Statement::code(casl2::Command::Ret),
                 casl2::Statement::labeled("SL1", casl2::Command::Ds { size: 1 }),
                 casl2::Statement::labeled("SB1", casl2::Command::Ds { size: 256 }),
@@ -1116,18 +1234,27 @@ mod test {
             compiler.finish(),
             vec![
                 casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
-                casl2::Statement::code(casl2::Command::In {
-                    pos: "SB3".into(),
-                    len: "SL3".into()
-                }),
-                casl2::Statement::code(casl2::Command::In {
-                    pos: "SB2".into(),
-                    len: "SL2".into()
-                }),
-                casl2::Statement::code(casl2::Command::In {
-                    pos: "SB1".into(),
-                    len: "SL1".into()
-                }),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::In {
+                        pos: "SB3".into(),
+                        len: "SL3".into()
+                    },
+                    "Input strVar3"
+                ),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::In {
+                        pos: "SB2".into(),
+                        len: "SL2".into()
+                    },
+                    "Input strVar2"
+                ),
+                casl2::Statement::code_with_comment(
+                    casl2::Command::In {
+                        pos: "SB1".into(),
+                        len: "SL1".into()
+                    },
+                    "Input strVar1"
+                ),
                 casl2::Statement::code(casl2::Command::Ret),
                 casl2::Statement::labeled("SL1", casl2::Command::Ds { size: 1 }),
                 casl2::Statement::labeled("SB1", casl2::Command::Ds { size: 256 }),
