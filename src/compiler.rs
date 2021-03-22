@@ -2,6 +2,7 @@ use crate::casl2;
 use crate::parser;
 use crate::tokenizer;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::fmt::Write;
 
 type CompileError = String;
 
@@ -548,8 +549,6 @@ impl Compiler {
 
     // For ステートメント (Stepが定数)
     fn compile_for_with_literal_step(&mut self, for_stmt: &parser::Statement, step: i32) {
-        use std::fmt::Write;
-
         let (exit_id, counter, init, end, block) = if let parser::Statement::For {
             exit_id,
             counter,
@@ -679,8 +678,6 @@ impl Compiler {
 
     // For ステートメント
     fn compile_for(&mut self, for_stmt: &parser::Statement) {
-        use std::fmt::Write;
-
         let (exit_id, counter, init, end, step, block) = if let parser::Statement::For {
             exit_id,
             counter,
@@ -867,26 +864,34 @@ impl Compiler {
         let cint_label = self.load_subroutine(subroutine::ID::FuncCInt);
         let s_labels = self.get_temp_str_var_label();
         let (ref s_pos, ref s_len) = &s_labels;
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[GR1, GR2])
+        };
+
         let var_label = self.int_var_labels.get(var_name).expect("BUG");
 
-        let code = casl2::parse(
-            format!(
-                r#"
-    IN {pos},{len}  ; {comment}
-    LAD GR1,{pos}
-    LD GR2,{len}
-    CALL {cint}
-    ST GR0,{var}
-"#,
-                pos = s_pos,
-                len = s_len,
-                cint = cint_label,
-                var = var_label,
-                comment = format!("Input {}", var_name)
-            )
-            .trim_start_matches('\n'),
+        let mut src = saves;
+
+        writeln!(
+            &mut src,
+            r#" IN {pos},{len}  ; {comment}
+                LAD GR1,{pos}
+                LD GR2,{len}
+                CALL {cint}"#,
+            pos = s_pos,
+            len = s_len,
+            cint = cint_label,
+            comment = format!("Input {}", var_name)
         )
         .unwrap();
+
+        src.push_str(&recovers);
+
+        writeln!(&mut src, " ST GR0,{var}", var = var_label).unwrap();
+
+        let code = casl2::parse(&src).unwrap();
 
         self.statements.extend(code);
 
@@ -1024,8 +1029,6 @@ impl Compiler {
     // subrutine引数のレジスタなどの一時利用のとき
     // 一時退避するためのソースコードと復帰するためのソースコードを生成
     fn get_save_registers_src(&self, regs: &[casl2::Register]) -> (String, String) {
-        use std::fmt::Write;
-
         let mut saves = String::new();
         let mut recovers = String::new();
 
@@ -1046,7 +1049,7 @@ impl Compiler {
         use parser::Expr::*;
         match expr {
             BinaryOperatorBoolean(_op, _lhs, _rhs) => todo!(),
-            BinaryOperatorInteger(_op, _lhs, _rhs) => todo!(),
+            BinaryOperatorInteger(op, lhs, rhs) => self.compile_bin_op_integer(*op, lhs, rhs),
             BinaryOperatorString(_op, _lhs, _rhs) => todo!(),
             CharOfLitString(_lit_str, _index) => todo!(),
             CharOfVarString(_var_name, _index) => todo!(),
@@ -1066,6 +1069,95 @@ impl Compiler {
             VarArrayOfInteger(_arr_name, _index) => todo!(),
             ParamList(_) => unreachable!("BUG"),
         }
+    }
+
+    // (式展開の処理の一部)
+    // 整数を返す二項演算子の処理
+    fn compile_bin_op_integer(
+        &mut self,
+        op: tokenizer::Operator,
+        lhs: &parser::Expr,
+        rhs: &parser::Expr,
+    ) -> casl2::Register {
+        use tokenizer::Operator::*;
+
+        let lhs_reg = self.compile_expr(lhs);
+
+        // rhsを直接埋め込める場合
+        let with_lit_src = match rhs {
+            parser::Expr::LitInteger(value) => match op {
+                And => Some(format!(" AND {},={}", lhs_reg, value)),
+                Xor => Some(format!(" XOR {},={}", lhs_reg, value)),
+                Or => Some(format!(" OR {},={}", lhs_reg, value)),
+                ShiftLeft => Some(format!(" SLA {},{}", lhs_reg, value)),
+                ShiftRight => Some(format!(" SRA {},{}", lhs_reg, value)),
+                Add => Some(format!(" LAD {0},{1},{0}", lhs_reg, value)),
+                Sub => Some(format!(" SUBA {},={}", lhs_reg, value)),
+                _ => None,
+            },
+            parser::Expr::LitCharacter(value) => match op {
+                And => Some(format!(" AND {},='{}'", lhs_reg, value)),
+                Xor => Some(format!(" XOR {},='{}'", lhs_reg, value)),
+                Or => Some(format!(" OR {},='{}'", lhs_reg, value)),
+                Add => Some(format!(" ADDA {},='{}'", lhs_reg, value)),
+                Sub => Some(format!(" SUBA {},='{}'", lhs_reg, value)),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(src) = with_lit_src {
+            let code = casl2::parse(&src).unwrap();
+            self.statements.extend(code);
+            return lhs_reg;
+        }
+
+        // rhsを計算する場合
+
+        let rhs_reg = self.compile_expr(rhs);
+
+        assert_ne!(lhs_reg, rhs_reg); // たぶん、大丈夫…
+
+        self.restore_register(lhs_reg);
+
+        let src = match op {
+            And => format!(" AND {},{}", lhs_reg, rhs_reg),
+            Xor => format!(" XOR {},{}", lhs_reg, rhs_reg),
+            Or => format!(" OR {},{}", lhs_reg, rhs_reg),
+            ShiftLeft => format!(" SLA {},0,{}", lhs_reg, rhs_reg),
+            ShiftRight => format!(" SRA {},0,{}", lhs_reg, rhs_reg),
+            Add => format!(" ADDA {},{}", lhs_reg, rhs_reg),
+            Sub => format!(" SUBA {},{}", lhs_reg, rhs_reg),
+
+            // 組み込みサブルーチンで処理するもの
+            Mul => todo!(),
+            Div => todo!(),
+            Mod => return self.compile_bin_op_integer_mod(lhs_reg, rhs_reg),
+
+            // 二項演算子ではないものや、整数を返さないもの
+            Not | NotEqual | LessOrEequal | GreaterOrEqual | AddInto | SubInto | Equal
+            | LessThan | GreaterThan | Concat | OpenBracket | CloseBracket | Comma => {
+                unreachable!("BUG")
+            }
+        };
+
+        let code = casl2::parse(&src).unwrap();
+
+        self.statements.extend(code);
+
+        self.set_register_idle(rhs_reg);
+
+        lhs_reg
+    }
+
+    // (式展開の処理の一部)
+    // 整数を返す二項演算子( Mod )の処理
+    fn compile_bin_op_integer_mod(
+        &mut self,
+        lhs_reg: casl2::Register,
+        rhs_reg: casl2::Register,
+    ) -> casl2::Register {
+        let _ = (lhs_reg, rhs_reg);
+        todo!()
     }
 
     // (式展開の処理の一部)
@@ -1124,9 +1216,10 @@ impl Compiler {
         use tokenizer::Function::*;
         match func {
             CInt => todo!(),
+            Len => todo!(),
             Max => self.call_function_2_int_args_int_ret(param, subroutine::ID::FuncMax),
             Min => self.call_function_2_int_args_int_ret(param, subroutine::ID::FuncMin),
-            CBool | CStr | Len => unreachable!("BUG"),
+            CBool | CStr => unreachable!("BUG"),
         }
     }
 
@@ -1166,8 +1259,6 @@ impl Compiler {
         rhs: &parser::Expr,
         id: subroutine::ID,
     ) -> casl2::Register {
-        use std::fmt::Write;
-
         let lhs_reg = self.compile_expr(lhs);
         let rhs_reg = self.compile_expr(rhs);
 
@@ -1226,6 +1317,7 @@ mod subroutine {
         FuncCInt,
         FuncMax,
         FuncMin,
+        UtilDivMod,
     }
 
     impl ID {
@@ -1249,6 +1341,7 @@ mod subroutine {
             ID::FuncCInt => get_func_cint(gen),
             ID::FuncMax => get_func_max(gen),
             ID::FuncMin => get_func_min(gen),
+            ID::UtilDivMod => get_util_div_mod(gen),
         }
     }
 
@@ -1373,6 +1466,18 @@ mod subroutine {
             )
             .unwrap(),
         }
+    }
+
+    fn get_util_div_mod<T: Gen>(_gen: &mut T) -> Src {
+        // GR2 割られる数 (分子)
+        // GR3 割る数 (分母)
+        // GR0 商    = GR2 \ GR3
+        // GR1 余り   = GR2 Mod GR3
+        // Src {
+        // dependencies: Vec::new(),
+        // statements: vec![],
+        // }
+        todo!()
     }
 }
 
