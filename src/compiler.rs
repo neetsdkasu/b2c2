@@ -716,6 +716,24 @@ impl Compiler {
         assert_eq!(_popped, reg);
     }
 
+    // subrutine引数のレジスタなどの一時利用のとき
+    // 一時退避するためのソースコードと復帰するためのソースコードを生成
+    fn get_save_registers_src(&self, regs: &[casl2::Register]) -> (String, String) {
+        use std::fmt::Write;
+
+        let mut saves = String::new();
+        let mut recovers = String::new();
+
+        for reg in regs.iter() {
+            if !self.is_idle_register(*reg) {
+                writeln!(&mut saves, " PUSH 0,{}", reg).unwrap();
+                writeln!(&mut recovers, " POP {}", reg).unwrap();
+            }
+        }
+
+        (saves, recovers)
+    }
+
     // 式の展開
     fn compile_expr(&mut self, expr: &parser::Expr) -> casl2::Register {
         use parser::Expr::*;
@@ -851,32 +869,25 @@ impl Compiler {
 
         let sub_label = self.load_subroutine(id);
 
-        let mut src = String::new();
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[GR1, GR2])
+        };
 
-        if !self.is_idle_register(casl2::Register::GR1) {
-            writeln!(&mut src, " PUSH 0,GR1").unwrap();
-        }
-        if !self.is_idle_register(casl2::Register::GR2) {
-            writeln!(&mut src, " PUSH 0,GR2").unwrap();
-        }
+        let mut src = saves;
 
         writeln!(
             &mut src,
-            r#"   LD GR1,{lhs}
-                  LD GR2,{rhs}
-                  CALL {sub}"#,
+            r#" LD GR1,{lhs}
+                LD GR2,{rhs}
+                CALL {sub}"#,
             lhs = lhs_reg,
             rhs = rhs_reg,
             sub = sub_label
         )
         .unwrap();
 
-        if !self.is_idle_register(casl2::Register::GR2) {
-            writeln!(&mut src, " POP GR2").unwrap();
-        }
-        if !self.is_idle_register(casl2::Register::GR1) {
-            writeln!(&mut src, " POP GR1").unwrap();
-        }
+        src.push_str(&recovers);
 
         writeln!(&mut src, " LD {lhs},GR0", lhs = lhs_reg).unwrap();
 
