@@ -872,10 +872,10 @@ impl Compiler {
         .unwrap();
 
         if !self.is_idle_register(casl2::Register::GR2) {
-            writeln!(&mut src, " PUSH 0,GR2").unwrap();
+            writeln!(&mut src, " POP GR2").unwrap();
         }
         if !self.is_idle_register(casl2::Register::GR1) {
-            writeln!(&mut src, " PUSH 0,GR1").unwrap();
+            writeln!(&mut src, " POP GR1").unwrap();
         }
 
         writeln!(&mut src, " LD {lhs},GR0", lhs = lhs_reg).unwrap();
