@@ -173,6 +173,28 @@ impl Compiler {
         format!("J{}", self.jump_id)
     }
 
+    // Continueなど繰り返しの先頭で使うラベルの取得、無い場合は新規登録
+    fn get_loop_label(&mut self, exit_id: usize) -> String {
+        if let Some(label) = self.loop_labels.get(&exit_id) {
+            label.clone()
+        } else {
+            let label = self.get_new_jump_label();
+            self.loop_labels.insert(exit_id, label.clone());
+            label
+        }
+    }
+
+    // Exitなどブロック脱出で使うラベルの取得、無い場合は新規登録
+    fn get_exit_label(&mut self, exit_id: usize) -> String {
+        if let Some(label) = self.exit_labels.get(&exit_id) {
+            label.clone()
+        } else {
+            let label = self.get_new_jump_label();
+            self.exit_labels.insert(exit_id, label.clone());
+            label
+        }
+    }
+
     // 式展開時の一時変数(整数/真理値)のラベル取得・生成
     fn get_temp_int_var_label(&mut self) -> String {
         if let Some(label) = self.temp_int_var_labels.pop() {
@@ -441,14 +463,12 @@ impl Compiler {
             ExitDo { exit_id: _ } => todo!(),
             ExitFor { exit_id: _ } => todo!(),
             ExitSelect { exit_id: _ } => todo!(),
+            For { step: None, .. } => self.compile_for_with_literal_step(stmt, 1),
             For {
-                exit_id: _,
-                counter: _,
-                init: _,
-                end: _,
-                step: _,
-                block: _,
-            } => todo!(),
+                step: Some(parser::Expr::LitInteger(step)),
+                ..
+            } => self.compile_for_with_literal_step(stmt, *step),
+            For { .. } => self.compile_for(stmt),
             If {
                 condition: _,
                 block: _,
@@ -524,6 +544,291 @@ impl Compiler {
             }));
 
         self.set_register_idle(reg);
+    }
+
+    // For ステートメント (Stepが定数)
+    fn compile_for_with_literal_step(&mut self, for_stmt: &parser::Statement, step: i32) {
+        use std::fmt::Write;
+
+        let (exit_id, counter, init, end, block) = if let parser::Statement::For {
+            exit_id,
+            counter,
+            init,
+            end,
+            step: _,
+            block,
+        } = for_stmt
+        {
+            (*exit_id, counter, init, end, block)
+        } else {
+            unreachable!("BUG");
+        };
+
+        self.next_statement_comment = Some(format!(
+            "For {counter} = {{init}} To {{end}} Step {step}",
+            counter = counter,
+            step = step
+        ));
+
+        // calc {end}
+        let end_var = self.get_temp_int_var_label();
+        let end_reg = self.compile_expr(end);
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::A {
+                code: casl2::A::St,
+                r: end_reg,
+                adr: casl2::Adr::label(&end_var),
+                x: None,
+            }));
+        self.set_register_idle(end_reg);
+
+        // カウンタの準備
+        let counter_var = self.int_var_labels.get(counter).expect("BUG").clone();
+
+        // calc {init} and assign to {counter}
+        let init_reg = self.compile_expr(init);
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::A {
+                code: casl2::A::St,
+                r: init_reg,
+                adr: casl2::Adr::label(&counter_var),
+                x: None,
+            }));
+        self.set_register_idle(init_reg);
+
+        // ラベルの準備
+        let condition_label = self.get_new_jump_label();
+        let loop_label = self.get_loop_label(exit_id);
+        let exit_label = self.get_exit_label(exit_id);
+
+        // ループ継続の判定部分
+
+        let (saves, recovers) =
+            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::GR1));
+
+        let mut condition_src = String::new();
+
+        writeln!(&mut condition_src, "{cond} NOP", cond = condition_label).unwrap();
+
+        condition_src.push_str(&saves);
+
+        writeln!(
+            &mut condition_src,
+            r#" LD GR1,{counter}
+                CPA GR1,{end}"#,
+            counter = counter_var,
+            end = end_var
+        )
+        .unwrap();
+
+        condition_src.push_str(&recovers);
+
+        if step < 0 {
+            writeln!(&mut condition_src, " JMI {exit}", exit = exit_label).unwrap();
+        } else {
+            writeln!(&mut condition_src, " JPL {exit}", exit = exit_label).unwrap();
+        }
+
+        let condition_code = casl2::parse(&condition_src).unwrap();
+
+        self.statements.extend(condition_code);
+
+        // ループ内のコードを実行
+        for stmt in block.iter() {
+            self.compile(stmt);
+        }
+
+        // ループ末尾 (カウンタの更新など)
+
+        let (saves, recovers) =
+            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::GR1));
+
+        let mut tail_src = String::new();
+
+        writeln!(&mut tail_src, "{next} NOP", next = loop_label).unwrap();
+
+        tail_src.push_str(&saves);
+
+        writeln!(
+            &mut tail_src,
+            r#" LD GR1,{counter}
+                LAD GR1,{step},GR1
+                ST GR1,{counter}"#,
+            counter = counter_var,
+            step = step
+        )
+        .unwrap();
+
+        tail_src.push_str(&recovers);
+
+        writeln!(
+            &mut tail_src,
+            " JUMP {cond} ; Next {counter}",
+            cond = condition_label,
+            counter = counter
+        )
+        .unwrap();
+        writeln!(&mut tail_src, "{exit} NOP", exit = exit_label).unwrap();
+
+        let tail_code = casl2::parse(&tail_src).unwrap();
+
+        self.statements.extend(tail_code);
+
+        self.return_temp_int_var_label(end_var);
+    }
+
+    // For ステートメント
+    fn compile_for(&mut self, for_stmt: &parser::Statement) {
+        use std::fmt::Write;
+
+        let (exit_id, counter, init, end, step, block) = if let parser::Statement::For {
+            exit_id,
+            counter,
+            init,
+            end,
+            step: Some(step),
+            block,
+        } = for_stmt
+        {
+            (*exit_id, counter, init, end, step, block)
+        } else {
+            unreachable!("BUG");
+        };
+
+        self.next_statement_comment = Some(format!(
+            "For {counter} = {{init}} To {{end}} Step {{step}}",
+            counter = counter
+        ));
+
+        // calc {step}
+        let step_var = self.get_temp_int_var_label();
+        let step_reg = self.compile_expr(step);
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::A {
+                code: casl2::A::St,
+                r: step_reg,
+                adr: casl2::Adr::label(&step_var),
+                x: None,
+            }));
+        self.set_register_idle(step_reg);
+
+        // calc {end}
+        let end_var = self.get_temp_int_var_label();
+        let end_reg = self.compile_expr(end);
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::A {
+                code: casl2::A::St,
+                r: end_reg,
+                adr: casl2::Adr::label(&end_var),
+                x: None,
+            }));
+        self.set_register_idle(end_reg);
+
+        // カウンタの準備
+        let counter_var = self.int_var_labels.get(counter).expect("BUG").clone();
+
+        // calc {init} and assign to {counter}
+        let init_reg = self.compile_expr(init);
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::A {
+                code: casl2::A::St,
+                r: init_reg,
+                adr: casl2::Adr::label(&counter_var),
+                x: None,
+            }));
+        self.set_register_idle(init_reg);
+
+        // ラベルの準備
+        let condition_label = self.get_new_jump_label();
+        let negastep_label = self.get_new_jump_label();
+        let blockhead_label = self.get_new_jump_label();
+        let loop_label = self.get_loop_label(exit_id);
+        let exit_label = self.get_exit_label(exit_id);
+
+        // ループ継続の判定部分
+
+        let (saves, recovers) =
+            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::GR1));
+
+        let mut condition_src = String::new();
+
+        writeln!(&mut condition_src, "{cond} NOP", cond = condition_label).unwrap();
+
+        condition_src.push_str(&saves);
+
+        writeln!(
+            &mut condition_src,
+            r#" LD GR1,{step}
+                JMI {nega}
+                LD GR1,{counter}
+                CPA GR1,{end}
+                JUMP {block}
+{nega}          LD GR1,{end}
+                CPA GR1,{counter}"#,
+            counter = counter_var,
+            step = step_var,
+            nega = negastep_label,
+            end = end_var,
+            block = blockhead_label
+        )
+        .unwrap();
+
+        condition_src.push_str(&recovers);
+
+        writeln!(
+            &mut condition_src,
+            "{block} JPL {exit}",
+            exit = exit_label,
+            block = blockhead_label
+        )
+        .unwrap();
+
+        let condition_code = casl2::parse(&condition_src).unwrap();
+
+        self.statements.extend(condition_code);
+
+        // ループ内のコードを実行
+        for stmt in block.iter() {
+            self.compile(stmt);
+        }
+
+        // ループ末尾 (カウンタの更新など)
+
+        let (saves, recovers) =
+            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::GR1));
+
+        let mut tail_src = String::new();
+
+        writeln!(&mut tail_src, "{next} NOP", next = loop_label).unwrap();
+
+        tail_src.push_str(&saves);
+
+        writeln!(
+            &mut tail_src,
+            r#" LD GR1,{counter}
+                ADDA GR1,{step}
+                ST GR1,{counter}"#,
+            counter = counter_var,
+            step = step_var
+        )
+        .unwrap();
+
+        tail_src.push_str(&recovers);
+
+        writeln!(
+            &mut tail_src,
+            " JUMP {cond} ; Next {counter}",
+            cond = condition_label,
+            counter = counter
+        )
+        .unwrap();
+        writeln!(&mut tail_src, "{exit} NOP", exit = exit_label).unwrap();
+
+        let tail_code = casl2::parse(&tail_src).unwrap();
+
+        self.statements.extend(tail_code);
+        self.return_temp_int_var_label(end_var);
+        self.return_temp_int_var_label(step_var);
     }
 
     // Dim ステートメント
@@ -723,6 +1028,8 @@ impl Compiler {
 
         let mut saves = String::new();
         let mut recovers = String::new();
+
+        // next_statement_comment や next_statement_label をどうするか…
 
         for reg in regs.iter() {
             if !self.is_idle_register(*reg) {
@@ -1080,24 +1387,25 @@ Dim c As Integer
 Print "Limit?"
 Input c
 c = Max(1, Min(100, c))
-For i = 1 To c Step 1
-   Select Case i Mod 15
-       Case 0
-           Print "FizzBuzz"
-       Case 3, 6, 9, 12
-           Print "Fizz"
-       Case 5, 10
-           Print "Buzz"
-       Case Else
-           Print i
-   End Select
+For i = 1 To c Step Min(1,1)
+'   Select Case i Mod 15
+'       Case 0
+            Print "FizzBuzz"
+'       Case 3, 6, 9, 12
+'           Print "Fizz"
+'       Case 5, 10
+'           Print "Buzz"
+'       Case Else
+'           Print i
+'   End Select
 Next i
 "#;
+
         let mut cursor = std::io::Cursor::new(src);
 
         let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-        let statements = compile("FIZZBUZZ", &code[..5]).unwrap();
+        let statements = compile("FIZZBUZZ", &code[..]).unwrap();
 
         statements.iter().for_each(|line| {
             eprintln!("{}", line);
