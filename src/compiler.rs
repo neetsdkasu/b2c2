@@ -729,12 +729,12 @@ impl Compiler {
             FunctionInteger(func, param) => self.compile_function_integer(func, param),
             FunctionString(_func, _param) => todo!(),
             LitBoolean(_lit_bool) => todo!(),
-            LitInteger(_lit_int) => todo!(),
+            LitInteger(lit_int) => self.compile_literal_integer(*lit_int),
             LitString(_lit_str) => todo!(),
             UnaryOperatorInteger(_op, _value) => todo!(),
             UnaryOperatorBoolean(_op, _value) => todo!(),
             VarBoolean(_var_name) => todo!(),
-            VarInteger(_var_name) => todo!(),
+            VarInteger(var_name) => self.compile_variable_integer(var_name),
             VarString(_var_name) => todo!(),
             VarArrayOfBoolean(_arr_name, _index) => todo!(),
             VarArrayOfInteger(_arr_name, _index) => todo!(),
@@ -742,6 +742,52 @@ impl Compiler {
         }
     }
 
+    // (式展開の処理の一部)
+    // 整数変数の読み込み
+    fn compile_variable_integer(&mut self, var_name: &str) -> casl2::Register {
+        let label = self.next_statement_label.take();
+        let comment = self.next_statement_comment.take();
+        let reg = self.get_idle_register();
+        let var_label = self.int_var_labels.get(var_name).expect("BUG");
+
+        // LD REG,VAR
+        self.statements.push(casl2::Statement::Code {
+            label,
+            command: casl2::Command::A {
+                code: casl2::A::Ld,
+                r: reg,
+                adr: casl2::Adr::label(var_label),
+                x: None,
+            },
+            comment,
+        });
+
+        reg
+    }
+
+    // (式展開の処理の一部)
+    // 整数リテラルの読み込み
+    fn compile_literal_integer(&mut self, value: i32) -> casl2::Register {
+        let label = self.next_statement_label.take();
+        let comment = self.next_statement_comment.take();
+        let reg = self.get_idle_register();
+
+        // LAD REG,VALUE
+        self.statements.push(casl2::Statement::Code {
+            label,
+            command: casl2::Command::A {
+                code: casl2::A::Lad,
+                r: reg,
+                adr: casl2::Adr::Dec(value as i16),
+                x: None,
+            },
+            comment,
+        });
+
+        reg
+    }
+
+    // (式展開の処理の一部)
     // Function integer
     // 戻り値が整数の関数 (※引数の型とかは関数による…オーバーロードもあるか？)
     fn compile_function_integer(
@@ -794,6 +840,8 @@ impl Compiler {
         rhs: &parser::Expr,
         id: subroutine::ID,
     ) -> casl2::Register {
+        use std::fmt::Write;
+
         let lhs_reg = self.compile_expr(lhs);
         let rhs_reg = self.compile_expr(rhs);
 
@@ -803,25 +851,36 @@ impl Compiler {
 
         let sub_label = self.load_subroutine(id);
 
-        let code = casl2::parse(
-            format!(
-                r#"
-    PUSH 0,GR1
-    PUSH 0,GR2
-    LD GR1,{lhs}
-    LD GR2,{rhs}
-    CALL {sub}
-    POP GR2
-    POP GR1
-    LD {lhs},GR0
-"#,
-                lhs = lhs_reg,
-                rhs = rhs_reg,
-                sub = sub_label
-            )
-            .trim_start_matches('\n'),
+        let mut src = String::new();
+
+        if !self.is_idle_register(casl2::Register::GR1) {
+            writeln!(&mut src, " PUSH 0,GR1").unwrap();
+        }
+        if !self.is_idle_register(casl2::Register::GR2) {
+            writeln!(&mut src, " PUSH 0,GR2").unwrap();
+        }
+
+        writeln!(
+            &mut src,
+            r#"   LD GR1,{lhs}
+                  LD GR2,{rhs}
+                  CALL {sub}"#,
+            lhs = lhs_reg,
+            rhs = rhs_reg,
+            sub = sub_label
         )
         .unwrap();
+
+        if !self.is_idle_register(casl2::Register::GR2) {
+            writeln!(&mut src, " PUSH 0,GR2").unwrap();
+        }
+        if !self.is_idle_register(casl2::Register::GR1) {
+            writeln!(&mut src, " PUSH 0,GR1").unwrap();
+        }
+
+        writeln!(&mut src, " LD {lhs},GR0", lhs = lhs_reg).unwrap();
+
+        let code = casl2::parse(&src).unwrap();
 
         self.statements.extend(code);
 
@@ -1027,7 +1086,7 @@ Next i
 
         let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-        let statements = compile("FIZZBUZZ", &code[..4]).unwrap();
+        let statements = compile("FIZZBUZZ", &code[..5]).unwrap();
 
         statements.iter().for_each(|line| {
             eprintln!("{}", line);
