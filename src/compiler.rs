@@ -8,7 +8,7 @@ type CompileError = String;
 // 正しい src が来ることを前提とする (不正な src の判定は面倒くさい)
 pub fn compile(
     program_name: &str,
-    src: Vec<parser::Statement>,
+    src: &[parser::Statement],
 ) -> Result<Vec<casl2::Statement>, CompileError> {
     let mut compiler = Compiler::new(program_name)?;
 
@@ -738,7 +738,7 @@ impl Compiler {
             VarString(_var_name) => todo!(),
             VarArrayOfBoolean(_arr_name, _index) => todo!(),
             VarArrayOfInteger(_arr_name, _index) => todo!(),
-            ParamList(_param_list) => todo!(),
+            ParamList(_) => unreachable!("BUG"),
         }
     }
 
@@ -752,14 +752,24 @@ impl Compiler {
         use tokenizer::Function::*;
         match func {
             CInt => todo!(),
-            Max => self.compile_function_integer_max(param),
-            Min => todo!(),
+            Max => self.call_function_2_int_args_int_ret(param, subroutine::ID::FuncMax),
+            Min => self.call_function_2_int_args_int_ret(param, subroutine::ID::FuncMin),
             CBool | CStr | Len => unreachable!("BUG"),
         }
     }
 
-    // Function integer Max
-    fn compile_function_integer_max(&mut self, param: &parser::Expr) -> casl2::Register {
+    // (式展開の処理の一部)
+    // call function
+    //    2 arguments (int/bool)
+    //    1 return (int/bool)
+    // レジスタに載るサイズの引数が２つ (GR1,GR2)
+    // レジスタに載る戻り値１つ (GR0)
+    //  の関数の処理をサブルーチンへ橋渡しする処理
+    fn call_function_2_int_args_int_ret(
+        &mut self,
+        param: &parser::Expr,
+        id: subroutine::ID,
+    ) -> casl2::Register {
         let list = match param {
             parser::Expr::ParamList(list) if list.len() == 2 => list,
             _ => unreachable!("BUG"),
@@ -768,6 +778,22 @@ impl Compiler {
             [lhs, rhs] => (lhs, rhs),
             _ => unreachable!("BUG"),
         };
+        self.call_subroutine_2_int_args_int_ret(lhs, rhs, id)
+    }
+
+    // (式展開の処理の一部)
+    // call subroutine
+    //    2 arguments (int/bool)
+    //    1 return (int/bool)
+    // レジスタに載るサイズの引数が２つ (GR1,GR2)
+    // レジスタに載る戻り値１つ (GR0)
+    // 　のサブルーチンを呼び出す処理を加える
+    fn call_subroutine_2_int_args_int_ret(
+        &mut self,
+        lhs: &parser::Expr,
+        rhs: &parser::Expr,
+        id: subroutine::ID,
+    ) -> casl2::Register {
         let lhs_reg = self.compile_expr(lhs);
         let rhs_reg = self.compile_expr(rhs);
 
@@ -775,7 +801,7 @@ impl Compiler {
 
         self.restore_register(lhs_reg);
 
-        let max_label = self.load_subroutine(subroutine::ID::FuncMax);
+        let sub_label = self.load_subroutine(id);
 
         let code = casl2::parse(
             format!(
@@ -784,14 +810,14 @@ impl Compiler {
     PUSH 0,GR2
     LD GR1,{lhs}
     LD GR2,{rhs}
-    CALL {max}
+    CALL {sub}
     POP GR2
     POP GR1
     LD {lhs},GR0
 "#,
                 lhs = lhs_reg,
                 rhs = rhs_reg,
-                max = max_label
+                sub = sub_label
             )
             .trim_start_matches('\n'),
         )
@@ -821,6 +847,7 @@ mod subroutine {
     pub enum ID {
         FuncCInt,
         FuncMax,
+        FuncMin,
     }
 
     impl ID {
@@ -842,11 +869,69 @@ mod subroutine {
     pub fn get_src<T: Gen>(gen: &mut T, id: ID) -> Src {
         match id {
             ID::FuncCInt => get_func_cint(gen),
-            ID::FuncMax => todo!(),
+            ID::FuncMax => get_func_max(gen),
+            ID::FuncMin => get_func_min(gen),
+        }
+    }
+
+    fn get_func_max<T: Gen>(gen: &mut T) -> Src {
+        let id = ID::FuncMax;
+        let mi_label = gen.jump_label();
+        // GR1 .. value1
+        // GR2 .. value2
+        // GR0 .. ret = max(value1, value2)
+        Src {
+            dependencies: Vec::new(),
+            statements: casl2::parse(
+                format!(
+                    r#"
+{prog} CPA GR1,GR2    ; {comment}
+       JMI {mi}
+       LD GR0,GR1
+       RET
+{mi}   LD GR0,GR2
+       RET
+"#,
+                    prog = id.label(),
+                    comment = format!("{:?}", id),
+                    mi = mi_label
+                )
+                .trim_start_matches('\n'),
+            )
+            .unwrap(),
+        }
+    }
+
+    fn get_func_min<T: Gen>(gen: &mut T) -> Src {
+        let id = ID::FuncMin;
+        let mi_label = gen.jump_label();
+        // GR1 .. value1
+        // GR2 .. value2
+        // GR0 .. ret = min(value1, value2)
+        Src {
+            dependencies: Vec::new(),
+            statements: casl2::parse(
+                format!(
+                    r#"
+{prog} CPA GR1,GR2    ; {comment}
+       JMI {mi}
+       LD GR0,GR2
+       RET
+{mi}   LD GR0,GR1
+       RET
+"#,
+                    prog = id.label(),
+                    comment = format!("{:?}", id),
+                    mi = mi_label
+                )
+                .trim_start_matches('\n'),
+            )
+            .unwrap(),
         }
     }
 
     fn get_func_cint<T: Gen>(gen: &mut T) -> Src {
+        let id = ID::FuncCInt;
         let mi_label = gen.jump_label();
         let read_label = gen.jump_label();
         let ret_label = gen.jump_label();
@@ -900,8 +985,8 @@ mod subroutine {
        POP GR1
        RET
 "#,
-                    prog = ID::FuncCInt.label(),
-                    comment = format!("{:?}", ID::FuncCInt),
+                    prog = id.label(),
+                    comment = format!("{:?}", id),
                     ret = ret_label,
                     read = read_label,
                     mi = mi_label
@@ -919,17 +1004,30 @@ mod test {
 
     #[test]
     fn it_works() {
-        let mut compiler = Compiler::new("TEST").unwrap();
+        let src = r#"
+Dim i As Integer
+Dim c As Integer
+Print "Limit?"
+Input c
+c = Max(1, Min(100, c))
+For i = 1 To c Step 1
+   Select Case i Mod 15
+       Case 0
+           Print "FizzBuzz"
+       Case 3, 6, 9, 12
+           Print "Fizz"
+       Case 5, 10
+           Print "Buzz"
+       Case Else
+           Print i
+   End Select
+Next i
+"#;
+        let mut cursor = std::io::Cursor::new(src);
 
-        compiler.compile_dim("intVar1", &parser::VarType::Integer);
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-        compiler.compile_input_integer("intVar1");
-
-        compiler.compile_print_lit_boolean(true);
-        compiler.compile_print_lit_integer(1234);
-        compiler.compile_print_lit_string("ABCD");
-
-        let statements = compiler.finish();
+        let statements = compile("FIZZBUZZ", &code[..4]).unwrap();
 
         statements.iter().for_each(|line| {
             eprintln!("{}", line);
