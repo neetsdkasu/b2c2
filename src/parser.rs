@@ -1280,6 +1280,9 @@ impl Parser {
             // 真理値リテラル
             [(_, Token::Boolean(value))] => return Ok(Expr::LitBoolean(*value)),
 
+            // 文字リテラル
+            [(_, Token::Character(value))] => return Ok(Expr::LitCharacter(*value)),
+
             // 整数リテラル
             [(pos, Token::Integer(value))] => {
                 if let Some(value) = validate_integer(false, *value) {
@@ -1837,6 +1840,7 @@ pub enum Expr {
     LitBoolean(bool),
     LitInteger(i32),
     LitString(String),
+    LitCharacter(char),
     UnaryOperatorInteger(Operator, Box<Expr>),
     UnaryOperatorBoolean(Operator, Box<Expr>),
     VarBoolean(String),
@@ -1940,6 +1944,7 @@ impl Expr {
             BinaryOperatorInteger(_, _, _)
             | FunctionInteger(_, _)
             | LitInteger(_)
+            | LitCharacter(_)
             | UnaryOperatorInteger(_, _)
             | VarInteger(_)
             | VarArrayOfInteger(_, _)

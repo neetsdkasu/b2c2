@@ -1,4 +1,4 @@
-use crate::jis_x_201;
+// use crate::jis_x_201;
 use crate::SyntaxError;
 use std::io::{self, BufRead};
 use std::result;
@@ -114,9 +114,9 @@ fn take_char_token(s: &str) -> Option<(Token, &str)> {
     let mut split_position = s.len();
     let mut text: Option<char> = None;
     for (p, ch) in char_indices {
-        if !jis_x_201::contains(ch) {
-            return None;
-        }
+        // if !jis_x_201::contains(ch) {
+        // return None;
+        // }
         if quotation {
             if ch == '"' {
                 if text.is_some() {
@@ -147,8 +147,7 @@ fn take_char_token(s: &str) -> Option<(Token, &str)> {
     if !"c".eq_ignore_ascii_case(suffix) {
         return None;
     }
-    let code = jis_x_201::convert_from_char(ch);
-    Some((Token::Integer(code as i32), rest))
+    Some((Token::Character(ch), rest))
 }
 
 fn take_string_token(s: &str) -> Option<(Token, &str)> {
@@ -158,9 +157,9 @@ fn take_string_token(s: &str) -> Option<(Token, &str)> {
     let mut split_position = s.len();
     let mut text = String::new();
     for (p, ch) in char_indices {
-        if !jis_x_201::contains(ch) {
-            return None;
-        }
+        // if !jis_x_201::contains(ch) {
+        // return None;
+        // }
         if quotation {
             if ch == '"' {
                 quotation = false;
@@ -245,6 +244,7 @@ pub enum Token {
     String(String),
     Integer(i32),
     Boolean(bool),
+    Character(char),
 }
 
 macro_rules! enumdef {
@@ -525,10 +525,10 @@ mod test {
     #[test]
     fn take_char_token_works() {
         let src = [
-            (r#""A"c"#, Some((Token::Integer(b'A' as i32), ""))),
-            (r#""A"C"#, Some((Token::Integer(b'A' as i32), ""))),
-            (r#""A"c+"#, Some((Token::Integer(b'A' as i32), "+"))),
-            (r#"""""c"#, Some((Token::Integer(b'"' as i32), ""))),
+            (r#""A"c"#, Some((Token::Character('A'), ""))),
+            (r#""A"C"#, Some((Token::Character('A'), ""))),
+            (r#""A"c+"#, Some((Token::Character('A'), "+"))),
+            (r#"""""c"#, Some((Token::Character('"'), ""))),
             (r#"""c"#, None),
             (r#""AB"c"#, None),
             (r#""A""#, None),
@@ -683,8 +683,8 @@ mod test {
             ("12 345", Some((Token::Integer(12), " 345"))),
             ("32767", Some((Token::Integer(32767), ""))),
             ("32768", Some((Token::Integer(32768), ""))),
-            (r#""A"c+"#, Some((Token::Integer(b'A' as i32), "+"))),
-            (r#"""""c"#, Some((Token::Integer(b'"' as i32), ""))),
+            (r#""A"c+"#, Some((Token::Character('A'), "+"))),
+            (r#"""""c"#, Some((Token::Character('"'), ""))),
             (r#"""c"#, Some((Token::String("".into()), "c"))),
             (r#""AB"c"#, Some((Token::String("AB".into()), "c"))),
             ("32769", None),

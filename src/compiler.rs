@@ -1056,6 +1056,7 @@ impl Compiler {
             LitBoolean(_lit_bool) => todo!(),
             LitInteger(lit_int) => self.compile_literal_integer(*lit_int),
             LitString(_lit_str) => todo!(),
+            LitCharacter(_lit_char) => todo!(),
             UnaryOperatorInteger(_op, _value) => todo!(),
             UnaryOperatorBoolean(_op, _value) => todo!(),
             VarBoolean(_var_name) => todo!(),
