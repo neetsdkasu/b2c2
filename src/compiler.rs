@@ -1636,6 +1636,7 @@ mod test {
             ' Print bool1
             ' Print int1
             Print str1
+            ' Print 1 + 2 + 3 + int1
             Let int1 = (1 + int1) + 2
             Let int1 = (1 - int1) - 2
             Let int1 = (1 << int1) << 2
@@ -1646,6 +1647,15 @@ mod test {
             ' Let int1 = (1 * int1) * 2
             ' Let int1 = (1 \ int1) \ 2
             ' Let int1 = (1 Mod int1) Mod 2
+            ' Let int1 = - (-int1 + -1)
+            ' Let int1 = Not (Not int1 + Not 1)
+            ' Let int1 = Len(str1)
+            ' Let int1 = CInt(bool1)
+            ' Let int1 = CInt(str1)
+            ' Let bool1 = CBool(int1)
+            ' Let str1 = CStr(bool1)
+            ' Let str1 = CStr(int1)
+            ' Let str1 = "prifix" & (str1 & "suffix")
             For i = 1 To 10
                 Print "X"
             Next i
@@ -2472,17 +2482,57 @@ Print "Limit?"
 Input c
 c = Max(1, Min(100, c))
 For i = 1 To c Step Min(1,1)
-'   Select Case i Mod 15
-'       Case 0
+'    Select Case i Mod 15
+'        Case 0
             Print "FizzBuzz"
-'       Case 3, 6, 9, 12
-'           Print "Fizz"
-'       Case 5, 10
-'           Print "Buzz"
-'       Case Else
-'           Print i
-'   End Select
+'        Case 3, 6, 9, 12
+            Print "Fizz"
+'        Case 5, 10
+            Print "Buzz"
+'        Case Else
+'            Print i
+'    End Select
 Next i
+"#;
+
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile("FIZZBUZZ", &code[..]).unwrap();
+
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
+
+        assert!(!statements.is_empty()); // dummy assert
+    }
+
+    #[test]
+    fn fizzbuzz_2_works() {
+        let src = r#"
+Dim s As String
+Dim n As Integer
+'Do
+    Print "Number?"
+    Input s
+'    If s = "end" Then
+'        Exit Do
+'    End If
+'    n = CInt(s)
+'    If n < 1 Then
+        Print "Invalid Input"
+'        Continue Do
+'    End If
+'    If n Mod 15 = 0 Then
+'        s = "FizzBuzz"
+'    ElseIf n Mod 3 = 0 Then
+'        s = "Fizz"
+'    ElseIf n Mod 5 = 0 Then
+'        s = "Buzz"
+'    End If
+    Print s
+'Loop
 "#;
 
         let mut cursor = std::io::Cursor::new(src);
