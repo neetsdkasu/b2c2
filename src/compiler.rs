@@ -385,12 +385,19 @@ impl Compiler {
                     constants: vec![casl2::Constant::Dec(literal.chars().count() as i16)],
                 },
             ));
-            statements.push(casl2::Statement::labeled(
-                &buf_label,
-                casl2::Command::Dc {
-                    constants: vec![casl2::Constant::Str(literal.clone())],
-                },
-            ));
+            if literal.is_empty() {
+                statements.push(casl2::Statement::labeled(
+                    &buf_label,
+                    casl2::Command::Ds { size: 0 },
+                ));
+            } else {
+                statements.push(casl2::Statement::labeled(
+                    &buf_label,
+                    casl2::Command::Dc {
+                        constants: vec![casl2::Constant::Str(literal.clone())],
+                    },
+                ));
+            }
         }
 
         // END ステートメント
@@ -1879,7 +1886,7 @@ LB1    DC     'ABCD'
 LL2    DC     8
 LB2    DC     'hey you!'
 LL3    DC     0
-LB3    DC     ''
+LB3    DS     0
        END
             "#
                 .trim()
