@@ -508,8 +508,6 @@ impl Compiler {
             PrintLitBoolean { value } => self.compile_print_lit_boolean(*value),
             PrintLitInteger { value } => self.compile_print_lit_integer(*value),
             PrintLitString { value } => self.compile_print_lit_string(value),
-            PrintVarBoolean { var_name: _ } => todo!(),
-            PrintVarInteger { var_name: _ } => todo!(),
             PrintVarString { var_name } => self.compile_print_var_string(var_name),
             PrintExprBoolan { value: _ } => todo!(),
             PrintExprInteger { value: _ } => todo!(),

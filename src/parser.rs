@@ -56,7 +56,7 @@ struct Parser {
     variables: HashMap<String, VarType>,
     statements: Vec<Vec<Statement>>,
     nest_of_do: Vec<usize>,
-    nest_of_for: Vec<usize>,
+    nest_of_for: Vec<(usize, String)>,
     nest_of_select: Vec<usize>,
     provisionals: Vec<Statement>,
     exit_id: usize,
@@ -624,7 +624,8 @@ impl Parser {
                 }
             }
             [(_, Token::Keyword(Keyword::For))] => {
-                if let Some(&exit_id) = self.nest_of_for.last() {
+                if let Some((exit_id, _)) = self.nest_of_for.last() {
+                    let exit_id = *exit_id;
                     self.add_statement(Statement::ExitFor { exit_id });
                 } else {
                     return Err(self.syntax_error("invalid Exit statement".into()));
@@ -849,7 +850,8 @@ impl Parser {
                 }
             }
             [(_, Token::Keyword(Keyword::For))] => {
-                if let Some(&exit_id) = self.nest_of_for.last() {
+                if let Some((exit_id, _)) = self.nest_of_for.last() {
+                    let exit_id = *exit_id;
                     self.add_statement(Statement::ContinueFor { exit_id });
                 } else {
                     return Err(self.syntax_error("invalid Continue statement".into()));
@@ -983,7 +985,7 @@ impl Parser {
             _ => return Err(self.syntax_error("invalid Next statment".into())),
         };
 
-        let cur_exit_id = self
+        let (cur_exit_id, _) = self
             .nest_of_for
             .pop()
             .ok_or_else(|| self.syntax_error("invalid Next statement".into()))?;
@@ -1026,6 +1028,14 @@ impl Parser {
         } else {
             return Err(self.syntax_error("invalid For statement".into()));
         };
+
+        if self
+            .nest_of_for
+            .iter()
+            .any(|(_, counter)| counter.as_str() == name.as_str())
+        {
+            return Err(self.syntax_error("invalid counter in For statement".into()));
+        }
 
         if !matches!(self.variables.get(name), Some(VarType::Integer)) {
             return Err(self.syntax_error("invalid For statement".into()));
@@ -1070,7 +1080,7 @@ impl Parser {
         };
 
         let exit_id = self.get_new_exit_id();
-        self.nest_of_for.push(exit_id);
+        self.nest_of_for.push((exit_id, name.clone()));
         self.statements.push(Vec::new());
         self.provisionals.push(Statement::ProvisionalFor {
             exit_id,
@@ -1235,18 +1245,8 @@ impl Parser {
             }
             // プリミティブ変数の出力
             [(_, Token::Name(name))] => match self.variables.get(name) {
-                Some(VarType::Boolean) => {
-                    self.add_statement(Statement::PrintVarBoolean {
-                        var_name: name.clone(),
-                    });
-                    return Ok(());
-                }
-                Some(VarType::Integer) => {
-                    self.add_statement(Statement::PrintVarInteger {
-                        var_name: name.clone(),
-                    });
-                    return Ok(());
-                }
+                Some(VarType::Boolean) => {}
+                Some(VarType::Integer) => {}
                 Some(VarType::String) => {
                     self.add_statement(Statement::PrintVarString {
                         var_name: name.clone(),
@@ -1789,12 +1789,6 @@ pub enum Statement {
     },
     PrintLitString {
         value: String,
-    },
-    PrintVarBoolean {
-        var_name: String,
-    },
-    PrintVarInteger {
-        var_name: String,
     },
     PrintVarString {
         var_name: String,
@@ -2407,8 +2401,8 @@ Loop
                             Statement::CaseElse {
                                 block: vec![
                                     // Print i
-                                    Statement::PrintVarInteger {
-                                        var_name: "i".into(),
+                                    Statement::PrintExprInteger {
+                                        value: Expr::VarInteger("i".into()),
                                     },
                                 ],
                             },
