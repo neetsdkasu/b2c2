@@ -2481,7 +2481,7 @@ Dim c As Integer
 Print "Limit?"
 Input c
 c = Max(1, Min(100, c))
-For i = 1 To c Step Min(1,1)
+For i = 1 To c Step 1
 '    Select Case i Mod 15
 '        Case 0
             Print "FizzBuzz"
