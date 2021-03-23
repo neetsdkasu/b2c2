@@ -1272,8 +1272,9 @@ impl Compiler {
 
         writeln!(
             &mut src,
-            r#" LD    GR1,{lhs}
-                LD    GR2,{rhs}
+            r#" PUSH  0,{rhs}
+                LD    GR1,{lhs}
+                POP   GR2
                 CALL  {sub}"#,
             lhs = lhs_reg,
             rhs = rhs_reg,
