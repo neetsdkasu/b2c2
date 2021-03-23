@@ -761,7 +761,8 @@ impl Compiler {
                 CPA   GR1,{end}
                 JUMP  {block}
 {nega}          LD    GR1,{end}
-                CPA   GR1,{counter}"#,
+                CPA   GR1,{counter}
+{block}         NOP"#,
             counter = counter_var,
             step = step_var,
             nega = negastep_label,
@@ -772,13 +773,7 @@ impl Compiler {
 
         condition_src.push_str(&recovers);
 
-        writeln!(
-            &mut condition_src,
-            "{block} JPL {exit}",
-            exit = exit_label,
-            block = blockhead_label
-        )
-        .unwrap();
+        writeln!(&mut condition_src, " JPL {exit}", exit = exit_label).unwrap();
 
         let condition_code = casl2::parse(&condition_src).unwrap();
 
@@ -1314,12 +1309,12 @@ mod subroutine {
 
     #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Debug)]
     pub enum ID {
-        BinOpMul,
         FuncAbs,
         FuncCInt,
         FuncMax,
         FuncMin,
         UtilDivMod,
+        UtilMul,
     }
 
     impl ID {
@@ -1340,17 +1335,16 @@ mod subroutine {
 
     pub fn get_src<T: Gen>(gen: &mut T, id: ID) -> Src {
         match id {
-            ID::BinOpMul => get_bin_op_mul(gen, id),
             ID::FuncAbs => get_func_abs(gen, id),
             ID::FuncCInt => get_func_cint(gen, id),
             ID::FuncMax => get_func_max(gen, id),
             ID::FuncMin => get_func_min(gen, id),
             ID::UtilDivMod => get_util_div_mod(gen, id),
+            ID::UtilMul => get_util_mul(gen, id),
         }
     }
 
     fn get_func_abs<T: Gen>(gen: &mut T, id: ID) -> Src {
-        let mi_label = gen.jump_label();
         // GR1 .. value1
         // GR0 .. ret = abs(value1)
         Src {
@@ -1367,7 +1361,7 @@ mod subroutine {
 "#,
                     prog = id.label(),
                     comment = format!("{:?}", id),
-                    mi = mi_label
+                    mi = gen.jump_label()
                 )
                 .trim_start_matches('\n'),
             )
@@ -1376,7 +1370,6 @@ mod subroutine {
     }
 
     fn get_func_max<T: Gen>(gen: &mut T, id: ID) -> Src {
-        let mi_label = gen.jump_label();
         // GR1 .. value1
         // GR2 .. value2
         // GR0 .. ret = max(value1, value2)
@@ -1394,7 +1387,7 @@ mod subroutine {
 "#,
                     prog = id.label(),
                     comment = format!("{:?}", id),
-                    mi = mi_label
+                    mi = gen.jump_label()
                 )
                 .trim_start_matches('\n'),
             )
@@ -1403,7 +1396,6 @@ mod subroutine {
     }
 
     fn get_func_min<T: Gen>(gen: &mut T, id: ID) -> Src {
-        let mi_label = gen.jump_label();
         // GR1 .. value1
         // GR2 .. value2
         // GR0 .. ret = min(value1, value2)
@@ -1421,7 +1413,7 @@ mod subroutine {
 "#,
                     prog = id.label(),
                     comment = format!("{:?}", id),
-                    mi = mi_label
+                    mi = gen.jump_label()
                 )
                 .trim_start_matches('\n'),
             )
@@ -1430,9 +1422,6 @@ mod subroutine {
     }
 
     fn get_func_cint<T: Gen>(gen: &mut T, id: ID) -> Src {
-        let mi_label = gen.jump_label();
-        let read_label = gen.jump_label();
-        let ret_label = gen.jump_label();
         // GR1 .. adr of s_buf
         // GR2 .. s_len
         // GR0 .. ret
@@ -1485,9 +1474,9 @@ mod subroutine {
 "#,
                     prog = id.label(),
                     comment = format!("{:?}", id),
-                    ret = ret_label,
-                    read = read_label,
-                    mi = mi_label
+                    ret = gen.jump_label(),
+                    read = gen.jump_label(),
+                    mi = gen.jump_label()
                 )
                 .trim_start_matches('\n'),
             )
@@ -1496,18 +1485,12 @@ mod subroutine {
     }
 
     fn get_util_div_mod<T: Gen>(gen: &mut T, id: ID) -> Src {
-        let ok_label = gen.jump_label();
-        let shift_label = gen.jump_label();
-        let pre_label = gen.jump_label();
-        let cycle_label = gen.jump_label();
-        let next_label = gen.jump_label();
-        let ret_label = gen.jump_label();
         // GR2 割られる数 (分子)
         // GR3 割る数 (分母)
         // GR0 商    = GR2 \ GR3
         // GR1 余り   = GR2 Mod GR3
         Src {
-            dependencies: vec![ID::FuncAbs, ID::BinOpMul],
+            dependencies: vec![ID::FuncAbs, ID::UtilMul],
             statements: casl2::parse(
                 format!(
                     r#"
@@ -1561,13 +1544,13 @@ mod subroutine {
                     prog = id.label(),
                     comment = format!("{:?}", id),
                     abs = ID::FuncAbs.label(),
-                    mul = ID::BinOpMul.label(),
-                    ok = ok_label,
-                    shift = shift_label,
-                    pre = pre_label,
-                    cycle = cycle_label,
-                    next = next_label,
-                    ret = ret_label
+                    mul = ID::UtilMul.label(),
+                    ok = gen.jump_label(),
+                    shift = gen.jump_label(),
+                    pre = gen.jump_label(),
+                    cycle = gen.jump_label(),
+                    next = gen.jump_label(),
+                    ret = gen.jump_label()
                 )
                 .trim_start_matches('\n'),
             )
@@ -1575,12 +1558,60 @@ mod subroutine {
         }
     }
 
-    fn get_bin_op_mul<T: Gen>(gen: &mut T, id: ID) -> Src {
+    fn get_util_mul<T: Gen>(gen: &mut T, id: ID) -> Src {
         // GR2 * GR3
         // GR0 積の下位16ビット  (GR2 * GR3) & 0x0000FFFF
         // GR1 積の上位16ビット ((GR2 * GR3) & 0xFFFF0000) >> 16
-        let _ = (gen, id);
-        todo!()
+        Src {
+            dependencies: vec![ID::FuncAbs, ID::UtilMul],
+            statements: casl2::parse(
+                format!(
+                    r#"
+{prog}   PUSH  GR2     ; {comment}
+         PUSH  GR3
+         PUSH  GR4
+         PUSH  GR5
+         XOR   GR0,GR0
+         XOR   GR1,GR1
+         LD    GR4,GR2
+         LD    GR5,GR3
+{cycle1} SRL   GR2,1
+         JOV   {add1}
+         JNZ   {next1}
+         JUMP  {cycle2}
+{add1}   ADDL  GR0,GR3
+         JOV   {raise1}
+         JUMP  {next1}
+{raise1} LAD   GR1,1,GR1
+{next1}  SLL   GR3,1
+         JUMP  {cycle1}
+{cycle2} SRL   GR5,1
+         SLL   GR4,1
+         JOV   {add2}
+         JNZ   {cycle2}
+         JUMP  {ret}
+{add2}   ADDL  GR1,GR5
+         JUMP  {cycle2}
+{ret}    POP   GR5
+         POP   GR4
+         POP   GR3
+         POP   GR2
+         RET
+"#,
+                    prog = id.label(),
+                    comment = format!("{:?}", id),
+                    cycle1 = gen.jump_label(),
+                    add1 = gen.jump_label(),
+                    raise1 = gen.jump_label(),
+                    next1 = gen.jump_label(),
+                    cycle2 = gen.jump_label(),
+                    add2 = gen.jump_label(),
+                    ret = gen.jump_label()
+                )
+                .trim_start_matches('\n'),
+            )
+            .unwrap(),
+        }
     }
 }
 
@@ -2173,5 +2204,187 @@ Next i
         // });
 
         assert!(!statements.is_empty()); // dummy assert
+    }
+
+    #[test]
+    fn for_statement_1_works() {
+        let src = r#"
+            Dim i As Integer
+            For i = 1 To 10
+            Next i
+        "#;
+
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile("TEST", &code[..]).unwrap();
+
+        assert_eq!(
+            statements,
+            casl2::parse(
+                r#"TEST  START
+                     LAD    GR7,10     ; For i = {init} To {end} Step 1
+                     ST     GR7,T1
+                     LAD    GR7,1
+                     ST     GR7,I1
+J1                   NOP
+                     LD     GR1,I1
+                     CPA    GR1,T1
+                     JPL    J3
+J2                   NOP
+                     LD     GR1,I1
+                     LAD    GR1,1,GR1
+                     ST     GR1,I1
+                     JUMP   J1         ; Next i
+J3                   NOP
+                     RET
+I1                   DS 1              ; i
+T1                   DS 1
+                     END
+"#
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn for_statement_2_works() {
+        let src = r#"
+            Dim i As Integer
+            For i = 1 To 10 Step 1
+            Next i
+        "#;
+
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile("TEST", &code[..]).unwrap();
+
+        assert_eq!(
+            statements,
+            casl2::parse(
+                r#"TEST  START
+                     LAD    GR7,10     ; For i = {init} To {end} Step 1
+                     ST     GR7,T1
+                     LAD    GR7,1
+                     ST     GR7,I1
+J1                   NOP
+                     LD     GR1,I1
+                     CPA    GR1,T1
+                     JPL    J3
+J2                   NOP
+                     LD     GR1,I1
+                     LAD    GR1,1,GR1
+                     ST     GR1,I1
+                     JUMP   J1         ; Next i
+J3                   NOP
+                     RET
+I1                   DS 1              ; i
+T1                   DS 1
+                     END
+"#
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn for_statement_3_works() {
+        let src = r#"
+            Dim i As Integer
+            For i = 24 To 8 Step -2
+            Next i
+        "#;
+
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile("TEST", &code[..]).unwrap();
+
+        assert_eq!(
+            statements,
+            casl2::parse(
+                r#"TEST  START
+                     LAD    GR7,8      ; For i = {init} To {end} Step -2
+                     ST     GR7,T1
+                     LAD    GR7,24
+                     ST     GR7,I1
+J1                   NOP
+                     LD     GR1,I1
+                     CPA    GR1,T1
+                     JMI    J3
+J2                   NOP
+                     LD     GR1,I1
+                     LAD    GR1,-2,GR1
+                     ST     GR1,I1
+                     JUMP   J1         ; Next i
+J3                   NOP
+                     RET
+I1                   DS 1              ; i
+T1                   DS 1
+                     END
+"#
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn for_statement_4_works() {
+        let src = r#"
+            Dim S As Integer
+            Dim I As Integer
+            S = 1
+            For I = 1 To 10 Step S
+            Next I
+        "#;
+
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile("TEST", &code[..]).unwrap();
+
+        assert_eq!(
+            statements,
+            casl2::parse(
+                r#"TEST  START
+                     LAD    GR7,1      ; S = {value}
+                     ST     GR7,I1
+                     LD     GR7,I1     ; For I = {init} To {end} Step {step}
+                     ST     GR7,T1
+                     LAD    GR7,10
+                     ST     GR7,T2
+                     LAD    GR7,1
+                     ST     GR7,I2
+J1                   NOP
+                     LD     GR1,T1
+                     JMI    J2
+                     LD     GR1,I2
+                     CPA    GR1,T2
+                     JUMP   J3
+J2                   LD     GR1,T2
+                     CPA    GR1,I2
+J3                   NOP
+                     JPL    J5
+J4                   NOP
+                     LD     GR1,I2
+                     ADDA   GR1,T1
+                     ST     GR1,I2
+                     JUMP   J1         ; Next I
+J5                   NOP
+                     RET
+I1                   DS 1              ; S
+I2                   DS 1              ; I
+T1                   DS 1
+T2                   DS 1
+                     END
+"#
+            )
+            .unwrap()
+        );
     }
 }
