@@ -1622,34 +1622,51 @@ mod test {
     #[test]
     fn it_works() {
         let src = r#"
-Dim i As Integer
-Dim c As Integer
-Print "Limit?"
-Input c
-c = Max(1, Min(100, c))
-For i = 1 To c Step Min(1,1)
-'   Select Case i Mod 15
-'       Case 0
-            Print "FizzBuzz"
-'       Case 3, 6, 9, 12
-'           Print "Fizz"
-'       Case 5, 10
-'           Print "Buzz"
-'       Case Else
-'           Print i
-'   End Select
-Next i
-"#;
+            Rem TEST PROGRAM
+            Dim bool1 As Boolean
+            Dim int1 As Integer
+            Dim str1 As String
+            Dim i As Integer
+            Dim j As Integer
+            Input int1
+            Input str1
+            Print False
+            Print 1234
+            Print "Text"
+            ' Print bool1
+            ' Print int1
+            Print str1
+            Let int1 = (1 + int1) + 2
+            Let int1 = (1 - int1) - 2
+            Let int1 = (1 << int1) << 2
+            Let int1 = (1 >> int1) >> 2
+            Let int1 = (1 And int1) And 2
+            Let int1 = (1 Or int1) Or 2
+            Let int1 = (1 Xor int1) Xor 2
+            ' Let int1 = (1 * int1) * 2
+            ' Let int1 = (1 \ int1) \ 2
+            ' Let int1 = (1 Mod int1) Mod 2
+            For i = 1 To 10
+                Print "X"
+            Next i
+            For i = int1 To int1 Step -5
+                Print "X"
+            Next i
+            For i = int1 - 3 To (int1 << 4) - 2 Step int1 + 1
+                Print "X"
+            Next i
+            For i = 1 To 10
+                For j = 1 To 10
+                    Print "X"
+                Next j
+            Next i
+        "#;
 
         let mut cursor = std::io::Cursor::new(src);
 
         let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-        let statements = compile("FIZZBUZZ", &code[..]).unwrap();
-
-        statements.iter().for_each(|line| {
-            eprintln!("{}", line);
-        });
+        let statements = compile("TEST", &code[..]).unwrap();
 
         assert!(!statements.is_empty()); // dummy assert
     }
@@ -2207,7 +2224,7 @@ Next i
     }
 
     #[test]
-    fn for_statement_1_works() {
+    fn for_statement_without_step_works() {
         let src = r#"
             Dim i As Integer
             For i = 1 To 10
@@ -2249,7 +2266,7 @@ T1                   DS 1
     }
 
     #[test]
-    fn for_statement_2_works() {
+    fn for_statement_positive_step_works() {
         let src = r#"
             Dim i As Integer
             For i = 1 To 10 Step 1
@@ -2291,7 +2308,7 @@ T1                   DS 1
     }
 
     #[test]
-    fn for_statement_3_works() {
+    fn for_statement_negative_step_works() {
         let src = r#"
             Dim i As Integer
             For i = 24 To 8 Step -2
@@ -2333,11 +2350,10 @@ T1                   DS 1
     }
 
     #[test]
-    fn for_statement_4_works() {
+    fn for_statement_expr_step_works() {
         let src = r#"
             Dim S As Integer
             Dim I As Integer
-            S = 1
             For I = 1 To 10 Step S
             Next I
         "#;
@@ -2352,8 +2368,6 @@ T1                   DS 1
             statements,
             casl2::parse(
                 r#"TEST  START
-                     LAD    GR7,1      ; S = {value}
-                     ST     GR7,I1
                      LD     GR7,I1     ; For I = {init} To {end} Step {step}
                      ST     GR7,T1
                      LAD    GR7,10
@@ -2386,5 +2400,101 @@ T2                   DS 1
             )
             .unwrap()
         );
+    }
+
+    #[test]
+    fn expr_add_literal_int_rhs_works() {
+        let src = r#"
+            Dim x As Integer
+            x = 11 + 22
+        "#;
+
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile("TEST", &code[..]).unwrap();
+
+        assert_eq!(
+            statements,
+            casl2::parse(
+                r#"TEST  START
+                     LAD    GR7,11     ; x = {value}
+                     LAD    GR7,22,GR7
+                     ST     GR7,I1
+                     RET
+I1                   DS 1              ; x
+                     END
+"#
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn expr_add_variable_rhs_works() {
+        let src = r#"
+            Dim x As Integer
+            Dim y As Integer
+            x = 11 + y
+        "#;
+
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile("TEST", &code[..]).unwrap();
+
+        assert_eq!(
+            statements,
+            casl2::parse(
+                r#"TEST  START
+                     LAD    GR7,11     ; x = {value}
+                     LD     GR6,I2
+                     ADDA   GR7,GR6
+                     ST     GR7,I1
+                     RET
+I1                   DS 1              ; x
+I2                   DS 1              ; y
+                     END
+"#
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn fizzbuzz_1_works() {
+        let src = r#"
+Dim i As Integer
+Dim c As Integer
+Print "Limit?"
+Input c
+c = Max(1, Min(100, c))
+For i = 1 To c Step Min(1,1)
+'   Select Case i Mod 15
+'       Case 0
+            Print "FizzBuzz"
+'       Case 3, 6, 9, 12
+'           Print "Fizz"
+'       Case 5, 10
+'           Print "Buzz"
+'       Case Else
+'           Print i
+'   End Select
+Next i
+"#;
+
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile("FIZZBUZZ", &code[..]).unwrap();
+
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
+
+        assert!(!statements.is_empty()); // dummy assert
     }
 }
