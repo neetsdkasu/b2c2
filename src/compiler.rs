@@ -1734,59 +1734,23 @@ mod test {
 
         assert_eq!(
             compiler.finish(),
-            vec![
-                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
-                casl2::Statement::code(casl2::Command::Ret),
-                casl2::Statement::labeled(
-                    "LL1",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Dec("-123".chars().count() as i16),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LB1",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Str("-123".into()),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LL2",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Dec("A b c".chars().count() as i16),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LB2",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Str("A b c".into()),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LL3",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Dec("XYZ".chars().count() as i16),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LB3",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Str("XYZ".into()),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LL4",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Dec("Test@1234".chars().count() as i16),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LB4",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Str("Test@1234".into()),]
-                    }
-                ),
-                casl2::Statement::code(casl2::Command::End),
-            ]
+            casl2::parse(
+                r#"
+TEST   START
+       RET
+LL1    DC     4
+LB1    DC     '-123'
+LL2    DC     5
+LB2    DC     'A b c'
+LL3    DC     3
+LB3    DC     'XYZ'
+LL4    DC     9
+LB4    DC     'Test@1234'
+       END
+            "#
+                .trim()
+            )
+            .unwrap()
         );
     }
 
@@ -1805,53 +1769,25 @@ mod test {
 
         assert_eq!(
             compiler.finish(),
-            vec![
-                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
-                casl2::Statement::code(casl2::Command::Ret),
-                casl2::Statement::labeled_with_comment(
-                    "B2",
-                    casl2::Command::Ds { size: 1 },
-                    "boolVar1"
-                ),
-                casl2::Statement::labeled_with_comment(
-                    "B5",
-                    casl2::Command::Ds { size: 1 },
-                    "boolVar2"
-                ),
-                casl2::Statement::labeled_with_comment(
-                    "I3",
-                    casl2::Command::Ds { size: 1 },
-                    "intVar2"
-                ),
-                casl2::Statement::labeled_with_comment(
-                    "I8",
-                    casl2::Command::Ds { size: 1 },
-                    "intVar1"
-                ),
-                casl2::Statement::labeled_with_comment(
-                    "SL1",
-                    casl2::Command::Ds { size: 1 },
-                    "strVar1"
-                ),
-                casl2::Statement::labeled("SB1", casl2::Command::Ds { size: 256 }),
-                casl2::Statement::labeled_with_comment(
-                    "SL6",
-                    casl2::Command::Ds { size: 1 },
-                    "strVar2"
-                ),
-                casl2::Statement::labeled("SB6", casl2::Command::Ds { size: 256 }),
-                casl2::Statement::labeled_with_comment(
-                    "BA4",
-                    casl2::Command::Ds { size: 32 },
-                    "boolArr1"
-                ),
-                casl2::Statement::labeled_with_comment(
-                    "IA7",
-                    casl2::Command::Ds { size: 155 },
-                    "intArr1"
-                ),
-                casl2::Statement::code(casl2::Command::End),
-            ]
+            casl2::parse(
+                r#"
+TEST   START
+       RET
+B2     DS     1     ; boolVar1
+B5     DS     1     ; boolVar2
+I3     DS     1     ; intVar2
+I8     DS     1     ; intVar1
+SL1    DS     1     ; strVar1
+SB1    DS     256
+SL6    DS     1     ; strVar2
+SB6    DS     256
+BA4    DS     32    ; boolArr1
+IA7    DS     155   ; intArr1
+       END
+            "#
+                .trim()
+            )
+            .unwrap()
         );
     }
 
@@ -1866,63 +1802,23 @@ mod test {
 
         assert_eq!(
             compiler.finish(),
-            vec![
-                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::Out {
-                        pos: "LB1".into(),
-                        len: "LL1".into()
-                    },
-                    "Print True"
-                ),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::Out {
-                        pos: "LB2".into(),
-                        len: "LL2".into()
-                    },
-                    "Print False"
-                ),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::Out {
-                        pos: "LB2".into(),
-                        len: "LL2".into()
-                    },
-                    "Print False"
-                ),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::Out {
-                        pos: "LB1".into(),
-                        len: "LL1".into()
-                    },
-                    "Print True"
-                ),
-                casl2::Statement::code(casl2::Command::Ret),
-                casl2::Statement::labeled(
-                    "LL1",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Dec("True".chars().count() as i16),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LB1",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Str("True".into()),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LL2",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Dec("False".chars().count() as i16),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LB2",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Str("False".into()),]
-                    }
-                ),
-                casl2::Statement::code(casl2::Command::End),
-            ]
+            casl2::parse(
+                r#"
+TEST   START
+       OUT    LB1,LL1     ; Print True
+       OUT    LB2,LL2     ; Print False
+       OUT    LB2,LL2     ; Print False
+       OUT    LB1,LL1     ; Print True
+       RET
+LL1    DC     4
+LB1    DC     'True'
+LL2    DC     5
+LB2    DC     'False'
+       END
+            "#
+                .trim()
+            )
+            .unwrap()
         );
     }
 
@@ -1937,75 +1833,25 @@ mod test {
 
         assert_eq!(
             compiler.finish(),
-            vec![
-                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::Out {
-                        pos: "LB1".into(),
-                        len: "LL1".into()
-                    },
-                    "Print 1234"
-                ),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::Out {
-                        pos: "LB2".into(),
-                        len: "LL2".into()
-                    },
-                    "Print 999"
-                ),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::Out {
-                        pos: "LB3".into(),
-                        len: "LL3".into()
-                    },
-                    "Print -100"
-                ),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::Out {
-                        pos: "LB1".into(),
-                        len: "LL1".into()
-                    },
-                    "Print 1234"
-                ),
-                casl2::Statement::code(casl2::Command::Ret),
-                casl2::Statement::labeled(
-                    "LL1",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Dec("1234".chars().count() as i16),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LB1",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Str("1234".into()),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LL2",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Dec("999".chars().count() as i16),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LB2",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Str("999".into()),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LL3",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Dec("-100".chars().count() as i16),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LB3",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Str("-100".into()),]
-                    }
-                ),
-                casl2::Statement::code(casl2::Command::End),
-            ]
+            casl2::parse(
+                r#"
+TEST   START
+       OUT    LB1,LL1     ; Print 1234
+       OUT    LB2,LL2     ; Print 999
+       OUT    LB3,LL3     ; Print -100
+       OUT    LB1,LL1     ; Print 1234
+       RET
+LL1    DC     4
+LB1    DC     '1234'
+LL2    DC     3
+LB2    DC     '999'
+LL3    DC     4
+LB3    DC     '-100'
+       END
+            "#
+                .trim()
+            )
+            .unwrap()
         );
     }
 
@@ -2020,75 +1866,25 @@ mod test {
 
         assert_eq!(
             compiler.finish(),
-            vec![
-                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::Out {
-                        pos: "LB1".into(),
-                        len: "LL1".into()
-                    },
-                    r#"Print "ABCD""#
-                ),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::Out {
-                        pos: "LB2".into(),
-                        len: "LL2".into()
-                    },
-                    r#"Print "hey you!""#
-                ),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::Out {
-                        pos: "LB3".into(),
-                        len: "LL3".into()
-                    },
-                    r#"Print """#
-                ),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::Out {
-                        pos: "LB1".into(),
-                        len: "LL1".into()
-                    },
-                    r#"Print "ABCD""#
-                ),
-                casl2::Statement::code(casl2::Command::Ret),
-                casl2::Statement::labeled(
-                    "LL1",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Dec("ABCD".chars().count() as i16),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LB1",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Str("ABCD".into()),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LL2",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Dec("hey you!".chars().count() as i16),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LB2",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Str("hey you!".into()),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LL3",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Dec("".chars().count() as i16),]
-                    }
-                ),
-                casl2::Statement::labeled(
-                    "LB3",
-                    casl2::Command::Dc {
-                        constants: vec![casl2::Constant::Str("".into()),]
-                    }
-                ),
-                casl2::Statement::code(casl2::Command::End),
-            ]
+            casl2::parse(
+                r#"
+TEST   START
+       OUT    LB1,LL1     ; Print "ABCD"
+       OUT    LB2,LL2     ; Print "hey you!"
+       OUT    LB3,LL3     ; Print ""
+       OUT    LB1,LL1     ; Print "ABCD"
+       RET
+LL1    DC     4
+LB1    DC     'ABCD'
+LL2    DC     8
+LB2    DC     'hey you!'
+LL3    DC     0
+LB3    DC     ''
+       END
+            "#
+                .trim()
+            )
+            .unwrap()
         );
     }
 
@@ -2105,50 +1901,24 @@ mod test {
 
         assert_eq!(
             compiler.finish(),
-            vec![
-                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::Out {
-                        pos: "SB3".into(),
-                        len: "SL3".into()
-                    },
-                    "Print strVar3"
-                ),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::Out {
-                        pos: "SB2".into(),
-                        len: "SL2".into()
-                    },
-                    "Print strVar2"
-                ),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::Out {
-                        pos: "SB1".into(),
-                        len: "SL1".into()
-                    },
-                    "Print strVar1"
-                ),
-                casl2::Statement::code(casl2::Command::Ret),
-                casl2::Statement::labeled_with_comment(
-                    "SL1",
-                    casl2::Command::Ds { size: 1 },
-                    "strVar1"
-                ),
-                casl2::Statement::labeled("SB1", casl2::Command::Ds { size: 256 }),
-                casl2::Statement::labeled_with_comment(
-                    "SL2",
-                    casl2::Command::Ds { size: 1 },
-                    "strVar2"
-                ),
-                casl2::Statement::labeled("SB2", casl2::Command::Ds { size: 256 }),
-                casl2::Statement::labeled_with_comment(
-                    "SL3",
-                    casl2::Command::Ds { size: 1 },
-                    "strVar3"
-                ),
-                casl2::Statement::labeled("SB3", casl2::Command::Ds { size: 256 }),
-                casl2::Statement::code(casl2::Command::End),
-            ]
+            casl2::parse(
+                r#"
+TEST   START
+       OUT    SB3,SL3     ; Print strVar3
+       OUT    SB2,SL2     ; Print strVar2
+       OUT    SB1,SL1     ; Print strVar1
+       RET
+SL1    DS     1           ; strVar1
+SB1    DS     256
+SL2    DS     1           ; strVar2
+SB2    DS     256
+SL3    DS     1           ; strVar3
+SB3    DS     256
+       END
+            "#
+                .trim()
+            )
+            .unwrap()
         );
     }
 
@@ -2165,50 +1935,24 @@ mod test {
 
         assert_eq!(
             compiler.finish(),
-            vec![
-                casl2::Statement::labeled("TEST", casl2::Command::Start { entry_point: None }),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::In {
-                        pos: "SB3".into(),
-                        len: "SL3".into()
-                    },
-                    "Input strVar3"
-                ),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::In {
-                        pos: "SB2".into(),
-                        len: "SL2".into()
-                    },
-                    "Input strVar2"
-                ),
-                casl2::Statement::code_with_comment(
-                    casl2::Command::In {
-                        pos: "SB1".into(),
-                        len: "SL1".into()
-                    },
-                    "Input strVar1"
-                ),
-                casl2::Statement::code(casl2::Command::Ret),
-                casl2::Statement::labeled_with_comment(
-                    "SL1",
-                    casl2::Command::Ds { size: 1 },
-                    "strVar1"
-                ),
-                casl2::Statement::labeled("SB1", casl2::Command::Ds { size: 256 }),
-                casl2::Statement::labeled_with_comment(
-                    "SL2",
-                    casl2::Command::Ds { size: 1 },
-                    "strVar2"
-                ),
-                casl2::Statement::labeled("SB2", casl2::Command::Ds { size: 256 }),
-                casl2::Statement::labeled_with_comment(
-                    "SL3",
-                    casl2::Command::Ds { size: 1 },
-                    "strVar3"
-                ),
-                casl2::Statement::labeled("SB3", casl2::Command::Ds { size: 256 }),
-                casl2::Statement::code(casl2::Command::End),
-            ]
+            casl2::parse(
+                r#"
+TEST   START
+       IN     SB3,SL3     ; Input strVar3
+       IN     SB2,SL2     ; Input strVar2
+       IN     SB1,SL1     ; Input strVar1
+       RET
+SL1    DS     1           ; strVar1
+SB1    DS     256
+SL2    DS     1           ; strVar2
+SB2    DS     256
+SL3    DS     1           ; strVar3
+SB3    DS     256
+       END
+            "#
+                .trim()
+            )
+            .unwrap()
         );
     }
 
@@ -2223,13 +1967,57 @@ mod test {
         assert_eq!(compiler.subroutine_codes.len(), 1);
         assert_eq!(compiler.temp_str_var_labels.len(), 1);
 
-        let statements = compiler.finish();
+        struct T {
+            v: Vec<&'static str>,
+        }
 
-        // statements.iter().for_each(|line| {
-        // eprintln!("{}", line);
-        // });
+        impl subroutine::Gen for T {
+            fn jump_label(&mut self) -> String {
+                self.v.pop().unwrap().to_string()
+            }
+            fn var_label(&mut self) -> String {
+                unreachable!()
+            }
+        }
 
-        assert!(!statements.is_empty()); // dummy assert
+        let id = subroutine::ID::FuncCInt;
+        let mut t = T {
+            v: vec!["J3", "J2", "J1"],
+        };
+
+        let mut statements = casl2::parse(
+            format!(
+                r#"
+TEST   START
+       IN     TB1,TL1     ; Input intVar1
+       LAD    GR1,TB1
+       LD     GR2,TL1
+       CALL   {}
+       ST     GR0,I1
+       RET
+            "#,
+                id.label()
+            )
+            .trim(),
+        )
+        .unwrap();
+
+        statements.extend(subroutine::get_src(&mut t, id).statements);
+
+        statements.extend(
+            casl2::parse(
+                r#"
+I1     DS     1           ; intVar1
+TL1    DS     1
+TB1    DS     256
+       END
+            "#
+                .trim(),
+            )
+            .unwrap(),
+        );
+
+        assert_ne!(compiler.finish(), statements);
     }
 
     #[test]
