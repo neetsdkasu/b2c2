@@ -2541,10 +2541,6 @@ Dim n As Integer
 
         let statements = compile("FIZZBUZZ", &code[..]).unwrap();
 
-        statements.iter().for_each(|line| {
-            eprintln!("{}", line);
-        });
-
         assert!(!statements.is_empty()); // dummy assert
     }
 }
