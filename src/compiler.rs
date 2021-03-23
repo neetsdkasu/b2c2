@@ -613,8 +613,8 @@ impl Compiler {
 
         writeln!(
             &mut condition_src,
-            r#" LD GR1,{counter}
-                CPA GR1,{end}"#,
+            r#" LD    GR1,{counter}
+                CPA   GR1,{end}"#,
             counter = counter_var,
             end = end_var
         )
@@ -650,9 +650,9 @@ impl Compiler {
 
         writeln!(
             &mut tail_src,
-            r#" LD GR1,{counter}
-                LAD GR1,{step},GR1
-                ST GR1,{counter}"#,
+            r#" LD    GR1,{counter}
+                LAD   GR1,{step},GR1
+                ST    GR1,{counter}"#,
             counter = counter_var,
             step = step
         )
@@ -755,13 +755,13 @@ impl Compiler {
 
         writeln!(
             &mut condition_src,
-            r#" LD GR1,{step}
-                JMI {nega}
-                LD GR1,{counter}
-                CPA GR1,{end}
-                JUMP {block}
-{nega}          LD GR1,{end}
-                CPA GR1,{counter}"#,
+            r#" LD    GR1,{step}
+                JMI   {nega}
+                LD    GR1,{counter}
+                CPA   GR1,{end}
+                JUMP  {block}
+{nega}          LD    GR1,{end}
+                CPA   GR1,{counter}"#,
             counter = counter_var,
             step = step_var,
             nega = negastep_label,
@@ -802,9 +802,9 @@ impl Compiler {
 
         writeln!(
             &mut tail_src,
-            r#" LD GR1,{counter}
-                ADDA GR1,{step}
-                ST GR1,{counter}"#,
+            r#" LD    GR1,{counter}
+                ADDA  GR1,{step}
+                ST    GR1,{counter}"#,
             counter = counter_var,
             step = step_var
         )
@@ -876,10 +876,10 @@ impl Compiler {
 
         writeln!(
             &mut src,
-            r#" IN {pos},{len}  ; {comment}
-                LAD GR1,{pos}
-                LD GR2,{len}
-                CALL {cint}"#,
+            r#" IN    {pos},{len}  ; {comment}
+                LAD   GR1,{pos}
+                LD    GR2,{len}
+                CALL  {cint}"#,
             pos = s_pos,
             len = s_len,
             cint = cint_label,
@@ -1277,9 +1277,9 @@ impl Compiler {
 
         writeln!(
             &mut src,
-            r#" LD GR1,{lhs}
-                LD GR2,{rhs}
-                CALL {sub}"#,
+            r#" LD    GR1,{lhs}
+                LD    GR2,{rhs}
+                CALL  {sub}"#,
             lhs = lhs_reg,
             rhs = rhs_reg,
             sub = sub_label
@@ -1314,6 +1314,8 @@ mod subroutine {
 
     #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Debug)]
     pub enum ID {
+        BinOpMul,
+        FuncAbs,
         FuncCInt,
         FuncMax,
         FuncMin,
@@ -1338,15 +1340,42 @@ mod subroutine {
 
     pub fn get_src<T: Gen>(gen: &mut T, id: ID) -> Src {
         match id {
-            ID::FuncCInt => get_func_cint(gen),
-            ID::FuncMax => get_func_max(gen),
-            ID::FuncMin => get_func_min(gen),
-            ID::UtilDivMod => get_util_div_mod(gen),
+            ID::BinOpMul => get_bin_op_mul(gen, id),
+            ID::FuncAbs => get_func_abs(gen, id),
+            ID::FuncCInt => get_func_cint(gen, id),
+            ID::FuncMax => get_func_max(gen, id),
+            ID::FuncMin => get_func_min(gen, id),
+            ID::UtilDivMod => get_util_div_mod(gen, id),
         }
     }
 
-    fn get_func_max<T: Gen>(gen: &mut T) -> Src {
-        let id = ID::FuncMax;
+    fn get_func_abs<T: Gen>(gen: &mut T, id: ID) -> Src {
+        let mi_label = gen.jump_label();
+        // GR1 .. value1
+        // GR0 .. ret = abs(value1)
+        Src {
+            dependencies: Vec::new(),
+            statements: casl2::parse(
+                format!(
+                    r#"
+{prog} LD    GR0,GR1    ; {comment}
+       JMI   {mi}
+       RET
+{mi}   SUBA  GR0,GR1
+       SUBA  GR0,GR1
+       RET
+"#,
+                    prog = id.label(),
+                    comment = format!("{:?}", id),
+                    mi = mi_label
+                )
+                .trim_start_matches('\n'),
+            )
+            .unwrap(),
+        }
+    }
+
+    fn get_func_max<T: Gen>(gen: &mut T, id: ID) -> Src {
         let mi_label = gen.jump_label();
         // GR1 .. value1
         // GR2 .. value2
@@ -1356,11 +1385,11 @@ mod subroutine {
             statements: casl2::parse(
                 format!(
                     r#"
-{prog} CPA GR1,GR2    ; {comment}
-       JMI {mi}
-       LD GR0,GR1
+{prog} CPA   GR1,GR2    ; {comment}
+       JMI   {mi}
+       LD    GR0,GR1
        RET
-{mi}   LD GR0,GR2
+{mi}   LD    GR0,GR2
        RET
 "#,
                     prog = id.label(),
@@ -1373,8 +1402,7 @@ mod subroutine {
         }
     }
 
-    fn get_func_min<T: Gen>(gen: &mut T) -> Src {
-        let id = ID::FuncMin;
+    fn get_func_min<T: Gen>(gen: &mut T, id: ID) -> Src {
         let mi_label = gen.jump_label();
         // GR1 .. value1
         // GR2 .. value2
@@ -1384,11 +1412,11 @@ mod subroutine {
             statements: casl2::parse(
                 format!(
                     r#"
-{prog} CPA GR1,GR2    ; {comment}
-       JMI {mi}
-       LD GR0,GR2
+{prog} CPA   GR1,GR2    ; {comment}
+       JMI   {mi}
+       LD    GR0,GR2
        RET
-{mi}   LD GR0,GR1
+{mi}   LD    GR0,GR1
        RET
 "#,
                     prog = id.label(),
@@ -1401,8 +1429,7 @@ mod subroutine {
         }
     }
 
-    fn get_func_cint<T: Gen>(gen: &mut T) -> Src {
-        let id = ID::FuncCInt;
+    fn get_func_cint<T: Gen>(gen: &mut T, id: ID) -> Src {
         let mi_label = gen.jump_label();
         let read_label = gen.jump_label();
         let ret_label = gen.jump_label();
@@ -1414,46 +1441,46 @@ mod subroutine {
             statements: casl2::parse(
                 format!(
                     r#"
-{prog} PUSH 0,GR1    ; {comment}
-       PUSH 0,GR2
-       PUSH 0,GR3
-       PUSH 0,GR4
-       PUSH 0,GR5
-       ADDL GR2,GR1
-       XOR GR0,GR0
-       XOR GR4,GR4
-       CPL GR1,GR2
-       JZE {ret}
-       LD GR3,0,GR1
-       CPL GR3,='+'
-       JNZ {mi}
-       LAD GR1,1,GR1
-       JUMP {read}
-{mi}   CPL GR3,='-'
-       JNZ {read}
-       LAD GR4,-1
-       LAD GR1,1,GR1
-{read} CPL GR1,GR2
-       JZE {ret}
-       LD GR3,0,GR1
-       SUBL GR3,='0'
-       JMI {ret}
-       CPL GR3,=9
-       JPL {ret}
-       LD GR5,GR0
-       SLL GR0,3
-       ADDL GR0,GR5
-       ADDL GR0,GR5
-       ADDL GR0,GR3
-       LAD GR1,1,GR1
-       JUMP {read}
-{ret}  XOR GR0,GR4
-       SUBL GR0,GR4
-       POP GR5
-       POP GR4
-       POP GR3
-       POP GR2
-       POP GR1
+{prog} PUSH  0,GR1    ; {comment}
+       PUSH  0,GR2
+       PUSH  0,GR3
+       PUSH  0,GR4
+       PUSH  0,GR5
+       ADDL  GR2,GR1
+       XOR   GR0,GR0
+       XOR   GR4,GR4
+       CPL   GR1,GR2
+       JZE   {ret}
+       LD    GR3,0,GR1
+       CPL   GR3,='+'
+       JNZ   {mi}
+       LAD   GR1,1,GR1
+       JUMP  {read}
+{mi}   CPL   GR3,='-'
+       JNZ   {read}
+       LAD   GR4,-1
+       LAD   GR1,1,GR1
+{read} CPL   GR1,GR2
+       JZE   {ret}
+       LD    GR3,0,GR1
+       SUBL  GR3,='0'
+       JMI   {ret}
+       CPL   GR3,=9
+       JPL   {ret}
+       LD    GR5,GR0
+       SLL   GR0,3
+       ADDL  GR0,GR5
+       ADDL  GR0,GR5
+       ADDL  GR0,GR3
+       LAD   GR1,1,GR1
+       JUMP  {read}
+{ret}  XOR   GR0,GR4
+       SUBL  GR0,GR4
+       POP   GR5
+       POP   GR4
+       POP   GR3
+       POP   GR2
+       POP   GR1
        RET
 "#,
                     prog = id.label(),
@@ -1468,15 +1495,91 @@ mod subroutine {
         }
     }
 
-    fn get_util_div_mod<T: Gen>(_gen: &mut T) -> Src {
+    fn get_util_div_mod<T: Gen>(gen: &mut T, id: ID) -> Src {
+        let ok_label = gen.jump_label();
+        let shift_label = gen.jump_label();
+        let pre_label = gen.jump_label();
+        let cycle_label = gen.jump_label();
+        let next_label = gen.jump_label();
+        let ret_label = gen.jump_label();
         // GR2 割られる数 (分子)
         // GR3 割る数 (分母)
         // GR0 商    = GR2 \ GR3
         // GR1 余り   = GR2 Mod GR3
-        // Src {
-        // dependencies: Vec::new(),
-        // statements: vec![],
-        // }
+        Src {
+            dependencies: vec![ID::FuncAbs, ID::BinOpMul],
+            statements: casl2::parse(
+                format!(
+                    r#"
+{prog}  AND   GR3,GR3     ; {comment}
+        JNZ   {ok}
+        XOR   GR0,GR0
+        LAD   GR1,-1
+        RET
+{ok}    PUSH  GR2
+        PUSH  GR3
+        PUSH  GR4
+        PUSH  GR5
+        LD    GR4,GR2     ; GR4: dividend
+        LD    GR1,GR2
+        CALL  {abs}
+        LD    GR5,GR0     ; GR5: Abs(dividend)
+        LD    GR1,GR3
+        CALL  {abs}
+        LD    GR1,GR0     ; GR1: Abs(divisor)
+        LAD   GR0,1
+{shift} ADDL  GR1,GR1
+        JOV   {pre}
+        ADDL  GR0,GR0
+        JUMP  {shift}
+{pre}   SRL   GR1,1
+        OR    GR1,#8000
+        XOR   GR2,GR2     ; GR2: Abs(quotient)
+{cycle} CPL   GR5,GR1
+        JMI   {next}
+        SUBL  GR5,GR1
+        ADDL  GR2,GR0
+{next}  SRL   GR0,1
+        JZE   {ret}
+        SRL   GR1,1
+        JUMP  {cycle}
+{ret}   LD    GR5,GR4
+        XOR   GR5,GR3
+        SRA   GR5,15      ; GR5: sign of quotient
+        XOR   GR2,GR5
+        SUBA  GR2,GR5     ; GR2: quotient
+        CALL  {mul}
+        LD    GR1,GR4
+        SUBA  GR1,GR0     ; GR1: remainder
+        LD    GR0,GR2     ; GR0: quotient
+        POP   GR5
+        POP   GR4
+        POP   GR3
+        POP   GR2
+        RET
+"#,
+                    prog = id.label(),
+                    comment = format!("{:?}", id),
+                    abs = ID::FuncAbs.label(),
+                    mul = ID::BinOpMul.label(),
+                    ok = ok_label,
+                    shift = shift_label,
+                    pre = pre_label,
+                    cycle = cycle_label,
+                    next = next_label,
+                    ret = ret_label
+                )
+                .trim_start_matches('\n'),
+            )
+            .unwrap(),
+        }
+    }
+
+    fn get_bin_op_mul<T: Gen>(gen: &mut T, id: ID) -> Src {
+        // GR2 * GR3
+        // GR0 積の下位16ビット  (GR2 * GR3) & 0x0000FFFF
+        // GR1 積の上位16ビット ((GR2 * GR3) & 0xFFFF0000) >> 16
+        let _ = (gen, id);
         todo!()
     }
 }
