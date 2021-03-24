@@ -509,19 +509,19 @@ impl fmt::Display for Program {
 impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Label(label) = self;
-        write!(f, "{}", label)
+        label.fmt(f)
     }
 }
 
 impl fmt::Display for Adr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Adr::Dec(v) => write!(f, "{}", *v),
-            Adr::Hex(v) => write!(f, "#{:04X}", *v),
-            Adr::Label(v) => write!(f, "{}", v),
-            Adr::LiteralDec(v) => write!(f, "={}", *v),
-            Adr::LiteralHex(v) => write!(f, "={:04X}", *v),
-            Adr::LiteralStr(v) => write!(f, "='{}'", v.replace("'", "''")),
+            Adr::Dec(v) => format!("{}", *v).fmt(f),
+            Adr::Hex(v) => format!("#{:04X}", *v).fmt(f),
+            Adr::Label(v) => format!("{}", v).fmt(f),
+            Adr::LiteralDec(v) => format!("={}", *v).fmt(f),
+            Adr::LiteralHex(v) => format!("={:04X}", *v).fmt(f),
+            Adr::LiteralStr(v) => format!("='{}'", v.replace("'", "''")).fmt(f),
         }
     }
 }
@@ -529,23 +529,23 @@ impl fmt::Display for Adr {
 impl fmt::Display for Constant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Constant::Dec(v) => write!(f, "{}", *v),
-            Constant::Hex(v) => write!(f, "#{:04X}", *v),
-            Constant::Str(v) => write!(f, "'{}'", v.replace("'", "''")),
-            Constant::Label(v) => write!(f, "{}", v),
+            Constant::Dec(v) => format!("{}", *v).fmt(f),
+            Constant::Hex(v) => format!("#{:04X}", *v).fmt(f),
+            Constant::Str(v) => format!("'{}'", v.replace("'", "''")).fmt(f),
+            Constant::Label(v) => format!("{}", v).fmt(f),
         }
     }
 }
 
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "GR{}", *self as isize)
+        format!("GR{}", *self as isize).fmt(f)
     }
 }
 
 impl fmt::Display for IndexRegister {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "GR{}", *self as isize)
+        format!("GR{}", *self as isize).fmt(f)
     }
 }
 
@@ -564,7 +564,7 @@ impl fmt::Display for R {
             Cpa => "CPA",
             Cpl => "CPL",
         };
-        write!(f, "{}", s)
+        s.fmt(f)
     }
 }
 
@@ -589,7 +589,7 @@ impl fmt::Display for A {
             Sll => "SLL",
             Srl => "SRL",
         };
-        write!(f, "{}", s)
+        s.fmt(f)
     }
 }
 
@@ -607,65 +607,66 @@ impl fmt::Display for P {
             Call => "CALL",
             Svc => "SVC",
         };
-        write!(f, "{}", s)
+        s.fmt(f)
     }
 }
 
 impl fmt::Display for Command {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Command::*;
-        match self {
+        let s = match self {
             Start {
                 entry_point: Some(entry),
-            } => write!(f, "{:<9} {}", "START", entry),
-            Start { entry_point: None } => write!(f, "START"),
-            End => write!(f, "END"),
-            Ds { size } => write!(f, "{:<9} {}", "DS", *size),
+            } => format!("{:<9} {}", "START", entry),
+            Start { entry_point: None } => return "START".fmt(f),
+            End => return "END".fmt(f),
+            Ds { size } => format!("{:<9} {}", "DS", *size),
             Dc { constants } => {
-                write!(f, "{:<9} ", "DC")?;
+                let mut s = format!("{:<9} ", "DC");
                 for (i, c) in constants.iter().enumerate() {
                     if i > 0 {
-                        write!(f, ",")?;
+                        s.push(',');
                     }
-                    write!(f, "{}", c)?;
+                    s.push_str(&c.to_string());
                 }
-                Ok(())
+                s
             }
-            In { pos, len } => write!(f, "{:<9} {},{}", "IN", pos, len),
-            Out { pos, len } => write!(f, "{:<9} {},{}", "OUT", pos, len),
-            Rpush => write!(f, "RPUSH"),
-            Rpop => write!(f, "RPOP"),
+            In { pos, len } => format!("{:<9} {},{}", "IN", pos, len),
+            Out { pos, len } => format!("{:<9} {},{}", "OUT", pos, len),
+            Rpush => return "RPUSH".fmt(f),
+            Rpop => return "RPOP".fmt(f),
 
-            R { code, r1, r2 } => write!(f, "{:<9} {},{}", code.to_string(), r1, r2),
+            R { code, r1, r2 } => format!("{:<9} {},{}", code.to_string(), r1, r2),
             A {
                 code,
                 r,
                 adr,
                 x: Some(x),
-            } => write!(f, "{:<9} {},{},{}", code.to_string(), r, adr, x),
+            } => format!("{:<9} {},{},{}", code.to_string(), r, adr, x),
             A {
                 code,
                 r,
                 adr,
                 x: None,
-            } => write!(f, "{:<9} {},{}", code.to_string(), r, adr),
+            } => format!("{:<9} {},{}", code.to_string(), r, adr),
             P {
                 code,
                 adr,
                 x: Some(x),
-            } => write!(f, "{:<9} {},{}", code.to_string(), adr, x),
-            P { code, adr, x: None } => write!(f, "{:<9} {}", code.to_string(), adr),
-            Pop { r } => write!(f, "{:<9} {}", "POP", r),
-            Ret => write!(f, "RET"),
-            Nop => write!(f, "NOP"),
-        }
+            } => format!("{:<9} {},{}", code.to_string(), adr, x),
+            P { code, adr, x: None } => format!("{:<9} {}", code.to_string(), adr),
+            Pop { r } => format!("{:<9} {}", "POP", r),
+            Ret => return "RET".fmt(f),
+            Nop => return "NOP".fmt(f),
+        };
+        s.fmt(f)
     }
 }
 
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Comment(text) => write!(f, "; {}", text),
+        let s = match self {
+            Self::Comment(text) => format!("; {}", text),
             Self::Code {
                 label,
                 command,
@@ -675,8 +676,7 @@ impl fmt::Display for Statement {
                 let count = command.chars().count();
                 let width = (count + 5 - count % 5).max(25);
                 if let Some(label) = label {
-                    write!(
-                        f,
+                    format!(
                         "{0:<9} {1:<2$}; {3}",
                         label.to_string(),
                         command,
@@ -684,7 +684,7 @@ impl fmt::Display for Statement {
                         text
                     )
                 } else {
-                    write!(f, "{0:<9} {1:<2$}; {3}", "", command, width, text)
+                    format!("{0:<9} {1:<2$}; {3}", "", command, width, text)
                 }
             }
             Self::Code {
@@ -693,12 +693,13 @@ impl fmt::Display for Statement {
                 comment: None,
             } => {
                 if let Some(label) = label {
-                    write!(f, "{:<9} {}", label.to_string(), command.to_string())
+                    format!("{:<9} {}", label.to_string(), command.to_string())
                 } else {
-                    write!(f, "{:<9} {}", "", command.to_string())
+                    format!("{:<9} {}", "", command.to_string())
                 }
             }
-        }
+        };
+        s.fmt(f)
     }
 }
 

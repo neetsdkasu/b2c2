@@ -281,7 +281,7 @@ macro_rules! enumdef {
         }
         impl std::fmt::Display for $name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str(self.to_str())
+                self.to_str().fmt(f)
             }
         }
     };
