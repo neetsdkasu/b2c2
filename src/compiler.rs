@@ -241,6 +241,7 @@ impl Compiler {
         labels
     }
 
+    // サブルーチンのソースコードを登録する
     fn load_subroutine(&mut self, req_id: subroutine::ID) -> String {
         let mut loading_ids = vec![req_id];
         while let Some(id) = loading_ids.pop() {
@@ -408,6 +409,7 @@ impl Compiler {
         statements
     }
 
+    // ステートメントをコンパイルする
     fn compile(&mut self, stmt: &parser::Statement) {
         use parser::Statement::*;
         match stmt {
@@ -1453,6 +1455,7 @@ mod subroutine {
         fn jump_label(&mut self) -> String;
     }
 
+    // サブルーチンのソースコードと依存関係を取得
     pub fn get_src<T: Gen>(gen: &mut T, id: ID) -> Src {
         match id {
             ID::FuncAbs => get_func_abs(gen, id),
@@ -1464,6 +1467,7 @@ mod subroutine {
         }
     }
 
+    // Abs
     fn get_func_abs<T: Gen>(gen: &mut T, id: ID) -> Src {
         // GR1 .. value1
         // GR0 .. ret = abs(value1)
@@ -1489,6 +1493,7 @@ mod subroutine {
         }
     }
 
+    // Max
     fn get_func_max<T: Gen>(gen: &mut T, id: ID) -> Src {
         // GR1 .. value1
         // GR2 .. value2
@@ -1515,6 +1520,7 @@ mod subroutine {
         }
     }
 
+    // Min
     fn get_func_min<T: Gen>(gen: &mut T, id: ID) -> Src {
         // GR1 .. value1
         // GR2 .. value2
@@ -1541,6 +1547,7 @@ mod subroutine {
         }
     }
 
+    // CInt
     fn get_func_cint<T: Gen>(gen: &mut T, id: ID) -> Src {
         // GR1 .. adr of s_buf
         // GR2 .. s_len
@@ -1604,6 +1611,7 @@ mod subroutine {
         }
     }
 
+    // Div Mod
     fn get_util_div_mod<T: Gen>(gen: &mut T, id: ID) -> Src {
         // GR2 割られる数 (分子)
         // GR3 割る数 (分母)
@@ -1678,6 +1686,7 @@ mod subroutine {
         }
     }
 
+    // Mul
     fn get_util_mul<T: Gen>(gen: &mut T, id: ID) -> Src {
         // GR2 * GR3
         // GR0 積の下位16ビット  (GR2 * GR3) & 0x0000FFFF
