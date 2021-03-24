@@ -30,8 +30,9 @@ struct Compiler {
     // 組み込みサブルーチンのローカル変数・定数のID (名前重複を防ぐが目的) (DS/DCは各サブルーチン内で定義する)
     local_var_id: usize,
 
-    // 式展開時などの一時変数のID (真理値/整数/文字列の全体で一意)
-    temp_var_id: usize,
+    // 式展開時などの一時変数のID
+    temp_int_var_id: usize,
+    temp_str_var_id: usize,
 
     // ループや条件分岐に使うジャンプ先ラベルのID (全体で一意)
     jump_id: usize,
@@ -138,7 +139,8 @@ impl Compiler {
             var_id: 0,
             lit_id: 0,
             local_var_id: 0,
-            temp_var_id: 0,
+            temp_int_var_id: 0,
+            temp_str_var_id: 0,
             jump_id: 0,
             bool_var_labels: HashMap::new(),
             int_var_labels: HashMap::new(),
@@ -201,8 +203,8 @@ impl Compiler {
         if let Some(label) = self.temp_int_var_labels.pop() {
             return label;
         }
-        self.temp_var_id += 1;
-        format!("T{}", self.temp_var_id)
+        self.temp_int_var_id += 1;
+        format!("T{}", self.temp_int_var_id)
     }
 
     // 式展開時の一時変数(整数/真理値)のラベルの返却
@@ -215,9 +217,9 @@ impl Compiler {
         if let Some(labels) = self.temp_str_var_labels.pop() {
             return labels;
         }
-        self.temp_var_id += 1;
-        let t_len = format!("TL{}", self.temp_var_id);
-        let t_buf = format!("TB{}", self.temp_var_id);
+        self.temp_str_var_id += 1;
+        let t_len = format!("TL{}", self.temp_str_var_id);
+        let t_buf = format!("TB{}", self.temp_str_var_id);
         (t_len, t_buf)
     }
 
