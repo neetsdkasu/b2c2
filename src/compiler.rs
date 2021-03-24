@@ -1129,8 +1129,8 @@ impl Compiler {
             Sub => format!(" SUBA {},{}", lhs_reg, rhs_reg),
 
             // 組み込みサブルーチンで処理するもの
-            Mul => todo!(),
-            Div => todo!(),
+            Mul => return self.compile_bin_op_integer_mul(lhs_reg, rhs_reg),
+            Div => return self.compile_bin_op_integer_div(lhs_reg, rhs_reg),
             Mod => return self.compile_bin_op_integer_mod(lhs_reg, rhs_reg),
 
             // 二項演算子ではないものや、整数を返さないもの
@@ -1150,14 +1150,127 @@ impl Compiler {
     }
 
     // (式展開の処理の一部)
+    // 整数を返す二項演算子( Mul (*) )の処理
+    fn compile_bin_op_integer_mul(
+        &mut self,
+        lhs_reg: casl2::Register,
+        rhs_reg: casl2::Register,
+    ) -> casl2::Register {
+        let mul_label = self.load_subroutine(subroutine::ID::UtilMul);
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[GR1, GR2, GR3])
+        };
+
+        let mut src = saves;
+
+        writeln!(
+            &mut src,
+            r#" PUSH  0,{rhs}
+                LD    GR2,{lhs}
+                POP   GR3
+                CALL  {mul}"#,
+            rhs = rhs_reg,
+            lhs = lhs_reg,
+            mul = mul_label
+        )
+        .unwrap();
+
+        src.push_str(&recovers);
+
+        writeln!(&mut src, " LD {lhs},GR0", lhs = lhs_reg).unwrap();
+
+        let code = casl2::parse(&src).unwrap();
+
+        self.statements.extend(code);
+
+        self.set_register_idle(rhs_reg);
+
+        lhs_reg
+    }
+
+    // (式展開の処理の一部)
+    // 整数を返す二項演算子( Div (\) )の処理
+    fn compile_bin_op_integer_div(
+        &mut self,
+        lhs_reg: casl2::Register,
+        rhs_reg: casl2::Register,
+    ) -> casl2::Register {
+        let divmod_label = self.load_subroutine(subroutine::ID::UtilDivMod);
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[GR1, GR2, GR3])
+        };
+
+        let mut src = saves;
+
+        writeln!(
+            &mut src,
+            r#" PUSH  0,{rhs}
+                LD    GR2,{lhs}
+                POP   GR3
+                CALL  {divmod}"#,
+            rhs = rhs_reg,
+            lhs = lhs_reg,
+            divmod = divmod_label
+        )
+        .unwrap();
+
+        src.push_str(&recovers);
+
+        writeln!(&mut src, " LD {lhs},GR0", lhs = lhs_reg).unwrap();
+
+        let code = casl2::parse(&src).unwrap();
+
+        self.statements.extend(code);
+
+        self.set_register_idle(rhs_reg);
+
+        lhs_reg
+    }
+
+    // (式展開の処理の一部)
     // 整数を返す二項演算子( Mod )の処理
     fn compile_bin_op_integer_mod(
         &mut self,
         lhs_reg: casl2::Register,
         rhs_reg: casl2::Register,
     ) -> casl2::Register {
-        let _ = (lhs_reg, rhs_reg);
-        todo!()
+        let divmod_label = self.load_subroutine(subroutine::ID::UtilDivMod);
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[GR1, GR2, GR3])
+        };
+
+        let mut src = saves;
+
+        writeln!(
+            &mut src,
+            r#" PUSH  0,{rhs}
+                LD    GR2,{lhs}
+                POP   GR3
+                CALL  {divmod}
+                LD    GR0,GR1"#,
+            rhs = rhs_reg,
+            lhs = lhs_reg,
+            divmod = divmod_label
+        )
+        .unwrap();
+
+        src.push_str(&recovers);
+
+        writeln!(&mut src, " LD {lhs},GR0", lhs = lhs_reg).unwrap();
+
+        let code = casl2::parse(&src).unwrap();
+
+        self.statements.extend(code);
+
+        self.set_register_idle(rhs_reg);
+
+        lhs_reg
     }
 
     // (式展開の処理の一部)
@@ -1505,10 +1618,10 @@ mod subroutine {
         XOR   GR0,GR0
         LAD   GR1,-1
         RET
-{ok}    PUSH  GR2
-        PUSH  GR3
-        PUSH  GR4
-        PUSH  GR5
+{ok}    PUSH  0,GR2
+        PUSH  0,GR3
+        PUSH  0,GR4
+        PUSH  0,GR5
         LD    GR4,GR2     ; GR4: dividend
         LD    GR1,GR2
         CALL  {abs}
@@ -1522,7 +1635,7 @@ mod subroutine {
         ADDL  GR0,GR0
         JUMP  {shift}
 {pre}   SRL   GR1,1
-        OR    GR1,#8000
+        LAD   GR1,#8000,GR1
         XOR   GR2,GR2     ; GR2: Abs(quotient)
 {cycle} CPL   GR5,GR1
         JMI   {next}
@@ -1573,10 +1686,10 @@ mod subroutine {
             statements: casl2::parse(
                 format!(
                     r#"
-{prog}   PUSH  GR2     ; {comment}
-         PUSH  GR3
-         PUSH  GR4
-         PUSH  GR5
+{prog}   PUSH  0,GR2     ; {comment}
+         PUSH  0,GR3
+         PUSH  0,GR4
+         PUSH  0,GR5
          XOR   GR0,GR0
          XOR   GR1,GR1
          LD    GR4,GR2
@@ -1650,9 +1763,9 @@ mod test {
             Let int1 = (1 And int1) And 2
             Let int1 = (1 Or int1) Or 2
             Let int1 = (1 Xor int1) Xor 2
-            ' Let int1 = (1 * int1) * 2
-            ' Let int1 = (1 \ int1) \ 2
-            ' Let int1 = (1 Mod int1) Mod 2
+            Let int1 = (1 * int1) * 2
+            Let int1 = (1 \ int1) \ 2
+            Let int1 = (1 Mod int1) Mod 2
             ' Let int1 = - (-int1 + -1)
             ' Let int1 = Not (Not int1 + Not 1)
             ' Let int1 = Len(str1)
@@ -2274,7 +2387,8 @@ Dim i As Integer
 Dim c As Integer
 Print "Limit?"
 Input c
-c = Max(1, Min(100, c))
+'c = Max(1, Min(100, c))
+c = c Mod 9
 For i = 1 To c Step 1
 '    Select Case i Mod 15
 '        Case 0
