@@ -530,7 +530,8 @@ impl Compiler {
     // Assign Integer ステートメント
     // int_var = int_expr
     fn compile_assign_integer(&mut self, var_name: &str, value: &parser::Expr) {
-        self.next_statement_comment = Some(format!("{} = {{value}}", var_name));
+        self.next_statement_comment =
+            Some(format!("{var} = {value}", var = var_name, value = value));
         let reg = self.compile_expr(value);
         let var_label = self.int_var_labels.get(var_name).expect("BUG");
 
@@ -562,8 +563,10 @@ impl Compiler {
         };
 
         self.next_statement_comment = Some(format!(
-            "For {counter} = {{init}} To {{end}} Step {step}",
+            "For {counter} = {init} To {end} Step {step}",
             counter = counter,
+            init = init,
+            end = end,
             step = step
         ));
 
@@ -691,8 +694,11 @@ impl Compiler {
         };
 
         self.next_statement_comment = Some(format!(
-            "For {counter} = {{init}} To {{end}} Step {{step}}",
-            counter = counter
+            "For {counter} = {init} To {end} Step {step}",
+            counter = counter,
+            init = init,
+            end = end,
+            step = step
         ));
 
         // calc {step}
@@ -2151,7 +2157,7 @@ TB1    DS     256
             statements,
             casl2::parse(
                 r#"TEST  START
-                     LAD    GR7,10     ; For i = {init} To {end} Step 1
+                     LAD    GR7,10     ; For i = 1 To 10 Step 1
                      ST     GR7,T1
                      LAD    GR7,1
                      ST     GR7,I1
@@ -2193,7 +2199,7 @@ T1                   DS 1
             statements,
             casl2::parse(
                 r#"TEST  START
-                     LAD    GR7,10     ; For i = {init} To {end} Step 1
+                     LAD    GR7,10     ; For i = 1 To 10 Step 1
                      ST     GR7,T1
                      LAD    GR7,1
                      ST     GR7,I1
@@ -2235,7 +2241,7 @@ T1                   DS 1
             statements,
             casl2::parse(
                 r#"TEST  START
-                     LAD    GR7,8      ; For i = {init} To {end} Step -2
+                     LAD    GR7,8      ; For i = 24 To 8 Step -2
                      ST     GR7,T1
                      LAD    GR7,24
                      ST     GR7,I1
@@ -2278,7 +2284,7 @@ T1                   DS 1
             statements,
             casl2::parse(
                 r#"TEST  START
-                     LD     GR7,I1     ; For I = {init} To {end} Step {step}
+                     LD     GR7,I1     ; For I = 1 To 10 Step S
                      ST     GR7,T1
                      LAD    GR7,10
                      ST     GR7,T2
@@ -2329,7 +2335,7 @@ T2                   DS 1
             statements,
             casl2::parse(
                 r#"TEST  START
-                     LAD    GR7,11     ; x = {value}
+                     LAD    GR7,11     ; x = (11 + 22)
                      LAD    GR7,22,GR7
                      ST     GR7,I1
                      RET
@@ -2359,7 +2365,7 @@ I1                   DS 1              ; x
             statements,
             casl2::parse(
                 r#"TEST  START
-                     LAD    GR7,11     ; x = {value}
+                     LAD    GR7,11     ; x = (11 + y)
                      LD     GR6,I2
                      ADDA   GR7,GR6
                      ST     GR7,I1
@@ -2380,8 +2386,7 @@ Dim i As Integer
 Dim c As Integer
 Print "Limit?"
 Input c
-'c = Max(1, Min(100, c))
-c = c Mod 9
+c = Max(1, Min(100, c))
 For i = 1 To c Step 1
 '    Select Case i Mod 15
 '        Case 0
