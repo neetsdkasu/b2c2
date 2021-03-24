@@ -644,7 +644,7 @@ impl Parser {
         Ok(())
     }
 
-    // Case <integer> [, <integer>]*
+    // Case <integer/character> [, <integer/character>]*
     // Case <string> [, <string>]*
     // Case Else
     fn parse_command_case(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
@@ -703,12 +703,18 @@ impl Parser {
         }
 
         match self.parse_expr(pos_and_tokens)? {
-            Expr::LitInteger(value) => {
+            Expr::LitCharacter(value) => {
                 if let Some(Statement::SelectInteger { case_blocks, .. }) = self.provisionals.last()
                 {
                     let found_duplicate = case_blocks.iter().any(|s| {
                         if let Statement::CaseInteger { values, .. } = s {
-                            values.iter().any(|v| *v == value)
+                            values.iter().any(|v| {
+                                if let CaseIntegerItem::Character(v) = v {
+                                    *v == value
+                                } else {
+                                    false
+                                }
+                            })
                         } else {
                             unreachable!("BUG");
                         }
@@ -720,7 +726,33 @@ impl Parser {
                     unreachable!("BUG");
                 }
                 self.provisionals.push(Statement::ProvisionalCaseInteger {
-                    values: vec![value],
+                    values: vec![CaseIntegerItem::Character(value)],
+                });
+            }
+            Expr::LitInteger(value) => {
+                if let Some(Statement::SelectInteger { case_blocks, .. }) = self.provisionals.last()
+                {
+                    let found_duplicate = case_blocks.iter().any(|s| {
+                        if let Statement::CaseInteger { values, .. } = s {
+                            values.iter().any(|v| {
+                                if let CaseIntegerItem::Integer(v) = v {
+                                    *v == value
+                                } else {
+                                    false
+                                }
+                            })
+                        } else {
+                            unreachable!("BUG");
+                        }
+                    });
+                    if found_duplicate {
+                        return Err(self.syntax_error("invalid Case statement".into()));
+                    }
+                } else {
+                    unreachable!("BUG");
+                }
+                self.provisionals.push(Statement::ProvisionalCaseInteger {
+                    values: vec![CaseIntegerItem::Integer(value)],
                 });
             }
             Expr::LitString(value) => {
@@ -745,14 +777,19 @@ impl Parser {
             }
             Expr::ParamList(values) if matches!(select_type, ExprType::Integer) => {
                 assert!(values.len() > 1, "BUG");
-                let values = values.into_iter().try_fold(vec![], |mut acc, expr| {
-                    if let Expr::LitInteger(value) = expr {
-                        acc.push(value);
-                        Ok(acc)
-                    } else {
-                        Err(self.syntax_error("invalid Case statement".into()))
-                    }
-                })?;
+                let values = values
+                    .into_iter()
+                    .try_fold(vec![], |mut acc, expr| match expr {
+                        Expr::LitInteger(value) => {
+                            acc.push(CaseIntegerItem::Integer(value));
+                            Ok(acc)
+                        }
+                        Expr::LitCharacter(value) => {
+                            acc.push(CaseIntegerItem::Character(value));
+                            Ok(acc)
+                        }
+                        _ => Err(self.syntax_error("invalid Case statement".into())),
+                    })?;
                 if let Some(Statement::SelectInteger { case_blocks, .. }) = self.provisionals.last()
                 {
                     let found_duplicate = values.iter().any(|value| {
@@ -1745,11 +1782,11 @@ pub enum Statement {
         value: Expr,
     },
     CaseInteger {
-        values: Vec<i32>,
+        values: Vec<CaseIntegerItem>,
         block: Vec<Statement>,
     },
     ProvisionalCaseInteger {
-        values: Vec<i32>,
+        values: Vec<CaseIntegerItem>,
     },
     SelectString {
         exit_id: usize,
@@ -1802,6 +1839,12 @@ pub enum Statement {
     PrintExprString {
         value: Expr,
     },
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum CaseIntegerItem {
+    Integer(i32),
+    Character(char),
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -2369,7 +2412,7 @@ Loop
                         case_blocks: vec![
                             // Case 0
                             Statement::CaseInteger {
-                                values: vec![0],
+                                values: vec![CaseIntegerItem::Integer(0)],
                                 block: vec![
                                     // Print "FizzBuzz"
                                     Statement::PrintLitString {
@@ -2379,7 +2422,12 @@ Loop
                             },
                             // Case 3, 6, 9, 12
                             Statement::CaseInteger {
-                                values: vec![3, 6, 9, 12],
+                                values: vec![
+                                    CaseIntegerItem::Integer(3),
+                                    CaseIntegerItem::Integer(6),
+                                    CaseIntegerItem::Integer(9),
+                                    CaseIntegerItem::Integer(12),
+                                ],
                                 block: vec![
                                     // Print "Fizz"
                                     Statement::PrintLitString {
@@ -2389,7 +2437,10 @@ Loop
                             },
                             // Case 5, 10
                             Statement::CaseInteger {
-                                values: vec![5, 10],
+                                values: vec![
+                                    CaseIntegerItem::Integer(5),
+                                    CaseIntegerItem::Integer(10),
+                                ],
                                 block: vec![
                                     // Print "Buzz"
                                     Statement::PrintLitString {

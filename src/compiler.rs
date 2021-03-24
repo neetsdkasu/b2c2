@@ -482,30 +482,16 @@ impl Compiler {
                 block: _,
                 else_blocks: _,
             } => todo!(),
-            ElseIf {
-                condition: _,
-                block: _,
-            } => todo!(),
-            Else { block: _ } => todo!(),
             SelectInteger {
                 exit_id: _,
                 value: _,
                 case_blocks: _,
-            } => todo!(),
-            CaseInteger {
-                values: _,
-                block: _,
             } => todo!(),
             SelectString {
                 exit_id: _,
                 value: _,
                 case_blocks: _,
             } => todo!(),
-            CaseString {
-                values: _,
-                block: _,
-            } => todo!(),
-            CaseElse { block: _ } => todo!(),
             InputElementInteger {
                 var_name: _,
                 index: _,
@@ -519,6 +505,13 @@ impl Compiler {
             PrintExprBoolan { value: _ } => todo!(),
             PrintExprInteger { value: _ } => todo!(),
             PrintExprString { value: _ } => todo!(),
+
+            // IfやSelectの内側で処理する
+            ElseIf { .. }
+            | Else { .. }
+            | CaseInteger { .. }
+            | CaseString { .. }
+            | CaseElse { .. } => unreachable!("BUG"),
 
             // Provisionals unreachable
             ProvisionalDo { .. }
