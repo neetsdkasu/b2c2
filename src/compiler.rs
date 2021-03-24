@@ -293,7 +293,7 @@ impl Compiler {
             statements.push(casl2::Statement::labeled_with_comment(
                 &label,
                 casl2::Command::Ds { size: 1 },
-                &var_name,
+                &format!("Dim {} As Boolean", var_name),
             ));
         }
 
@@ -306,7 +306,7 @@ impl Compiler {
             statements.push(casl2::Statement::labeled_with_comment(
                 &label,
                 casl2::Command::Ds { size: 1 },
-                &var_name,
+                &format!("Dim {} As Integer", var_name),
             ));
         }
 
@@ -319,7 +319,7 @@ impl Compiler {
             statements.push(casl2::Statement::labeled_with_comment(
                 &len_label,
                 casl2::Command::Ds { size: 1 },
-                &var_name,
+                &format!("Dim {} As String", var_name),
             ));
             statements.push(casl2::Statement::labeled(
                 &buf_label,
@@ -336,7 +336,7 @@ impl Compiler {
             statements.push(casl2::Statement::labeled_with_comment(
                 &label,
                 casl2::Command::Ds { size: size as u16 },
-                &var_name,
+                &format!("Dim {}({}) As Boolean", var_name, size - 1),
             ));
         }
 
@@ -349,7 +349,7 @@ impl Compiler {
             statements.push(casl2::Statement::labeled_with_comment(
                 &label,
                 casl2::Command::Ds { size: size as u16 },
-                &var_name,
+                &format!("Dim {}({}) As Integer", var_name, size - 1),
             ));
         }
 
@@ -1892,16 +1892,16 @@ LB4    DC     'Test@1234'
                 r#"
 TEST   START
        RET
-B2     DS     1     ; boolVar1
-B5     DS     1     ; boolVar2
-I3     DS     1     ; intVar2
-I8     DS     1     ; intVar1
-SL1    DS     1     ; strVar1
+B2     DS     1     ; Dim boolVar1 As Boolean
+B5     DS     1     ; Dim boolVar2 As Boolean
+I3     DS     1     ; Dim intVar2 As Integer
+I8     DS     1     ; Dim intVar1 As Integer
+SL1    DS     1     ; Dim strVar1 As String
 SB1    DS     256
-SL6    DS     1     ; strVar2
+SL6    DS     1     ; Dim strVar2 As String
 SB6    DS     256
-BA4    DS     32    ; boolArr1
-IA7    DS     155   ; intArr1
+BA4    DS     32    ; Dim boolArr1(31) As Boolean
+IA7    DS     155   ; Dim intArr1(154) As Integer
        END
             "#
                 .trim()
@@ -2027,11 +2027,11 @@ TEST   START
        OUT    SB2,SL2     ; Print strVar2
        OUT    SB1,SL1     ; Print strVar1
        RET
-SL1    DS     1           ; strVar1
+SL1    DS     1           ; Dim strVar1 As String
 SB1    DS     256
-SL2    DS     1           ; strVar2
+SL2    DS     1           ; Dim strVar2 As String
 SB2    DS     256
-SL3    DS     1           ; strVar3
+SL3    DS     1           ; Dim strVar3 As String
 SB3    DS     256
        END
             "#
@@ -2061,11 +2061,11 @@ TEST   START
        IN     SB2,SL2     ; Input strVar2
        IN     SB1,SL1     ; Input strVar1
        RET
-SL1    DS     1           ; strVar1
+SL1    DS     1           ; Dim strVar1 As String
 SB1    DS     256
-SL2    DS     1           ; strVar2
+SL2    DS     1           ; Dim strVar2 As String
 SB2    DS     256
-SL3    DS     1           ; strVar3
+SL3    DS     1           ; Dim strVar3 As String
 SB3    DS     256
        END
             "#
@@ -2126,7 +2126,7 @@ TEST   START
         statements.extend(
             casl2::parse(
                 r#"
-I1     DS     1           ; intVar1
+I1     DS     1           ; Dim intVar1 As Integer
 TL1    DS     1
 TB1    DS     256
        END
@@ -2172,7 +2172,7 @@ J2                   NOP
                      JUMP   J1         ; Next i
 J3                   NOP
                      RET
-I1                   DS 1              ; i
+I1                   DS 1              ; Dim i As Integer
 T1                   DS 1
                      END
 "#
@@ -2214,7 +2214,7 @@ J2                   NOP
                      JUMP   J1         ; Next i
 J3                   NOP
                      RET
-I1                   DS 1              ; i
+I1                   DS 1              ; Dim i As Integer
 T1                   DS 1
                      END
 "#
@@ -2256,7 +2256,7 @@ J2                   NOP
                      JUMP   J1         ; Next i
 J3                   NOP
                      RET
-I1                   DS 1              ; i
+I1                   DS 1              ; Dim i As Integer
 T1                   DS 1
                      END
 "#
@@ -2307,8 +2307,8 @@ J4                   NOP
                      JUMP   J1         ; Next I
 J5                   NOP
                      RET
-I1                   DS 1              ; S
-I2                   DS 1              ; I
+I1                   DS 1              ; Dim S As Integer
+I2                   DS 1              ; Dim I As Integer
 T1                   DS 1
 T2                   DS 1
                      END
@@ -2339,7 +2339,7 @@ T2                   DS 1
                      LAD    GR7,22,GR7
                      ST     GR7,I1
                      RET
-I1                   DS 1              ; x
+I1                   DS 1              ; Dim x As Integer
                      END
 "#
             )
@@ -2370,8 +2370,8 @@ I1                   DS 1              ; x
                      ADDA   GR7,GR6
                      ST     GR7,I1
                      RET
-I1                   DS 1              ; x
-I2                   DS 1              ; y
+I1                   DS 1              ; Dim x As Integer
+I2                   DS 1              ; Dim y As Integer
                      END
 "#
             )
