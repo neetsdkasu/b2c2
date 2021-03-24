@@ -2028,6 +2028,83 @@ impl Function {
     }
 }
 
+impl std::fmt::Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Expr::*;
+        match self {
+            BinaryOperatorBoolean(op, lhs, rhs)
+            | BinaryOperatorInteger(op, lhs, rhs)
+            | BinaryOperatorString(op, lhs, rhs) => format!(
+                "({} {} {})",
+                lhs.to_string(),
+                op.to_string(),
+                rhs.to_string()
+            )
+            .fmt(f),
+            CharOfLitString(lit, index)
+                if matches!(
+                    index.as_ref(),
+                    BinaryOperatorBoolean(..)
+                        | BinaryOperatorInteger(..)
+                        | BinaryOperatorString(..)
+                ) =>
+            {
+                format!(r#""{}"{}"#, lit.replace('"', r#""""#), index.to_string()).fmt(f)
+            }
+            CharOfLitString(lit, index) => {
+                format!(r#""{}"({})"#, lit.replace('"', r#""""#), index.to_string()).fmt(f)
+            }
+            VarArrayOfBoolean(var, index)
+            | VarArrayOfInteger(var, index)
+            | CharOfVarString(var, index)
+                if matches!(
+                    index.as_ref(),
+                    BinaryOperatorBoolean(..)
+                        | BinaryOperatorInteger(..)
+                        | BinaryOperatorString(..)
+                ) =>
+            {
+                format!("{}{}", var, index.to_string()).fmt(f)
+            }
+            VarArrayOfBoolean(var, index)
+            | VarArrayOfInteger(var, index)
+            | CharOfVarString(var, index) => format!("{}({})", var, index.to_string()).fmt(f),
+            FunctionBoolean(func, param)
+            | FunctionInteger(func, param)
+            | FunctionString(func, param)
+                if matches!(
+                    param.as_ref(),
+                    BinaryOperatorBoolean(..)
+                        | BinaryOperatorInteger(..)
+                        | BinaryOperatorString(..)
+                ) =>
+            {
+                format!("{}{}", func.to_string(), param.to_string()).fmt(f)
+            }
+            FunctionBoolean(func, param)
+            | FunctionInteger(func, param)
+            | FunctionString(func, param) => {
+                format!("{}({})", func.to_string(), param.to_string()).fmt(f)
+            }
+            LitBoolean(lit) => (if *lit { "True" } else { "False" }).fmt(f),
+            LitInteger(lit) => lit.fmt(f),
+            LitString(lit) => format!(r#""{}""#, lit.replace('"', r#""""#)).fmt(f),
+            LitCharacter('"') => r#"""""c"#.fmt(f),
+            LitCharacter(lit) => format!(r#""{}"c"#, lit).fmt(f),
+            UnaryOperatorInteger(op, value) | UnaryOperatorBoolean(op, value) => {
+                format!("{} {}", op.to_string(), value.to_string()).fmt(f)
+            }
+            VarBoolean(var) | VarInteger(var) | VarString(var) => var.fmt(f),
+            ParamList(list) => list
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+                .fmt(f),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -2068,28 +2145,40 @@ mod test {
 
         let src = vec![
             // True
-            (vec![(1, Token::Boolean(true))], Expr::LitBoolean(true)),
+            (
+                vec![(1, Token::Boolean(true))],
+                Expr::LitBoolean(true),
+                "True",
+            ),
             // 1234
-            (vec![(1, Token::Integer(1234))], Expr::LitInteger(1234)),
+            (
+                vec![(1, Token::Integer(1234))],
+                Expr::LitInteger(1234),
+                "1234",
+            ),
             // "text"
             (
                 vec![(1, Token::String("text".into()))],
                 Expr::LitString("text".into()),
+                r#""text""#,
             ),
             // boolVar1
             (
                 vec![(1, Token::Name(bool_var1.into()))],
                 Expr::VarBoolean(bool_var1.into()),
+                "boolVar1",
             ),
             // intVar1
             (
                 vec![(1, Token::Name(int_var1.into()))],
                 Expr::VarInteger(int_var1.into()),
+                "intVar1",
             ),
             // strVar1
             (
                 vec![(1, Token::Name(str_var1.into()))],
                 Expr::VarString(str_var1.into()),
+                "strVar1",
             ),
             // Not true
             (
@@ -2098,6 +2187,7 @@ mod test {
                     (2, Token::Boolean(true)),
                 ],
                 Expr::UnaryOperatorBoolean(Operator::Not, Box::new(Expr::LitBoolean(true))),
+                "Not True",
             ),
             // -1234
             (
@@ -2106,6 +2196,7 @@ mod test {
                     (2, Token::Integer(1234)),
                 ],
                 Expr::LitInteger(-1234),
+                "-1234",
             ),
             // -&h8000
             (
@@ -2114,6 +2205,7 @@ mod test {
                     (2, Token::Integer(0x8000)),
                 ],
                 Expr::LitInteger(-0x8000),
+                "-32768",
             ),
             // Not 1234
             (
@@ -2122,6 +2214,7 @@ mod test {
                     (2, Token::Integer(1234)),
                 ],
                 Expr::UnaryOperatorInteger(Operator::Not, Box::new(Expr::LitInteger(1234))),
+                "Not 1234",
             ),
             // Not boolVar1
             (
@@ -2133,6 +2226,7 @@ mod test {
                     Operator::Not,
                     Box::new(Expr::VarBoolean(bool_var1.into())),
                 ),
+                "Not boolVar1",
             ),
             // Not intVar1
             (
@@ -2144,6 +2238,7 @@ mod test {
                     Operator::Not,
                     Box::new(Expr::VarInteger(int_var1.into())),
                 ),
+                "Not intVar1",
             ),
             // -intVar1
             (
@@ -2155,6 +2250,7 @@ mod test {
                     Operator::Sub,
                     Box::new(Expr::VarInteger(int_var1.into())),
                 ),
+                "- intVar1",
             ),
             // 123 + 456
             (
@@ -2168,6 +2264,7 @@ mod test {
                     Box::new(Expr::LitInteger(123)),
                     Box::new(Expr::LitInteger(456)),
                 ),
+                "(123 + 456)",
             ),
             // -123 + -456
             (
@@ -2183,6 +2280,7 @@ mod test {
                     Box::new(Expr::LitInteger(-123)),
                     Box::new(Expr::LitInteger(-456)),
                 ),
+                "(-123 + -456)",
             ),
             // 12 + -34 * 56
             (
@@ -2203,6 +2301,7 @@ mod test {
                         Box::new(Expr::LitInteger(56)),
                     )),
                 ),
+                "(12 + (-34 * 56))",
             ),
             // intVar1 = 12 Or boolVar1
             (
@@ -2222,6 +2321,7 @@ mod test {
                     )),
                     Box::new(Expr::VarBoolean(bool_var1.into())),
                 ),
+                "((intVar1 = 12) Or boolVar1)",
             ),
             // 3 * intArr1(5 * 10) And 4
             (
@@ -2253,6 +2353,7 @@ mod test {
                     )),
                     Box::new(Expr::LitInteger(4)),
                 ),
+                "((3 * intArr1(5 * 10)) And 4)",
             ),
             // -Max(123, 456) + -(987 - 321) * Not intVar1
             (
@@ -2303,11 +2404,13 @@ mod test {
                         )),
                     )),
                 ),
+                "(- Max(123, 456) + (- (987 - 321) * Not intVar1))",
             ),
         ];
 
-        for (tokens, expr) in src {
+        for (tokens, expr, disp) in src {
             assert_eq!(parser.parse_expr(&tokens).unwrap(), expr);
+            assert_eq!(expr.to_string(), disp);
         }
     }
 
