@@ -1909,13 +1909,13 @@ mod subroutine {
         PUSH  0,GR3
         PUSH  0,GR4
         PUSH  0,GR5
-        LD    GR4,GR2     ; GR4: dividend
+        LD    GR4,GR2
         LD    GR1,GR2
         CALL  {abs}
-        LD    GR5,GR0     ; GR5: Abs(dividend)
+        LD    GR5,GR0
         LD    GR1,GR3
         CALL  {abs}
-        LD    GR1,GR0     ; GR1: Abs(divisor)
+        LD    GR1,GR0
         LAD   GR0,1
 {shift} ADDL  GR1,GR1
         JOV   {pre}
@@ -1923,7 +1923,7 @@ mod subroutine {
         JUMP  {shift}
 {pre}   SRL   GR1,1
         LAD   GR1,#8000,GR1
-        XOR   GR2,GR2     ; GR2: Abs(quotient)
+        XOR   GR2,GR2
 {cycle} CPL   GR5,GR1
         JMI   {next}
         SUBL  GR5,GR1
@@ -1934,13 +1934,13 @@ mod subroutine {
         JUMP  {cycle}
 {ret}   LD    GR5,GR4
         XOR   GR5,GR3
-        SRA   GR5,15      ; GR5: sign of quotient
+        SRA   GR5,15
         XOR   GR2,GR5
-        SUBA  GR2,GR5     ; GR2: quotient
+        SUBA  GR2,GR5
         CALL  {mul}
         LD    GR1,GR4
-        SUBA  GR1,GR0     ; GR1: remainder
-        LD    GR0,GR2     ; GR0: quotient
+        SUBA  GR1,GR0
+        LD    GR0,GR2
         POP   GR5
         POP   GR4
         POP   GR3
