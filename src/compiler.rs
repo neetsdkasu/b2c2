@@ -528,7 +528,7 @@ impl Compiler {
             PrintLitString { value } => self.compile_print_lit_string(value),
             PrintVarString { var_name } => self.compile_print_var_string(var_name),
             PrintExprBoolan { value: _ } => todo!(),
-            PrintExprInteger { value: _ } => todo!(),
+            PrintExprInteger { value } => self.compile_print_expr_integer(value),
             PrintExprString { value: _ } => todo!(),
 
             // IfやSelectの内側で処理する
@@ -1122,6 +1122,46 @@ impl Compiler {
         });
     }
 
+    // Print ステートメント
+    // 整数の計算結果の画面出力
+    fn compile_print_expr_integer(&mut self, value: &parser::Expr) {
+        self.next_statement_comment = Some(format!("Print {}", value));
+
+        let value_reg = self.compile_int_expr(value);
+        let call_label = self.load_subroutine(subroutine::ID::FuncCStrArgInt);
+        let str_labels = self.get_temp_str_var_label();
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[GR1, GR2, GR3])
+        };
+
+        let mut src = saves;
+
+        writeln!(
+            &mut src,
+            r#" LD    GR3,{value}
+                LAD   GR1,{buf}
+                LAD   GR2,{len}
+                CALL  {cstr}
+                OUT   {buf},{len}"#,
+            value = value_reg,
+            buf = &str_labels.buf,
+            len = &str_labels.len,
+            cstr = call_label
+        )
+        .unwrap();
+
+        src.push_str(&recovers);
+
+        let code = casl2::parse(&src).unwrap();
+
+        self.statements.extend(code);
+
+        self.set_register_idle(value_reg);
+        self.return_temp_str_var_label(str_labels);
+    }
+
     // レジスタのアイドル状態を取得
     fn is_idle_register(&self, reg: casl2::Register) -> bool {
         (self.registers_used & (1 << reg as isize)) == 0
@@ -1267,6 +1307,10 @@ impl Compiler {
         .unwrap();
 
         src.push_str(&recovers);
+
+        let code = casl2::parse(&src).unwrap();
+
+        self.statements.extend(code);
 
         self.set_register_idle(value_reg);
 
@@ -1713,7 +1757,7 @@ mod subroutine {
 {prog} LD    GR0,GR1    ; {comment}
        JMI   {mi}
        RET
-{mi}   SUBA  GR0,GR1
+{mi}   XOR   GR0,GR0
        SUBA  GR0,GR1
        RET
 "#,
@@ -2017,8 +2061,71 @@ mod subroutine {
         // GR2 .. adr of s_len
         // GR3 .. value (integer)
         Src {
-            dependencies: Vec::new(),
-            statements: todo!(),
+            dependencies: vec![ID::UtilDivMod],
+            statements: casl2::parse(
+                format!(
+                    r#"
+{prog}   AND   GR3,GR3            ; {comment}
+         JNZ   {init}
+         LAD   GR3,1
+         ST    GR3,0,GR2
+         LAD   GR3,='0'
+         ST    GR3,0,GR1
+         XOR   GR3,GR3
+         RET
+{init}   PUSH  0,GR1
+         PUSH  0,GR2
+         PUSH  0,GR3
+         PUSH  0,GR4
+         PUSH  0,GR5
+         JPL   {start}
+         LAD   GR4,='-'
+         ST    GR4,0,GR1
+         LAD   GR1,1,GR1
+         XOR   GR3,=#FFFF
+         LAD   GR3,1,GR3
+{start}  LAD   GR4,{temp}
+         LD    GR5,GR1
+         LD    GR2,GR3
+         LAD   GR3,10
+{cycle}  CALL  {rem}
+         ADDL  GR1,='0'
+         ST    GR1,0,GR4
+         LAD   GR4,1,GR4
+         LD    GR2,GR0
+         JPL   {cycle}
+         LAD   GR2,{temp}
+         LAD   GR4,-1,GR4
+{copy}   LD    GR1,0,GR4
+         ST    GR1,0,GR5
+         LAD   GR5,1,GR5
+         LAD   GR4,-1,GR4
+         CPL   GR4,GR2
+         JPL   {copy}
+         JZE   {copy}
+         LD    GR0,GR5
+         POP   GR5
+         POP   GR4
+         POP   GR3
+         POP   GR2
+         POP   GR1
+         SUBL  GR0,GR1
+         ST    GR0,0,GR2
+         RET
+{temp}   DS    6
+"#,
+                    prog = id.label(),
+                    comment = format!("{:?}", id),
+                    rem = ID::UtilDivMod.label(),
+                    init = gen.jump_label(),
+                    start = gen.jump_label(),
+                    cycle = gen.jump_label(),
+                    copy = gen.jump_label(),
+                    temp = gen.var_label()
+                )
+                .trim_start_matches('\n'),
+            )
+            .unwrap(),
         }
     }
 
@@ -2031,7 +2138,36 @@ mod subroutine {
         //  copy from (GR3,GR4) to (GR1,GR2)
         Src {
             dependencies: Vec::new(),
-            statements: todo!(),
+            statements: casl2::parse(
+                format!(
+                    r#"
+{prog}   PUSH  0,GR1            ; {comment}
+         PUSH  0,GR2
+         PUSH  0,GR3
+         PUSH  0,GR4
+         ST    GR4,0,GR2
+         AND   GR4,GR4
+         JZE   {ret}
+{cycle}  LD    GR2,0,GR3
+         ST    GR2,0,GR1
+         LAD   GR3,1,GR3
+         LAD   GR1,1,GR1
+         SUBA  GR4,=1
+         JPL   {cycle}
+{ret}    POP   GR4
+         POP   GR3
+         POP   GR2
+         POP   GR1
+         RET
+"#,
+                    prog = id.label(),
+                    comment = format!("{:?}", id),
+                    cycle = gen.jump_label(),
+                    ret = gen.jump_label()
+                )
+                .trim_start_matches('\n'),
+            )
+            .unwrap(),
         }
     }
 }
@@ -2751,7 +2887,7 @@ For i = 1 To c Step 1
         Case 5, 10
             Print "Buzz"
         Case Else
-'            Print i
+            Print i
     End Select
 Next i
 "#;

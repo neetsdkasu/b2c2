@@ -520,7 +520,7 @@ impl fmt::Display for Adr {
             Adr::Hex(v) => format!("#{:04X}", *v).fmt(f),
             Adr::Label(v) => format!("{}", v).fmt(f),
             Adr::LiteralDec(v) => format!("={}", *v).fmt(f),
-            Adr::LiteralHex(v) => format!("={:04X}", *v).fmt(f),
+            Adr::LiteralHex(v) => format!("=#{:04X}", *v).fmt(f),
             Adr::LiteralStr(v) => format!("='{}'", v.replace("'", "''")).fmt(f),
         }
     }
