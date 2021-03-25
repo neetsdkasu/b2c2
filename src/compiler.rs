@@ -2062,27 +2062,51 @@ mod test {
 
         assert_eq!(
             compiler.get_lit_str_labels("-123"),
-            ("LL1".into(), "LB1".into())
+            StrLabels {
+                len: "LL1".into(),
+                buf: "LB1".into(),
+                label_type: StrLabelType::Const
+            }
         );
         assert_eq!(
             compiler.get_lit_str_labels("A b c"),
-            ("LL2".into(), "LB2".into())
+            StrLabels {
+                len: "LL2".into(),
+                buf: "LB2".into(),
+                label_type: StrLabelType::Const
+            }
         );
         assert_eq!(
             compiler.get_lit_str_labels("XYZ"),
-            ("LL3".into(), "LB3".into())
+            StrLabels {
+                len: "LL3".into(),
+                buf: "LB3".into(),
+                label_type: StrLabelType::Const
+            }
         );
         assert_eq!(
             compiler.get_lit_str_labels("Test@1234"),
-            ("LL4".into(), "LB4".into())
+            StrLabels {
+                len: "LL4".into(),
+                buf: "LB4".into(),
+                label_type: StrLabelType::Const
+            }
         );
         assert_eq!(
             compiler.get_lit_str_labels("A b c"),
-            ("LL2".into(), "LB2".into())
+            StrLabels {
+                len: "LL2".into(),
+                buf: "LB2".into(),
+                label_type: StrLabelType::Const
+            }
         );
         assert_eq!(
             compiler.get_lit_str_labels("XYZ"),
-            ("LL3".into(), "LB3".into())
+            StrLabels {
+                len: "LL3".into(),
+                buf: "LB3".into(),
+                label_type: StrLabelType::Const
+            }
         );
 
         assert_eq!(
@@ -2370,7 +2394,7 @@ TB1    DS     256
             .unwrap(),
         );
 
-        assert_ne!(compiler.finish(), statements);
+        assert_eq!(compiler.finish(), statements);
     }
 
     #[test]
