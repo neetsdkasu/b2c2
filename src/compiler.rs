@@ -536,7 +536,7 @@ impl Compiler {
     fn compile_assign_integer(&mut self, var_name: &str, value: &parser::Expr) {
         self.next_statement_comment =
             Some(format!("{var} = {value}", var = var_name, value = value));
-        let reg = self.compile_expr(value);
+        let reg = self.compile_int_expr(value);
         let var_label = self.int_var_labels.get(var_name).expect("BUG");
 
         self.statements
@@ -576,7 +576,7 @@ impl Compiler {
 
         // calc {end}
         let end_var = self.get_temp_int_var_label();
-        let end_reg = self.compile_expr(end);
+        let end_reg = self.compile_int_expr(end);
         self.statements
             .push(casl2::Statement::code(casl2::Command::A {
                 code: casl2::A::St,
@@ -590,7 +590,7 @@ impl Compiler {
         let counter_var = self.int_var_labels.get(counter).expect("BUG").clone();
 
         // calc {init} and assign to {counter}
-        let init_reg = self.compile_expr(init);
+        let init_reg = self.compile_int_expr(init);
         self.statements
             .push(casl2::Statement::code(casl2::Command::A {
                 code: casl2::A::St,
@@ -707,7 +707,7 @@ impl Compiler {
 
         // calc {step}
         let step_var = self.get_temp_int_var_label();
-        let step_reg = self.compile_expr(step);
+        let step_reg = self.compile_int_expr(step);
         self.statements
             .push(casl2::Statement::code(casl2::Command::A {
                 code: casl2::A::St,
@@ -719,7 +719,7 @@ impl Compiler {
 
         // calc {end}
         let end_var = self.get_temp_int_var_label();
-        let end_reg = self.compile_expr(end);
+        let end_reg = self.compile_int_expr(end);
         self.statements
             .push(casl2::Statement::code(casl2::Command::A {
                 code: casl2::A::St,
@@ -733,7 +733,7 @@ impl Compiler {
         let counter_var = self.int_var_labels.get(counter).expect("BUG").clone();
 
         // calc {init} and assign to {counter}
-        let init_reg = self.compile_expr(init);
+        let init_reg = self.compile_int_expr(init);
         self.statements
             .push(casl2::Statement::code(casl2::Command::A {
                 code: casl2::A::St,
@@ -856,7 +856,7 @@ impl Compiler {
 
         self.next_statement_comment = Some(format!("Select Case {}", value));
 
-        let value_reg = self.compile_expr(value);
+        let value_reg = self.compile_int_expr(value);
 
         for (case_stmt, label) in case_blocks.iter() {
             match case_stmt {
@@ -1168,30 +1168,80 @@ impl Compiler {
         (saves, recovers)
     }
 
-    // 式の展開
-    fn compile_expr(&mut self, expr: &parser::Expr) -> casl2::Register {
+    // 式の展開 (戻り値が文字列)
+    fn compile_str_expr(&mut self, expr: &parser::Expr) -> ((String, String), bool) {
+        use parser::Expr::*;
+        match expr {
+            BinaryOperatorString(_op, _lhs, _rhs) => todo!(),
+            FunctionString(func, param) => self.compile_function_string(*func, param),
+            LitString(_lit_str) => todo!(),
+            VarString(_var_name) => todo!(),
+
+            // 戻り値が文字列ではないもの
+            BinaryOperatorBoolean(..)
+            | BinaryOperatorInteger(..)
+            | CharOfLitString(..)
+            | CharOfVarString(..)
+            | FunctionBoolean(..)
+            | FunctionInteger(..)
+            | LitBoolean(..)
+            | LitInteger(..)
+            | LitCharacter(..)
+            | UnaryOperatorInteger(..)
+            | UnaryOperatorBoolean(..)
+            | VarBoolean(..)
+            | VarInteger(..)
+            | VarArrayOfBoolean(..)
+            | VarArrayOfInteger(..)
+            | ParamList(_) => unreachable!("BUG"),
+        }
+    }
+
+    // 戻り値が文字列の関数の処理
+    fn compile_function_string(
+        &mut self,
+        func: tokenizer::Function,
+        param: &parser::Expr,
+    ) -> ((String, String), bool) {
+        use tokenizer::Function::*;
+        match func {
+            CStr => self.call_function_cstr(param),
+            CInt | Len | Max | Min | CBool => unreachable!("BUG"),
+        }
+    }
+
+    // CStr関数
+    fn call_function_cstr(&mut self, param: &parser::Expr) -> ((String, String), bool) {
+        let _ = param;
+        todo!();
+    }
+
+    // 式の展開 (戻り値が整数or真理値)
+    fn compile_int_expr(&mut self, expr: &parser::Expr) -> casl2::Register {
         use parser::Expr::*;
         match expr {
             BinaryOperatorBoolean(_op, _lhs, _rhs) => todo!(),
             BinaryOperatorInteger(op, lhs, rhs) => self.compile_bin_op_integer(*op, lhs, rhs),
-            BinaryOperatorString(_op, _lhs, _rhs) => todo!(),
             CharOfLitString(_lit_str, _index) => todo!(),
             CharOfVarString(_var_name, _index) => todo!(),
             FunctionBoolean(_func, _param) => todo!(),
             FunctionInteger(func, param) => self.compile_function_integer(func, param),
-            FunctionString(_func, _param) => todo!(),
             LitBoolean(_lit_bool) => todo!(),
             LitInteger(lit_int) => self.compile_literal_integer(*lit_int),
-            LitString(_lit_str) => todo!(),
             LitCharacter(_lit_char) => todo!(),
             UnaryOperatorInteger(_op, _value) => todo!(),
             UnaryOperatorBoolean(_op, _value) => todo!(),
             VarBoolean(_var_name) => todo!(),
             VarInteger(var_name) => self.compile_variable_integer(var_name),
-            VarString(_var_name) => todo!(),
             VarArrayOfBoolean(_arr_name, _index) => todo!(),
             VarArrayOfInteger(_arr_name, _index) => todo!(),
-            ParamList(_) => unreachable!("BUG"),
+
+            // 戻り値が整数でも真理値でもないもの
+            BinaryOperatorString(..)
+            | FunctionString(..)
+            | LitString(..)
+            | VarString(..)
+            | ParamList(_) => unreachable!("BUG"),
         }
     }
 
@@ -1205,7 +1255,7 @@ impl Compiler {
     ) -> casl2::Register {
         use tokenizer::Operator::*;
 
-        let lhs_reg = self.compile_expr(lhs);
+        let lhs_reg = self.compile_int_expr(lhs);
 
         // rhsを直接埋め込める場合
         let with_lit_src = match rhs {
@@ -1237,7 +1287,7 @@ impl Compiler {
 
         // rhsを計算する場合
 
-        let rhs_reg = self.compile_expr(rhs);
+        let rhs_reg = self.compile_int_expr(rhs);
 
         assert_ne!(lhs_reg, rhs_reg); // たぶん、大丈夫…
 
@@ -1496,8 +1546,8 @@ impl Compiler {
         rhs: &parser::Expr,
         id: subroutine::ID,
     ) -> casl2::Register {
-        let lhs_reg = self.compile_expr(lhs);
-        let rhs_reg = self.compile_expr(rhs);
+        let lhs_reg = self.compile_int_expr(lhs);
+        let rhs_reg = self.compile_int_expr(rhs);
 
         assert_ne!(lhs_reg, rhs_reg); // たぶん、大丈夫…
 

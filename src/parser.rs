@@ -1969,7 +1969,7 @@ impl Expr {
         Some(bin_op_expr(op, Box::new(lhs), Box::new(rhs)))
     }
 
-    fn return_type(&self) -> ExprType {
+    pub fn return_type(&self) -> ExprType {
         use Expr::*;
         match self {
             BinaryOperatorBoolean(_, _, _)
