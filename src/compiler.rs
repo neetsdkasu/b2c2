@@ -44,7 +44,7 @@ struct Compiler {
     int_var_labels: HashMap<String, String>,
 
     // 文字列変数のラベル対応を保持 (変数名, (長さラベル, 内容位置ラベル))
-    str_var_labels: HashMap<String, (String, String)>,
+    str_var_labels: HashMap<String, StrLabels>,
 
     // 真理値配列のラベル対応を保持 (配列名, (ラベル, 配列サイズ))
     bool_arr_labels: HashMap<String, (String, usize)>,
@@ -53,13 +53,13 @@ struct Compiler {
     int_arr_labels: HashMap<String, (String, usize)>,
 
     // IN/OUTで使用する文字列定数のラベル対応を保持 (文字列定数, (長さラベル, 内容位置ラベル)))
-    lit_str_labels: HashMap<String, (String, String)>,
+    lit_str_labels: HashMap<String, StrLabels>,
 
     // 式展開時の一時変数(整数/真理値)のラベルを保持 (スタック的利用) (ラベル) (主にForループの終点とステップで使用)
     temp_int_var_labels: Vec<String>,
 
     // 式展開時の一時変数(文字列)のラベルを保持 (スタック的利用) (長さラベル, 内容位置ラベル)
-    temp_str_var_labels: Vec<(String, String)>,
+    temp_str_var_labels: Vec<StrLabels>,
 
     // 組み込みサブルーチンのコードを保持 (サブルーチンの固有名, コード)
     subroutine_codes: HashMap<subroutine::ID, Vec<casl2::Statement>>,
@@ -95,6 +95,23 @@ struct Compiler {
 
     // 生成するCASL2コード本体
     statements: Vec<casl2::Statement>,
+}
+
+// 文字列ラベルのタイプ判定に使う
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+enum StrLabelType {
+    Const,       // IN/OUTの定数 LB**
+    Lit(String), // リテラル ='abc'
+    Temp,        // 一時変数 TB**
+    Var,         // 文字列変数 SB**
+}
+
+// 文字列のラベル
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+struct StrLabels {
+    len: String,
+    buf: String,
+    label_type: StrLabelType,
 }
 
 impl Compiler {
@@ -213,30 +230,34 @@ impl Compiler {
     }
 
     // 式展開時の一時変数(文字列)のラベル取得・生成
-    fn get_temp_str_var_label(&mut self) -> (String, String) {
+    fn get_temp_str_var_label(&mut self) -> StrLabels {
         if let Some(labels) = self.temp_str_var_labels.pop() {
             return labels;
         }
         self.temp_str_var_id += 1;
-        let t_len = format!("TL{}", self.temp_str_var_id);
-        let t_buf = format!("TB{}", self.temp_str_var_id);
-        (t_len, t_buf)
+        StrLabels {
+            len: format!("TL{}", self.temp_str_var_id),
+            buf: format!("TB{}", self.temp_str_var_id),
+            label_type: StrLabelType::Temp,
+        }
     }
 
     // 式展開時の一時変数(文字列)のラベルの返却
-    fn return_temp_str_var_label(&mut self, labels: (String, String)) {
+    fn return_temp_str_var_label(&mut self, labels: StrLabels) {
         self.temp_str_var_labels.push(labels);
     }
 
     // IN/OUTで使用する文字列定数のラベル生成
-    fn get_lit_str_labels(&mut self, literal: &str) -> (String, String) {
+    fn get_lit_str_labels(&mut self, literal: &str) -> StrLabels {
         if let Some(labels) = self.lit_str_labels.get(literal) {
             return labels.clone();
         }
         self.lit_id += 1;
-        let len_label = format!("LL{}", self.lit_id);
-        let buf_label = format!("LB{}", self.lit_id);
-        let labels = (len_label, buf_label);
+        let labels = StrLabels {
+            len: format!("LL{}", self.lit_id),
+            buf: format!("LB{}", self.lit_id),
+            label_type: StrLabelType::Const,
+        };
         self.lit_str_labels.insert(literal.into(), labels.clone());
         labels
     }
@@ -314,18 +335,18 @@ impl Compiler {
         }
 
         // 文字列変数 SL** SB**
-        for ((len_label, buf_label), var_name) in str_var_labels
+        for (labels, var_name) in str_var_labels
             .into_iter()
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
             statements.push(casl2::Statement::labeled_with_comment(
-                &len_label,
+                &labels.len,
                 casl2::Command::Ds { size: 1 },
                 &format!("Dim {} As String", var_name),
             ));
             statements.push(casl2::Statement::labeled(
-                &buf_label,
+                &labels.buf,
                 casl2::Command::Ds { size: 256 },
             ));
         }
@@ -365,37 +386,37 @@ impl Compiler {
         }
 
         // 式展開等で使う一時変数(文字列) TL** TB**
-        for (len_label, buf_label) in temp_str_var_labels.into_iter().collect::<BTreeSet<_>>() {
+        for labels in temp_str_var_labels.into_iter().collect::<BTreeSet<_>>() {
             statements.push(casl2::Statement::labeled(
-                &len_label,
+                &labels.len,
                 casl2::Command::Ds { size: 1 },
             ));
             statements.push(casl2::Statement::labeled(
-                &buf_label,
+                &labels.buf,
                 casl2::Command::Ds { size: 256 },
             ));
         }
 
         // IN/OUTで使用する文字列定数 LL** LB**
-        for ((len_label, buf_label), literal) in lit_str_labels
+        for (labels, literal) in lit_str_labels
             .into_iter()
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
             statements.push(casl2::Statement::labeled(
-                &len_label,
+                &labels.len,
                 casl2::Command::Dc {
                     constants: vec![casl2::Constant::Dec(literal.chars().count() as i16)],
                 },
             ));
             if literal.is_empty() {
                 statements.push(casl2::Statement::labeled(
-                    &buf_label,
+                    &labels.buf,
                     casl2::Command::Ds { size: 0 },
                 ));
             } else {
                 statements.push(casl2::Statement::labeled(
-                    &buf_label,
+                    &labels.buf,
                     casl2::Command::Dc {
                         constants: vec![casl2::Constant::Str(literal.clone())],
                     },
@@ -968,7 +989,11 @@ impl Compiler {
             VarType::String => {
                 let len_label = format!("SL{}", self.var_id);
                 let buf_label = format!("SB{}", self.var_id);
-                let labels = (len_label, buf_label);
+                let labels = StrLabels {
+                    len: len_label,
+                    buf: buf_label,
+                    label_type: StrLabelType::Var,
+                };
                 self.str_var_labels.insert(var_name.into(), labels);
             }
             VarType::ArrayOfBoolean(size) => {
@@ -987,7 +1012,6 @@ impl Compiler {
     fn compile_input_integer(&mut self, var_name: &str) {
         let cint_label = self.load_subroutine(subroutine::ID::FuncCInt);
         let s_labels = self.get_temp_str_var_label();
-        let (ref s_pos, ref s_len) = &s_labels;
 
         let (saves, recovers) = {
             use casl2::Register::*;
@@ -1004,8 +1028,8 @@ impl Compiler {
                 LAD   GR1,{pos}
                 LD    GR2,{len}
                 CALL  {cint}"#,
-            pos = s_pos,
-            len = s_len,
+            pos = s_labels.buf,
+            len = s_labels.len,
             cint = cint_label,
             comment = format!("Input {}", var_name)
         )
@@ -1026,12 +1050,12 @@ impl Compiler {
     // 文字列変数へのコンソール入力
     fn compile_input_string(&mut self, var_name: &str) {
         let label = self.next_statement_label.take();
-        let (len_label, buf_label) = self.str_var_labels.get(var_name).expect("BUG");
+        let StrLabels { len, buf, .. } = self.str_var_labels.get(var_name).expect("BUG");
         self.statements.push(casl2::Statement::Code {
             label,
             command: casl2::Command::In {
-                pos: buf_label.into(),
-                len: len_label.into(),
+                pos: buf.into(),
+                len: len.into(),
             },
             comment: Some(format!("Input {}", var_name)),
         });
@@ -1042,12 +1066,12 @@ impl Compiler {
     fn compile_print_lit_boolean(&mut self, value: bool) {
         let label = self.next_statement_label.take();
         let s = if value { "True" } else { "False" };
-        let (len_label, buf_label) = self.get_lit_str_labels(s);
+        let StrLabels { len, buf, .. } = self.get_lit_str_labels(s);
         self.statements.push(casl2::Statement::Code {
             label,
             command: casl2::Command::Out {
-                pos: buf_label.into(),
-                len: len_label.into(),
+                pos: buf.into(),
+                len: len.into(),
             },
             comment: Some(format!("Print {}", s)),
         });
@@ -1057,12 +1081,12 @@ impl Compiler {
     // 数字リテラルの画面出力
     fn compile_print_lit_integer(&mut self, value: i32) {
         let label = self.next_statement_label.take();
-        let (len_label, buf_label) = self.get_lit_str_labels(&value.to_string());
+        let StrLabels { len, buf, .. } = self.get_lit_str_labels(&value.to_string());
         self.statements.push(casl2::Statement::Code {
             label,
             command: casl2::Command::Out {
-                pos: buf_label.into(),
-                len: len_label.into(),
+                pos: buf.into(),
+                len: len.into(),
             },
             comment: Some(format!("Print {}", value)),
         });
@@ -1072,12 +1096,12 @@ impl Compiler {
     // 文字列リテラルの画面出力
     fn compile_print_lit_string(&mut self, value: &str) {
         let label = self.next_statement_label.take();
-        let (len_label, buf_label) = self.get_lit_str_labels(value);
+        let StrLabels { len, buf, .. } = self.get_lit_str_labels(value);
         self.statements.push(casl2::Statement::Code {
             label,
             command: casl2::Command::Out {
-                pos: buf_label.into(),
-                len: len_label.into(),
+                pos: buf.into(),
+                len: len.into(),
             },
             comment: Some(format!(r#"Print "{}""#, value.replace('"', r#""""#))),
         });
@@ -1087,12 +1111,12 @@ impl Compiler {
     // 文字列変数の画面出力
     fn compile_print_var_string(&mut self, var_name: &str) {
         let label = self.next_statement_label.take();
-        let (len_label, buf_label) = self.str_var_labels.get(var_name).expect("BUG");
+        let StrLabels { len, buf, .. } = self.str_var_labels.get(var_name).expect("BUG");
         self.statements.push(casl2::Statement::Code {
             label,
             command: casl2::Command::Out {
-                pos: buf_label.into(),
-                len: len_label.into(),
+                pos: buf.into(),
+                len: len.into(),
             },
             comment: Some(format!("Print {}", var_name)),
         });
@@ -1169,7 +1193,7 @@ impl Compiler {
     }
 
     // 式の展開 (戻り値が文字列)
-    fn compile_str_expr(&mut self, expr: &parser::Expr) -> ((String, String), bool) {
+    fn compile_str_expr(&mut self, expr: &parser::Expr) -> ((String, String), StrLabelType) {
         use parser::Expr::*;
         match expr {
             BinaryOperatorString(_op, _lhs, _rhs) => todo!(),
@@ -1202,7 +1226,7 @@ impl Compiler {
         &mut self,
         func: tokenizer::Function,
         param: &parser::Expr,
-    ) -> ((String, String), bool) {
+    ) -> ((String, String), StrLabelType) {
         use tokenizer::Function::*;
         match func {
             CStr => self.call_function_cstr(param),
@@ -1211,7 +1235,7 @@ impl Compiler {
     }
 
     // CStr関数
-    fn call_function_cstr(&mut self, param: &parser::Expr) -> ((String, String), bool) {
+    fn call_function_cstr(&mut self, param: &parser::Expr) -> ((String, String), StrLabelType) {
         let _ = param;
         todo!();
     }
