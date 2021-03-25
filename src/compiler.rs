@@ -1193,7 +1193,7 @@ impl Compiler {
     }
 
     // 式の展開 (戻り値が文字列)
-    fn compile_str_expr(&mut self, expr: &parser::Expr) -> ((String, String), StrLabelType) {
+    fn compile_str_expr(&mut self, expr: &parser::Expr) -> StrLabels {
         use parser::Expr::*;
         match expr {
             BinaryOperatorString(_op, _lhs, _rhs) => todo!(),
@@ -1226,7 +1226,7 @@ impl Compiler {
         &mut self,
         func: tokenizer::Function,
         param: &parser::Expr,
-    ) -> ((String, String), StrLabelType) {
+    ) -> StrLabels {
         use tokenizer::Function::*;
         match func {
             CStr => self.call_function_cstr(param),
@@ -1235,9 +1235,42 @@ impl Compiler {
     }
 
     // CStr関数
-    fn call_function_cstr(&mut self, param: &parser::Expr) -> ((String, String), StrLabelType) {
-        let _ = param;
-        todo!();
+    fn call_function_cstr(&mut self, param: &parser::Expr) -> StrLabels {
+        let value_reg = self.compile_int_expr(param);
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[GR1, GR2, GR3])
+        };
+
+        let mut src = saves;
+
+        let t_labels = self.get_temp_str_var_label();
+
+        let id = match param.return_type() {
+            parser::ExprType::Boolean => subroutine::ID::FuncCStrArgBool,
+            parser::ExprType::Integer => subroutine::ID::FuncCStrArgInt,
+            parser::ExprType::String | parser::ExprType::ParamList => unreachable!("BUG"),
+        };
+
+        writeln!(
+            &mut src,
+            r#" LD    GR3,{value}
+                LAD   GR1,{buf}
+                LAD   GR2,{len}
+                CALL  {call}"#,
+            value = value_reg,
+            len = t_labels.len,
+            buf = t_labels.buf,
+            call = self.load_subroutine(id)
+        )
+        .unwrap();
+
+        src.push_str(&recovers);
+
+        self.set_register_idle(value_reg);
+
+        t_labels
     }
 
     // 式の展開 (戻り値が整数or真理値)
@@ -1630,6 +1663,9 @@ mod subroutine {
         FuncCInt,
         FuncMax,
         FuncMin,
+        FuncCStrArgBool,
+        FuncCStrArgInt,
+        UtilCopyStr,
         UtilDivMod,
         UtilMul,
     }
@@ -1657,6 +1693,9 @@ mod subroutine {
             ID::FuncCInt => get_func_cint(gen, id),
             ID::FuncMax => get_func_max(gen, id),
             ID::FuncMin => get_func_min(gen, id),
+            ID::FuncCStrArgBool => get_func_cstr_arg_bool(gen, id),
+            ID::FuncCStrArgInt => get_func_cstr_arg_int(gen, id),
+            ID::UtilCopyStr => get_util_copy_str(gen, id),
             ID::UtilDivMod => get_util_div_mod(gen, id),
             ID::UtilMul => get_util_mul(gen, id),
         }
@@ -1935,6 +1974,64 @@ mod subroutine {
                 .trim_start_matches('\n'),
             )
             .unwrap(),
+        }
+    }
+
+    // CStr (bool)
+    fn get_func_cstr_arg_bool<T: Gen>(gen: &mut T, id: ID) -> Src {
+        // GR1 .. adr of s_buf
+        // GR2 .. adr of s_len
+        // GR3 .. value (boolean)
+        Src {
+            dependencies: vec![ID::UtilCopyStr],
+            statements: casl2::parse(
+                format!(
+                    r#"
+{prog}   PUSH  0,GR3            ; {comment}
+         PUSH  0,GR4
+         AND   GR3,GR3
+         LAD   GR3,='FalseTrue'
+         LAD   GR4,5
+         JZE   {ret}
+         ADDL  GR3,GR4
+         LAD   GR4,4
+{ret}    CALL  {copy}
+         POP   GR4
+         POP   GR3
+         RET
+"#,
+                    prog = id.label(),
+                    comment = format!("{:?}", id),
+                    copy = ID::UtilCopyStr.label(),
+                    ret = gen.jump_label()
+                )
+                .trim_start_matches('\n'),
+            )
+            .unwrap(),
+        }
+    }
+
+    // CStr (int)
+    fn get_func_cstr_arg_int<T: Gen>(gen: &mut T, id: ID) -> Src {
+        // GR1 .. adr of s_buf
+        // GR2 .. adr of s_len
+        // GR3 .. value (integer)
+        Src {
+            dependencies: Vec::new(),
+            statements: todo!(),
+        }
+    }
+
+    // Util Copy Str
+    fn get_util_copy_str<T: Gen>(gen: &mut T, id: ID) -> Src {
+        // GR1 .. adr of s_buf (dst)
+        // GR2 .. adr of s_len (dst)
+        // GR3 .. adr of s_buf (src)
+        // GR4 .. s_len (src)
+        //  copy from (GR3,GR4) to (GR1,GR2)
+        Src {
+            dependencies: Vec::new(),
+            statements: todo!(),
         }
     }
 }
