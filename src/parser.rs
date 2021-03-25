@@ -322,6 +322,7 @@ impl Parser {
         }
         match command {
             Keyword::Case => self.parse_command_case(pos_and_tokens),
+            Keyword::End => self.parse_command_end(pos_and_tokens),
             _ if self.is_select_head => Err(self.syntax_error("invalid Code statement".into())),
             Keyword::Continue => self.parse_command_continue(pos_and_tokens),
             Keyword::Dim if self.is_dim_header => self.parse_command_dim(pos_and_tokens),
@@ -329,7 +330,6 @@ impl Parser {
             Keyword::Do => self.parse_command_do(pos_and_tokens),
             Keyword::Else => self.parse_command_else(pos_and_tokens),
             Keyword::ElseIf => self.parse_command_elseif(pos_and_tokens),
-            Keyword::End => self.parse_command_end(pos_and_tokens),
             Keyword::Exit => self.parse_command_exit(pos_and_tokens),
             Keyword::For => self.parse_command_for(pos_and_tokens),
             Keyword::If => self.parse_command_if(pos_and_tokens),
@@ -855,15 +855,16 @@ impl Parser {
     ) -> Result<(), SyntaxError> {
         let exit_id = self.get_new_exit_id();
 
-        let statement = if let [(_, Token::Keyword(Keyword::Case)), rest @ ..] = pos_and_tokens {
-            let value = self.parse_expr(rest)?;
-            match value.return_type() {
-                ExprType::Integer => Statement::ProvisionalSelectInteger { exit_id, value },
-                ExprType::String => Statement::ProvisionalSelectString { exit_id, value },
-                _ => return Err(self.syntax_error("invalid Select statement".into())),
+        let statement = match pos_and_tokens {
+            [(_, Token::Keyword(Keyword::Case)), rest @ ..] | rest @ [_, ..] => {
+                let value = self.parse_expr(rest)?;
+                match value.return_type() {
+                    ExprType::Integer => Statement::ProvisionalSelectInteger { exit_id, value },
+                    ExprType::String => Statement::ProvisionalSelectString { exit_id, value },
+                    _ => return Err(self.syntax_error("invalid Select statement".into())),
+                }
             }
-        } else {
-            return Err(self.syntax_error("invalid Select statement".into()));
+            [] => return Err(self.syntax_error("invalid Select statement".into())),
         };
 
         self.is_select_head = true;

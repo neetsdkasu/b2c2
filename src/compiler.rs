@@ -1920,6 +1920,34 @@ mod test {
                     Print "X"
                 Next j
             Next i
+            Select Case i
+            Case 1, 2
+                Print "X"
+            Case 3, 4, "A"C, "B"C, 55
+                Print "X"
+            Case Else
+                Print "X"
+            End Select
+            Select Case i
+            Case 10, 11, 12
+                Print "X"
+            End Select
+            Select Case i + 10
+            Case Else
+                Print "X"
+            End Select
+            Select Case i * i
+            End Select
+            Select i
+            Case 1, 2, 3
+                Print "X"
+            End Select
+            Select i << 1
+            Case 1, 2, 4
+                Print "X"
+            Case Else
+                Print "X"
+            End Select
         "#;
 
         let mut cursor = std::io::Cursor::new(src);
