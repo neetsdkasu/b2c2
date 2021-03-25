@@ -2028,6 +2028,16 @@ impl Function {
     }
 }
 
+impl std::fmt::Display for CaseIntegerItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Integer(value) => value.fmt(f),
+            Self::Character('"') => r#"""""c"#.fmt(f),
+            Self::Character(ch) => format!(r#""{}"c"#, ch).fmt(f),
+        }
+    }
+}
+
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Expr::*;

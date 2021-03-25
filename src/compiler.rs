@@ -487,10 +487,10 @@ impl Compiler {
                 else_blocks: _,
             } => todo!(),
             SelectInteger {
-                exit_id: _,
-                value: _,
-                case_blocks: _,
-            } => todo!(),
+                exit_id,
+                value,
+                case_blocks,
+            } => self.compile_select_integer(*exit_id, value, case_blocks),
             SelectString {
                 exit_id: _,
                 value: _,
@@ -829,6 +829,127 @@ impl Compiler {
         self.statements.extend(tail_code);
         self.return_temp_int_var_label(end_var);
         self.return_temp_int_var_label(step_var);
+    }
+
+    // Select Case <integer> ステートメント
+    fn compile_select_integer(
+        &mut self,
+        exit_id: usize,
+        value: &parser::Expr,
+        case_blocks: &[parser::Statement],
+    ) {
+        assert!(
+            {
+                let mut iter = case_blocks.iter();
+                iter.next_back();
+                iter.all(|stmt| matches!(stmt, parser::Statement::CaseInteger { .. }))
+            },
+            "BUG"
+        );
+
+        let has_else = matches!(case_blocks.last(), Some(parser::Statement::CaseElse { .. }));
+
+        let case_blocks: Vec<_> = case_blocks
+            .iter()
+            .map(|case_stmt| (case_stmt, self.get_new_jump_label()))
+            .collect();
+
+        self.next_statement_comment = Some(format!("Select Case {}", value));
+
+        let value_reg = self.compile_expr(value);
+
+        for (case_stmt, label) in case_blocks.iter() {
+            match case_stmt {
+                parser::Statement::CaseInteger { values, .. } => {
+                    let mut comment = Some(format!(
+                        "Case {}",
+                        values
+                            .iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                    for case_value in values.iter() {
+                        use parser::CaseIntegerItem::*;
+                        let adr = match case_value {
+                            Integer(value) => casl2::Adr::LiteralDec(*value as i16),
+                            Character(ch) => casl2::Adr::LiteralStr(ch.to_string()),
+                        };
+                        self.statements.push(casl2::Statement::Code {
+                            label: None,
+                            command: casl2::Command::A {
+                                code: casl2::A::Cpa,
+                                r: value_reg,
+                                adr,
+                                x: None,
+                            },
+                            comment: comment.take(),
+                        });
+                        self.statements
+                            .push(casl2::Statement::code(casl2::Command::P {
+                                code: casl2::P::Jze,
+                                adr: casl2::Adr::label(label),
+                                x: None,
+                            }));
+                    }
+                }
+                parser::Statement::CaseElse { .. } => {
+                    self.statements.push(casl2::Statement::code_with_comment(
+                        casl2::Command::P {
+                            code: casl2::P::Jump,
+                            adr: casl2::Adr::label(label),
+                            x: None,
+                        },
+                        "Case Else",
+                    ));
+                }
+                _ => unreachable!("BUG"),
+            }
+        }
+
+        self.set_register_idle(value_reg);
+
+        let exit_label = self.get_exit_label(exit_id);
+
+        if !has_else {
+            self.statements
+                .push(casl2::Statement::code(casl2::Command::P {
+                    code: casl2::P::Jump,
+                    adr: casl2::Adr::label(&exit_label),
+                    x: None,
+                }));
+        }
+
+        for (case_stmt, label) in case_blocks.iter() {
+            self.statements
+                .push(casl2::Statement::labeled(&label, casl2::Command::Nop));
+            match case_stmt {
+                parser::Statement::CaseInteger { block, .. }
+                | parser::Statement::CaseElse { block } => {
+                    for stmt in block.iter() {
+                        self.compile(stmt);
+                    }
+                }
+                _ => unreachable!("BUG"),
+            }
+            self.statements
+                .push(casl2::Statement::code(casl2::Command::P {
+                    code: casl2::P::Jump,
+                    adr: casl2::Adr::label(&exit_label),
+                    x: None,
+                }));
+        }
+
+        let last_stmt = self.statements.last_mut().expect("BUG");
+        assert_eq!(
+            last_stmt,
+            &casl2::Statement::code(casl2::Command::P {
+                code: casl2::P::Jump,
+                adr: casl2::Adr::label(&exit_label),
+                x: None,
+            })
+        );
+        *last_stmt = casl2::Statement::labeled(&exit_label, casl2::Command::Nop);
     }
 
     // Dim ステートメント
@@ -2399,16 +2520,16 @@ Print "Limit?"
 Input c
 c = Max(1, Min(100, c))
 For i = 1 To c Step 1
-'    Select Case i Mod 15
-'        Case 0
+    Select Case i Mod 15
+        Case 0
             Print "FizzBuzz"
-'        Case 3, 6, 9, 12
+        Case 3, 6, 9, 12
             Print "Fizz"
-'        Case 5, 10
+        Case 5, 10
             Print "Buzz"
-'        Case Else
+        Case Else
 '            Print i
-'    End Select
+    End Select
 Next i
 "#;
 
