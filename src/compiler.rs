@@ -2191,9 +2191,9 @@ mod test {
             Print 1234
             Print "Text"
             ' Print bool1
-            ' Print int1
+            Print int1
             Print str1
-            ' Print 1 + 2 + 3 + int1
+            Print 1 + 2 + 3 + int1
             Let int1 = (1 + int1) + 2
             Let int1 = (1 - int1) - 2
             Let int1 = (1 << int1) << 2
@@ -2898,10 +2898,6 @@ Next i
 
         let statements = compile("FIZZBUZZ", &code[..]).unwrap();
 
-        statements.iter().for_each(|line| {
-            eprintln!("{}", line);
-        });
-
         assert!(!statements.is_empty()); // dummy assert
     }
 
@@ -2937,6 +2933,10 @@ Dim n As Integer
         let code = parser::parse(&mut cursor).unwrap().unwrap();
 
         let statements = compile("FIZZBUZZ", &code[..]).unwrap();
+
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
 
         assert!(!statements.is_empty()); // dummy assert
     }
