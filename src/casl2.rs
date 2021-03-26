@@ -199,38 +199,38 @@ impl Constant {
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Register {
-    GR0 = 0,
-    GR1 = 1,
-    GR2 = 2,
-    GR3 = 3,
-    GR4 = 4,
-    GR5 = 5,
-    GR6 = 6,
-    GR7 = 7,
+    Gr0 = 0,
+    Gr1 = 1,
+    Gr2 = 2,
+    Gr3 = 3,
+    Gr4 = 4,
+    Gr5 = 5,
+    Gr6 = 6,
+    Gr7 = 7,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum IndexRegister {
-    GR1 = 1,
-    GR2 = 2,
-    GR3 = 3,
-    GR4 = 4,
-    GR5 = 5,
-    GR6 = 6,
-    GR7 = 7,
+    Gr1 = 1,
+    Gr2 = 2,
+    Gr3 = 3,
+    Gr4 = 4,
+    Gr5 = 5,
+    Gr6 = 6,
+    Gr7 = 7,
 }
 
 impl From<IndexRegister> for Register {
     fn from(r: IndexRegister) -> Self {
         use IndexRegister::*;
         match r {
-            GR1 => Self::GR1,
-            GR2 => Self::GR2,
-            GR3 => Self::GR3,
-            GR4 => Self::GR4,
-            GR5 => Self::GR5,
-            GR6 => Self::GR6,
-            GR7 => Self::GR7,
+            Gr1 => Self::Gr1,
+            Gr2 => Self::Gr2,
+            Gr3 => Self::Gr3,
+            Gr4 => Self::Gr4,
+            Gr5 => Self::Gr5,
+            Gr6 => Self::Gr6,
+            Gr7 => Self::Gr7,
         }
     }
 }
@@ -240,14 +240,14 @@ impl std::convert::TryFrom<Register> for IndexRegister {
     fn try_from(r: Register) -> Result<Self, Self::Error> {
         use Register::*;
         let ir = match r {
-            GR0 => return Err(0),
-            GR1 => Self::GR1,
-            GR2 => Self::GR2,
-            GR3 => Self::GR3,
-            GR4 => Self::GR4,
-            GR5 => Self::GR5,
-            GR6 => Self::GR6,
-            GR7 => Self::GR7,
+            Gr0 => return Err(0),
+            Gr1 => Self::Gr1,
+            Gr2 => Self::Gr2,
+            Gr3 => Self::Gr3,
+            Gr4 => Self::Gr4,
+            Gr5 => Self::Gr5,
+            Gr6 => Self::Gr6,
+            Gr7 => Self::Gr7,
         };
         Ok(ir)
     }
@@ -377,12 +377,11 @@ pub struct Builder {
 
 impl Builder {
     pub fn new(name: &str) -> Self {
-        let mut statements = vec![];
-        statements.push(Statement::Code {
+        let statements = vec![Statement::Code {
             label: Some(Label(name.into())),
             command: Command::Start { entry_point: None },
             comment: None,
-        });
+        }];
         Self {
             label: None,
             program: Program {
@@ -393,12 +392,11 @@ impl Builder {
     }
 
     pub fn new_with_comment(name: &str, comment: &str) -> Self {
-        let mut statements = vec![];
-        statements.push(Statement::Code {
+        let statements = vec![Statement::Code {
             label: Some(Label(name.into())),
             command: Command::Start { entry_point: None },
             comment: Some(comment.into()),
-        });
+        }];
         Self {
             label: None,
             program: Program {
@@ -409,14 +407,13 @@ impl Builder {
     }
 
     pub fn start_at(name: &str, entry_point: &str) -> Self {
-        let mut statements = vec![];
-        statements.push(Statement::Code {
+        let statements = vec![Statement::Code {
             label: Some(Label(name.into())),
             command: Command::Start {
                 entry_point: Some(Label(entry_point.into())),
             },
             comment: None,
-        });
+        }];
         Self {
             label: None,
             program: Program {
@@ -427,14 +424,13 @@ impl Builder {
     }
 
     pub fn start_at_with_comment(name: &str, entry_point: &str, comment: &str) -> Self {
-        let mut statements = vec![];
-        statements.push(Statement::Code {
+        let statements = vec![Statement::Code {
             label: Some(Label(name.into())),
             command: Command::Start {
                 entry_point: Some(Label(entry_point.into())),
             },
             comment: Some(comment.into()),
-        });
+        }];
         Self {
             label: None,
             program: Program {
@@ -1012,14 +1008,14 @@ mod parser {
                 return None;
             };
             match s.as_str() {
-                "GR0" => Some(Self::GR0),
-                "GR1" => Some(Self::GR1),
-                "GR2" => Some(Self::GR2),
-                "GR3" => Some(Self::GR3),
-                "GR4" => Some(Self::GR4),
-                "GR5" => Some(Self::GR5),
-                "GR6" => Some(Self::GR6),
-                "GR7" => Some(Self::GR7),
+                "GR0" => Some(Self::Gr0),
+                "GR1" => Some(Self::Gr1),
+                "GR2" => Some(Self::Gr2),
+                "GR3" => Some(Self::Gr3),
+                "GR4" => Some(Self::Gr4),
+                "GR5" => Some(Self::Gr5),
+                "GR6" => Some(Self::Gr6),
+                "GR7" => Some(Self::Gr7),
                 _ => None,
             }
         }
@@ -1033,13 +1029,13 @@ mod parser {
                 return None;
             };
             match s.as_str() {
-                "GR1" => Some(Self::GR1),
-                "GR2" => Some(Self::GR2),
-                "GR3" => Some(Self::GR3),
-                "GR4" => Some(Self::GR4),
-                "GR5" => Some(Self::GR5),
-                "GR6" => Some(Self::GR6),
-                "GR7" => Some(Self::GR7),
+                "GR1" => Some(Self::Gr1),
+                "GR2" => Some(Self::Gr2),
+                "GR3" => Some(Self::Gr3),
+                "GR4" => Some(Self::Gr4),
+                "GR5" => Some(Self::Gr5),
+                "GR6" => Some(Self::Gr6),
+                "GR7" => Some(Self::Gr7),
                 _ => None,
             }
         }
@@ -1413,20 +1409,20 @@ NEXT      SLL       GR2,1          ; GR2 <<= 1
             Stmt::code(Cmd::P {
                 code: P::Push,
                 adr: Adr::Dec(0),
-                x: Some(Idx::GR1),
+                x: Some(Idx::Gr1),
             }),
             // PUSH      0,GR2
             Stmt::code(Cmd::P {
                 code: P::Push,
                 adr: Adr::Dec(0),
-                x: Some(Idx::GR2),
+                x: Some(Idx::Gr2),
             }),
             // XOR       GR0,GR0        ; GR0 = 0
             Stmt::code_with_comment(
                 Cmd::R {
                     code: R::Xor,
-                    r1: Reg::GR0,
-                    r2: Reg::GR0,
+                    r1: Reg::Gr0,
+                    r2: Reg::Gr0,
                 },
                 "GR0 = 0",
             ),
@@ -1435,7 +1431,7 @@ NEXT      SLL       GR2,1          ; GR2 <<= 1
                 "LOOP",
                 Cmd::A {
                     code: A::Srl,
-                    r: Reg::GR1,
+                    r: Reg::Gr1,
                     adr: Adr::Dec(1),
                     x: None,
                 },
@@ -1454,9 +1450,9 @@ NEXT      SLL       GR2,1          ; GR2 <<= 1
                 x: None,
             }),
             // POP       GR2
-            Stmt::code(Cmd::Pop { r: Reg::GR2 }),
+            Stmt::code(Cmd::Pop { r: Reg::Gr2 }),
             // POP       GR1
-            Stmt::code(Cmd::Pop { r: Reg::GR1 }),
+            Stmt::code(Cmd::Pop { r: Reg::Gr1 }),
             // RET
             Stmt::code(Cmd::Ret),
             // ADD       ADDL      GR0,GR2        ; GR0 += GR2
@@ -1464,8 +1460,8 @@ NEXT      SLL       GR2,1          ; GR2 <<= 1
                 "ADD",
                 Cmd::R {
                     code: R::Addl,
-                    r1: Reg::GR0,
-                    r2: Reg::GR2,
+                    r1: Reg::Gr0,
+                    r2: Reg::Gr2,
                 },
                 "GR0 += GR2",
             ),
@@ -1474,7 +1470,7 @@ NEXT      SLL       GR2,1          ; GR2 <<= 1
                 "NEXT",
                 Cmd::A {
                     code: A::Sll,
-                    r: Reg::GR2,
+                    r: Reg::Gr2,
                     adr: Adr::Dec(1),
                     x: None,
                 },
@@ -1508,20 +1504,20 @@ NEXT      SLL       GR2,1          ; GR2 <<= 1
             .code(Cmd::P {
                 code: P::Push,
                 adr: Adr::Dec(0),
-                x: Some(Idx::GR1),
+                x: Some(Idx::Gr1),
             })
             // PUSH 0,GR2
             .code(Cmd::P {
                 code: P::Push,
                 adr: Adr::Dec(0),
-                x: Some(Idx::GR2),
+                x: Some(Idx::Gr2),
             })
             // XOR  GR0,GR0    ; GR0 = 0
             .code_with_comment(
                 Cmd::R {
                     code: R::Xor,
-                    r1: Reg::GR0,
-                    r2: Reg::GR0,
+                    r1: Reg::Gr0,
+                    r2: Reg::Gr0,
                 },
                 "GR0 = 0",
             )
@@ -1530,7 +1526,7 @@ NEXT      SLL       GR2,1          ; GR2 <<= 1
             .code_with_comment(
                 Cmd::A {
                     code: A::Srl,
-                    r: Reg::GR1,
+                    r: Reg::Gr1,
                     adr: Adr::Dec(1),
                     x: None,
                 },
@@ -1549,9 +1545,9 @@ NEXT      SLL       GR2,1          ; GR2 <<= 1
                 x: None,
             })
             // POP       GR2
-            .code(Cmd::Pop { r: Reg::GR2 })
+            .code(Cmd::Pop { r: Reg::Gr2 })
             // POP       GR1
-            .code(Cmd::Pop { r: Reg::GR1 })
+            .code(Cmd::Pop { r: Reg::Gr1 })
             // RET
             .code(Cmd::Ret)
             // ADD       ADDL      GR0,GR2        ; GR0 += GR2
@@ -1559,8 +1555,8 @@ NEXT      SLL       GR2,1          ; GR2 <<= 1
             .code_with_comment(
                 Cmd::R {
                     code: R::Addl,
-                    r1: Reg::GR0,
-                    r2: Reg::GR2,
+                    r1: Reg::Gr0,
+                    r2: Reg::Gr2,
                 },
                 "GR0 += GR2",
             )
@@ -1569,7 +1565,7 @@ NEXT      SLL       GR2,1          ; GR2 <<= 1
             .code_with_comment(
                 Cmd::A {
                     code: A::Sll,
-                    r: Reg::GR2,
+                    r: Reg::Gr2,
                     adr: Adr::Dec(1),
                     x: None,
                 },

@@ -21,20 +21,20 @@ pub fn compile(
 }
 
 struct Compiler {
-    // ソース定義の変数のID (真理値/整数/文字列の全体で一意)
+    // ソース定義の変数のId (真理値/整数/文字列の全体で一意)
     var_id: usize,
 
-    // IN/OUTで使用する文字列定数のID
+    // IN/OUTで使用する文字列定数のId
     lit_id: usize,
 
-    // 組み込みサブルーチンのローカル変数・定数のID (名前重複を防ぐが目的) (DS/DCは各サブルーチン内で定義する)
+    // 組み込みサブルーチンのローカル変数・定数のId (名前重複を防ぐが目的) (DS/DCは各サブルーチン内で定義する)
     local_var_id: usize,
 
-    // 式展開時などの一時変数のID
+    // 式展開時などの一時変数のId
     temp_int_var_id: usize,
     temp_str_var_id: usize,
 
-    // ループや条件分岐に使うジャンプ先ラベルのID (全体で一意)
+    // ループや条件分岐に使うジャンプ先ラベルのId (全体で一意)
     jump_id: usize,
 
     // 真理値変数のラベル対応を保持 (変数名, ラベル)
@@ -62,7 +62,7 @@ struct Compiler {
     temp_str_var_labels: Vec<StrLabels>,
 
     // 組み込みサブルーチンのコードを保持 (サブルーチンの固有名, コード)
-    subroutine_codes: HashMap<subroutine::ID, Vec<casl2::Statement>>,
+    subroutine_codes: HashMap<subroutine::Id, Vec<casl2::Statement>>,
 
     // Continueで参照する継続ラベル対応を保持 (exit_id, 継続ラベル)
     loop_labels: HashMap<usize, String>,
@@ -124,7 +124,7 @@ impl Compiler {
         // I** 整数変数
         // T** 式展開時の一時変数(真理値/整数で共有)(主にForループの終点とステップで使用)
         // V** 組み込みサブルーチンのローカル変数
-        // J** ループや条件分岐に使うジャンプ先ラベルのID
+        // J** ループや条件分岐に使うジャンプ先ラベルのId
         // C** 組み込みサブルーチンの入り口のラベル
         && (program_name.len() < 2 || !{
             let (head, tail) = program_name.split_at(1);
@@ -263,7 +263,7 @@ impl Compiler {
     }
 
     // サブルーチンのソースコードを登録する
-    fn load_subroutine(&mut self, req_id: subroutine::ID) -> String {
+    fn load_subroutine(&mut self, req_id: subroutine::Id) -> String {
         let mut loading_ids = vec![req_id];
         while let Some(id) = loading_ids.pop() {
             if self.subroutine_codes.contains_key(&id) {
@@ -629,7 +629,7 @@ impl Compiler {
         // ループ継続の判定部分
 
         let (saves, recovers) =
-            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::GR1));
+            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
 
         let mut condition_src = String::new();
 
@@ -666,7 +666,7 @@ impl Compiler {
         // ループ末尾 (カウンタの更新など)
 
         let (saves, recovers) =
-            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::GR1));
+            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
 
         let mut tail_src = String::new();
 
@@ -774,7 +774,7 @@ impl Compiler {
         // ループ継続の判定部分
 
         let (saves, recovers) =
-            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::GR1));
+            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
 
         let mut condition_src = String::new();
 
@@ -816,7 +816,7 @@ impl Compiler {
         // ループ末尾 (カウンタの更新など)
 
         let (saves, recovers) =
-            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::GR1));
+            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
 
         let mut tail_src = String::new();
 
@@ -1010,12 +1010,12 @@ impl Compiler {
     // Input ステートメント
     // 整数変数へのコンソール入力
     fn compile_input_integer(&mut self, var_name: &str) {
-        let cint_label = self.load_subroutine(subroutine::ID::FuncCInt);
+        let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
         let s_labels = self.get_temp_str_var_label();
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[GR1, GR2])
+            self.get_save_registers_src(&[Gr1, Gr2])
         };
 
         let var_label = self.int_var_labels.get(var_name).expect("BUG");
@@ -1128,12 +1128,12 @@ impl Compiler {
         self.next_statement_comment = Some(format!("Print {}", value));
 
         let value_reg = self.compile_int_expr(value);
-        let call_label = self.load_subroutine(subroutine::ID::FuncCStrArgInt);
+        let call_label = self.load_subroutine(subroutine::Id::FuncCStrArgInt);
         let str_labels = self.get_temp_str_var_label();
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[GR1, GR2, GR3])
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
         };
 
         let mut src = saves;
@@ -1171,7 +1171,7 @@ impl Compiler {
     fn get_idle_register(&mut self) -> casl2::Register {
         use casl2::Register::{self, *};
         use std::convert::TryFrom;
-        const REG: [Register; 7] = [GR7, GR6, GR5, GR4, GR3, GR2, GR1];
+        const REG: [Register; 7] = [Gr7, Gr6, Gr5, Gr4, Gr3, Gr2, Gr1];
         for &reg in REG.iter() {
             if self.is_idle_register(reg) {
                 self.set_register_used(reg);
@@ -1280,7 +1280,7 @@ impl Compiler {
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[GR1, GR2, GR3])
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
         };
 
         let mut src = saves;
@@ -1288,8 +1288,8 @@ impl Compiler {
         let t_labels = self.get_temp_str_var_label();
 
         let id = match param.return_type() {
-            parser::ExprType::Boolean => subroutine::ID::FuncCStrArgBool,
-            parser::ExprType::Integer => subroutine::ID::FuncCStrArgInt,
+            parser::ExprType::Boolean => subroutine::Id::FuncCStrArgBool,
+            parser::ExprType::Integer => subroutine::Id::FuncCStrArgInt,
             parser::ExprType::String | parser::ExprType::ParamList => unreachable!("BUG"),
         };
 
@@ -1431,11 +1431,11 @@ impl Compiler {
         lhs_reg: casl2::Register,
         rhs_reg: casl2::Register,
     ) -> casl2::Register {
-        let mul_label = self.load_subroutine(subroutine::ID::UtilMul);
+        let mul_label = self.load_subroutine(subroutine::Id::UtilMul);
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[GR1, GR2, GR3])
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
         };
 
         let mut src = saves;
@@ -1472,11 +1472,11 @@ impl Compiler {
         lhs_reg: casl2::Register,
         rhs_reg: casl2::Register,
     ) -> casl2::Register {
-        let divmod_label = self.load_subroutine(subroutine::ID::UtilDivMod);
+        let divmod_label = self.load_subroutine(subroutine::Id::UtilDivMod);
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[GR1, GR2, GR3])
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
         };
 
         let mut src = saves;
@@ -1513,11 +1513,11 @@ impl Compiler {
         lhs_reg: casl2::Register,
         rhs_reg: casl2::Register,
     ) -> casl2::Register {
-        let divmod_label = self.load_subroutine(subroutine::ID::UtilDivMod);
+        let divmod_label = self.load_subroutine(subroutine::Id::UtilDivMod);
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[GR1, GR2, GR3])
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
         };
 
         let mut src = saves;
@@ -1605,8 +1605,8 @@ impl Compiler {
         match func {
             CInt => todo!(),
             Len => todo!(),
-            Max => self.call_function_2_int_args_int_ret(param, subroutine::ID::FuncMax),
-            Min => self.call_function_2_int_args_int_ret(param, subroutine::ID::FuncMin),
+            Max => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMax),
+            Min => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMin),
             CBool | CStr => unreachable!("BUG"),
         }
     }
@@ -1621,7 +1621,7 @@ impl Compiler {
     fn call_function_2_int_args_int_ret(
         &mut self,
         param: &parser::Expr,
-        id: subroutine::ID,
+        id: subroutine::Id,
     ) -> casl2::Register {
         let list = match param {
             parser::Expr::ParamList(list) if list.len() == 2 => list,
@@ -1645,7 +1645,7 @@ impl Compiler {
         &mut self,
         lhs: &parser::Expr,
         rhs: &parser::Expr,
-        id: subroutine::ID,
+        id: subroutine::Id,
     ) -> casl2::Register {
         let lhs_reg = self.compile_int_expr(lhs);
         let rhs_reg = self.compile_int_expr(rhs);
@@ -1658,7 +1658,7 @@ impl Compiler {
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[GR1, GR2])
+            self.get_save_registers_src(&[Gr1, Gr2])
         };
 
         let mut src = saves;
@@ -1702,7 +1702,7 @@ mod subroutine {
     use crate::casl2;
 
     #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Debug)]
-    pub enum ID {
+    pub enum Id {
         FuncAbs,
         FuncCInt,
         FuncMax,
@@ -1714,14 +1714,14 @@ mod subroutine {
         UtilMul,
     }
 
-    impl ID {
+    impl Id {
         pub fn label(&self) -> String {
             format!("C{}", *self as isize)
         }
     }
 
     pub struct Src {
-        pub dependencies: Vec<ID>,
+        pub dependencies: Vec<Id>,
         pub statements: Vec<casl2::Statement>,
     }
 
@@ -1731,22 +1731,22 @@ mod subroutine {
     }
 
     // サブルーチンのソースコードと依存関係を取得
-    pub fn get_src<T: Gen>(gen: &mut T, id: ID) -> Src {
+    pub fn get_src<T: Gen>(gen: &mut T, id: Id) -> Src {
         match id {
-            ID::FuncAbs => get_func_abs(gen, id),
-            ID::FuncCInt => get_func_cint(gen, id),
-            ID::FuncMax => get_func_max(gen, id),
-            ID::FuncMin => get_func_min(gen, id),
-            ID::FuncCStrArgBool => get_func_cstr_arg_bool(gen, id),
-            ID::FuncCStrArgInt => get_func_cstr_arg_int(gen, id),
-            ID::UtilCopyStr => get_util_copy_str(gen, id),
-            ID::UtilDivMod => get_util_div_mod(gen, id),
-            ID::UtilMul => get_util_mul(gen, id),
+            Id::FuncAbs => get_func_abs(gen, id),
+            Id::FuncCInt => get_func_cint(gen, id),
+            Id::FuncMax => get_func_max(gen, id),
+            Id::FuncMin => get_func_min(gen, id),
+            Id::FuncCStrArgBool => get_func_cstr_arg_bool(gen, id),
+            Id::FuncCStrArgInt => get_func_cstr_arg_int(gen, id),
+            Id::UtilCopyStr => get_util_copy_str(gen, id),
+            Id::UtilDivMod => get_util_div_mod(gen, id),
+            Id::UtilMul => get_util_mul(gen, id),
         }
     }
 
     // Abs
-    fn get_func_abs<T: Gen>(gen: &mut T, id: ID) -> Src {
+    fn get_func_abs<T: Gen>(gen: &mut T, id: Id) -> Src {
         // GR1 .. value1
         // GR0 .. ret = abs(value1)
         Src {
@@ -1772,7 +1772,7 @@ mod subroutine {
     }
 
     // Max
-    fn get_func_max<T: Gen>(gen: &mut T, id: ID) -> Src {
+    fn get_func_max<T: Gen>(gen: &mut T, id: Id) -> Src {
         // GR1 .. value1
         // GR2 .. value2
         // GR0 .. ret = max(value1, value2)
@@ -1799,7 +1799,7 @@ mod subroutine {
     }
 
     // Min
-    fn get_func_min<T: Gen>(gen: &mut T, id: ID) -> Src {
+    fn get_func_min<T: Gen>(gen: &mut T, id: Id) -> Src {
         // GR1 .. value1
         // GR2 .. value2
         // GR0 .. ret = min(value1, value2)
@@ -1826,7 +1826,7 @@ mod subroutine {
     }
 
     // CInt
-    fn get_func_cint<T: Gen>(gen: &mut T, id: ID) -> Src {
+    fn get_func_cint<T: Gen>(gen: &mut T, id: Id) -> Src {
         // GR1 .. adr of s_buf
         // GR2 .. s_len
         // GR0 .. ret
@@ -1890,13 +1890,13 @@ mod subroutine {
     }
 
     // Div Mod
-    fn get_util_div_mod<T: Gen>(gen: &mut T, id: ID) -> Src {
+    fn get_util_div_mod<T: Gen>(gen: &mut T, id: Id) -> Src {
         // GR2 割られる数 (分子)
         // GR3 割る数 (分母)
         // GR0 商    = GR2 \ GR3
         // GR1 余り   = GR2 Mod GR3
         Src {
-            dependencies: vec![ID::FuncAbs, ID::UtilMul],
+            dependencies: vec![Id::FuncAbs, Id::UtilMul],
             statements: casl2::parse(
                 format!(
                     r#"
@@ -1949,8 +1949,8 @@ mod subroutine {
 "#,
                     prog = id.label(),
                     comment = format!("{:?}", id),
-                    abs = ID::FuncAbs.label(),
-                    mul = ID::UtilMul.label(),
+                    abs = Id::FuncAbs.label(),
+                    mul = Id::UtilMul.label(),
                     ok = gen.jump_label(),
                     shift = gen.jump_label(),
                     pre = gen.jump_label(),
@@ -1965,12 +1965,12 @@ mod subroutine {
     }
 
     // Mul
-    fn get_util_mul<T: Gen>(gen: &mut T, id: ID) -> Src {
+    fn get_util_mul<T: Gen>(gen: &mut T, id: Id) -> Src {
         // GR2 * GR3
         // GR0 積の下位16ビット  (GR2 * GR3) & 0x0000FFFF
         // GR1 積の上位16ビット ((GR2 * GR3) & 0xFFFF0000) >> 16
         Src {
-            dependencies: vec![ID::FuncAbs, ID::UtilMul],
+            dependencies: vec![Id::FuncAbs, Id::UtilMul],
             statements: casl2::parse(
                 format!(
                     r#"
@@ -2022,12 +2022,12 @@ mod subroutine {
     }
 
     // CStr (bool)
-    fn get_func_cstr_arg_bool<T: Gen>(gen: &mut T, id: ID) -> Src {
+    fn get_func_cstr_arg_bool<T: Gen>(gen: &mut T, id: Id) -> Src {
         // GR1 .. adr of s_buf
         // GR2 .. adr of s_len
         // GR3 .. value (boolean)
         Src {
-            dependencies: vec![ID::UtilCopyStr],
+            dependencies: vec![Id::UtilCopyStr],
             statements: casl2::parse(
                 format!(
                     r#"
@@ -2046,7 +2046,7 @@ mod subroutine {
 "#,
                     prog = id.label(),
                     comment = format!("{:?}", id),
-                    copy = ID::UtilCopyStr.label(),
+                    copy = Id::UtilCopyStr.label(),
                     ret = gen.jump_label()
                 )
                 .trim_start_matches('\n'),
@@ -2056,12 +2056,12 @@ mod subroutine {
     }
 
     // CStr (int)
-    fn get_func_cstr_arg_int<T: Gen>(gen: &mut T, id: ID) -> Src {
+    fn get_func_cstr_arg_int<T: Gen>(gen: &mut T, id: Id) -> Src {
         // GR1 .. adr of s_buf
         // GR2 .. adr of s_len
         // GR3 .. value (integer)
         Src {
-            dependencies: vec![ID::UtilDivMod],
+            dependencies: vec![Id::UtilDivMod],
             statements: casl2::parse(
                 format!(
                     r#"
@@ -2116,7 +2116,7 @@ mod subroutine {
 "#,
                     prog = id.label(),
                     comment = format!("{:?}", id),
-                    rem = ID::UtilDivMod.label(),
+                    rem = Id::UtilDivMod.label(),
                     init = gen.jump_label(),
                     start = gen.jump_label(),
                     cycle = gen.jump_label(),
@@ -2130,7 +2130,7 @@ mod subroutine {
     }
 
     // Util Copy Str
-    fn get_util_copy_str<T: Gen>(gen: &mut T, id: ID) -> Src {
+    fn get_util_copy_str<T: Gen>(gen: &mut T, id: Id) -> Src {
         // GR1 .. adr of s_buf (dst)
         // GR2 .. adr of s_len (dst)
         // GR3 .. adr of s_buf (src)
@@ -2590,7 +2590,7 @@ SB3    DS     256
             }
         }
 
-        let id = subroutine::ID::FuncCInt;
+        let id = subroutine::Id::FuncCInt;
         let mut t = T {
             v: vec!["J3", "J2", "J1"],
         };

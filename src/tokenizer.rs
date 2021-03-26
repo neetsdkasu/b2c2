@@ -268,9 +268,9 @@ macro_rules! enumdef {
                     .ok_or(0)
             }
         }
-        impl Into<Token> for $name {
-            fn into(self) -> Token {
-                Token::$name(self)
+        impl From<$name> for Token {
+            fn from(v: $name) -> Token {
+                Token::$name(v)
             }
         }
         impl $name {
