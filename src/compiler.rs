@@ -466,8 +466,8 @@ impl Compiler {
                 index: _,
                 value: _,
             } => todo!(),
-            ContinueDo { exit_id: _ } => todo!(),
-            ContinueFor { exit_id: _ } => todo!(),
+            ContinueDo { exit_id } => self.compile_continue_loop(*exit_id, "Do"),
+            ContinueFor { exit_id } => self.compile_continue_loop(*exit_id, "For"),
             Dim { var_name, var_type } => self.compile_dim(var_name, var_type),
             DoLoop { exit_id, block } => self.compile_do_loop(*exit_id, block),
             DoLoopUntil {
@@ -490,9 +490,9 @@ impl Compiler {
                 condition: _,
                 block: _,
             } => todo!(),
-            ExitDo { exit_id: _ } => todo!(),
-            ExitFor { exit_id: _ } => todo!(),
-            ExitSelect { exit_id: _ } => todo!(),
+            ExitDo { exit_id } => self.compile_exit_block(*exit_id, "Do"),
+            ExitFor { exit_id } => self.compile_exit_block(*exit_id, "For"),
+            ExitSelect { exit_id } => self.compile_exit_block(*exit_id, "Select"),
             For { step: None, .. } => self.compile_for_with_literal_step(stmt, 1),
             For {
                 step: Some(parser::Expr::LitInteger(step)),
@@ -547,6 +547,32 @@ impl Compiler {
             | ProvisionalCaseString { .. }
             | ProvisionalCaseElse => unreachable!("BUG"),
         }
+    }
+
+    // Continue {Do/For}
+    fn compile_continue_loop(&mut self, exit_id: usize, keyword: &str) {
+        let loop_label = self.get_loop_label(exit_id);
+        self.statements.push(casl2::Statement::code_with_comment(
+            casl2::Command::P {
+                code: casl2::P::Jump,
+                adr: casl2::Adr::label(&loop_label),
+                x: None,
+            },
+            &format!("Continue {}", keyword),
+        ));
+    }
+
+    // Exit {Do/For/Select}
+    fn compile_exit_block(&mut self, exit_id: usize, keyword: &str) {
+        let exit_label = self.get_exit_label(exit_id);
+        self.statements.push(casl2::Statement::code_with_comment(
+            casl2::Command::P {
+                code: casl2::P::Jump,
+                adr: casl2::Adr::label(&exit_label),
+                x: None,
+            },
+            &format!("Exit {}", keyword),
+        ));
     }
 
     // Assign Integer ステートメント
@@ -2276,8 +2302,8 @@ mod test {
                 Print "X"
             End Select
             Do
-                ' Continue Do
-                ' Exit Do
+                Continue Do
+                Exit Do
             Loop
         "#;
 
@@ -2934,12 +2960,12 @@ Do
     Print "Number?"
     Input s
 '    If s = "end" Then
-'        Exit Do
+        Exit Do
 '    End If
 '    n = CInt(s)
 '    If n < 1 Then
         Print "Invalid Input"
-'        Continue Do
+        Continue Do
 '    End If
 '    If n Mod 15 = 0 Then
 '        s = "FizzBuzz"
