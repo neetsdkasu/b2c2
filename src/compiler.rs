@@ -469,10 +469,7 @@ impl Compiler {
             ContinueDo { exit_id: _ } => todo!(),
             ContinueFor { exit_id: _ } => todo!(),
             Dim { var_name, var_type } => self.compile_dim(var_name, var_type),
-            DoLoop {
-                exit_id: _,
-                block: _,
-            } => todo!(),
+            DoLoop { exit_id, block } => self.compile_do_loop(*exit_id, block),
             DoLoopUntil {
                 exit_id: _,
                 condition: _,
@@ -1005,6 +1002,29 @@ impl Compiler {
                 self.int_arr_labels.insert(var_name.into(), (label, *size));
             }
         }
+    }
+
+    // Do ~ Loop ステートメント
+    fn compile_do_loop(&mut self, exit_id: usize, block: &[parser::Statement]) {
+        let loop_label = self.get_loop_label(exit_id);
+        let exit_label = self.get_exit_label(exit_id);
+
+        self.statements
+            .push(casl2::Statement::labeled(&loop_label, casl2::Command::Nop));
+
+        for stmt in block.iter() {
+            self.compile(stmt);
+        }
+
+        self.statements
+            .push(casl2::Statement::code(casl2::Command::P {
+                code: casl2::P::Jump,
+                adr: casl2::Adr::label(&loop_label),
+                x: None,
+            }));
+
+        self.statements
+            .push(casl2::Statement::labeled(&exit_label, casl2::Command::Nop));
     }
 
     // Input ステートメント
@@ -2255,6 +2275,10 @@ mod test {
             Case Else
                 Print "X"
             End Select
+            Do
+                ' Continue Do
+                ' Exit Do
+            Loop
         "#;
 
         let mut cursor = std::io::Cursor::new(src);
@@ -2906,7 +2930,7 @@ Next i
         let src = r#"
 Dim s As String
 Dim n As Integer
-'Do
+Do
     Print "Number?"
     Input s
 '    If s = "end" Then
@@ -2925,7 +2949,7 @@ Dim n As Integer
 '        s = "Buzz"
 '    End If
     Print s
-'Loop
+Loop
 "#;
 
         let mut cursor = std::io::Cursor::new(src);
