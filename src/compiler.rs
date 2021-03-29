@@ -3275,6 +3275,8 @@ Do
 '        s = "Fizz"
 '    ElseIf n Mod 5 = 0 Then
 '        s = "Buzz"
+'    Else
+'        s = CStr(n)
 '    End If
     Print s
 Loop
