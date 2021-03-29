@@ -244,7 +244,9 @@ impl Compiler {
 
     // 式展開時の一時変数(文字列)のラベルの返却
     fn return_temp_str_var_label(&mut self, labels: StrLabels) {
-        self.temp_str_var_labels.push(labels);
+        if matches!(labels.label_type, StrLabelType::Temp) {
+            self.temp_str_var_labels.push(labels);
+        }
     }
 
     // IN/OUTで使用する文字列定数のラベル生成
@@ -260,6 +262,18 @@ impl Compiler {
         };
         self.lit_str_labels.insert(literal.into(), labels.clone());
         labels
+    }
+
+    // 文字列リテラル取得、もしIN/OUTで使用する文字列定数のラベルがあればそれを返す
+    fn get_lit_str_label_if_exists(&mut self, literal: &str) -> StrLabels {
+        if let Some(labels) = self.lit_str_labels.get(literal) {
+            return labels.clone();
+        }
+        StrLabels {
+            len: format!("={}", literal.chars().count()),
+            buf: format!("='{}'", literal.replace('\'', "''")),
+            label_type: StrLabelType::Lit(literal.to_string()),
+        }
     }
 
     // サブルーチンのソースコードを登録する
@@ -500,10 +514,10 @@ impl Compiler {
             } => self.compile_for_with_literal_step(stmt, *step),
             For { .. } => self.compile_for(stmt),
             If {
-                condition: _,
-                block: _,
-                else_blocks: _,
-            } => todo!(),
+                condition,
+                block,
+                else_blocks,
+            } => self.compile_if(condition, block, else_blocks),
             SelectInteger {
                 exit_id,
                 value,
@@ -547,6 +561,76 @@ impl Compiler {
             | ProvisionalCaseString { .. }
             | ProvisionalCaseElse => unreachable!("BUG"),
         }
+    }
+
+    // If ステートメント
+    fn compile_if(
+        &mut self,
+        condition: &parser::Expr,
+        block: &[parser::Statement],
+        else_blocks: &[parser::Statement],
+    ) {
+        self.next_statement_comment = Some(format!("If {} Then", condition));
+
+        let mut label = self.get_new_jump_label();
+
+        let condition_reg = self.compile_int_expr(condition);
+
+        self.set_register_idle(condition_reg);
+
+        self.statements.extend(
+            casl2::parse(&format!(
+                r#" AND {reg},{reg}
+                JZE {next}"#,
+                reg = condition_reg,
+                next = label
+            ))
+            .unwrap(),
+        );
+
+        for stmt in block {
+            self.compile(stmt);
+        }
+
+        for else_stmt in else_blocks {
+            self.statements
+                .push(casl2::Statement::labeled(&label, casl2::Command::Nop));
+            label = self.get_new_jump_label();
+
+            match else_stmt {
+                parser::Statement::ElseIf { condition, block } => {
+                    self.next_statement_comment = Some(format!("ElseIf {} Then", condition));
+
+                    let condition_reg = self.compile_int_expr(condition);
+
+                    self.set_register_idle(condition_reg);
+
+                    self.statements.extend(
+                        casl2::parse(&format!(
+                            r#" AND {reg},{reg}
+                            JZE {next}"#,
+                            reg = condition_reg,
+                            next = label
+                        ))
+                        .unwrap(),
+                    );
+
+                    for stmt in block {
+                        self.compile(stmt);
+                    }
+                }
+                parser::Statement::Else { block } => {
+                    self.next_statement_comment = Some("Else".to_string());
+                    for stmt in block {
+                        self.compile(stmt);
+                    }
+                }
+                _ => unreachable!("BUG"),
+            }
+        }
+
+        self.statements
+            .push(casl2::Statement::labeled(&label, casl2::Command::Nop));
     }
 
     // Continue {Do/For}
@@ -1284,8 +1368,8 @@ impl Compiler {
         match expr {
             BinaryOperatorString(_op, _lhs, _rhs) => todo!(),
             FunctionString(func, param) => self.compile_function_string(*func, param),
-            LitString(_lit_str) => todo!(),
-            VarString(_var_name) => todo!(),
+            LitString(lit_str) => self.get_lit_str_label_if_exists(lit_str),
+            VarString(var_name) => self.str_var_labels.get(var_name).cloned().expect("BUG"),
 
             // 戻り値が文字列ではないもの
             BinaryOperatorBoolean(..)
@@ -1367,7 +1451,7 @@ impl Compiler {
     fn compile_int_expr(&mut self, expr: &parser::Expr) -> casl2::Register {
         use parser::Expr::*;
         match expr {
-            BinaryOperatorBoolean(_op, _lhs, _rhs) => todo!(),
+            BinaryOperatorBoolean(op, lhs, rhs) => self.compile_bin_op_boolean(*op, lhs, rhs),
             BinaryOperatorInteger(op, lhs, rhs) => self.compile_bin_op_integer(*op, lhs, rhs),
             CharOfLitString(_lit_str, _index) => todo!(),
             CharOfVarString(_var_name, _index) => todo!(),
@@ -1389,6 +1473,89 @@ impl Compiler {
             | LitString(..)
             | VarString(..)
             | ParamList(_) => unreachable!("BUG"),
+        }
+    }
+
+    // (式展開の処理の一部)
+    // 真理値を返す二項演算子の処理
+    fn compile_bin_op_boolean(
+        &mut self,
+        op: tokenizer::Operator,
+        lhs: &parser::Expr,
+        rhs: &parser::Expr,
+    ) -> casl2::Register {
+        use tokenizer::Operator::*;
+
+        match op {
+            // lhs,rhsは真理値のみ
+            And => todo!(),
+            Xor => todo!(),
+            Or => todo!(),
+
+            // lhs,rhsは真理値、整数、文字列のいずれか
+            NotEqual => todo!(),
+            LessOrEequal => todo!(),
+            GreaterOrEqual => todo!(),
+            Equal => self.compile_bin_op_boolean_eq(lhs, rhs),
+            LessThan => todo!(),
+            GreaterThan => todo!(),
+
+            // 二項演算子ではないものや、真理値を返さないもの
+            ShiftLeft | ShiftRight | Add | Sub | Mul | Div | Mod | Not | AddInto | SubInto
+            | Concat | OpenBracket | CloseBracket | Comma => {
+                unreachable!("BUG")
+            }
+        }
+    }
+
+    // (式展開の処理の一部)
+    // 比較演算子( = )
+    fn compile_bin_op_boolean_eq(
+        &mut self,
+        lhs: &parser::Expr,
+        rhs: &parser::Expr,
+    ) -> casl2::Register {
+        assert_eq!(lhs.return_type(), rhs.return_type());
+
+        match lhs.return_type() {
+            parser::ExprType::Boolean => todo!(),
+            parser::ExprType::Integer => todo!(),
+            parser::ExprType::String => {
+                let lhs_str = self.compile_str_expr(lhs);
+                let rhs_str = self.compile_str_expr(rhs);
+                let ret_reg = self.get_idle_register();
+                let cmpstr = self.load_subroutine(subroutine::Id::UtilCompareStr);
+                let (saves, recovers) = {
+                    use casl2::Register::*;
+                    self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+                };
+                let mut src = saves;
+                writeln!(
+                    &mut src,
+                    r#" LAD   GR1,{lhspos}
+                        LD    GR2,{lhslen}
+                        LAD   GR3,{rhspos}
+                        LD    GR4,{rhslen}
+                        CALL  {cmpstr}
+                        SLL   GR0,15
+                        SRA   GR0,15
+                        XOR   GR0,=#FFFF"#,
+                    lhspos = lhs_str.buf,
+                    lhslen = lhs_str.len,
+                    rhspos = rhs_str.buf,
+                    rhslen = rhs_str.len,
+                    cmpstr = cmpstr
+                )
+                .unwrap();
+                src.push_str(&recovers);
+                writeln!(&mut src, " LD {reg},GR0", reg = ret_reg).unwrap();
+                let code = casl2::parse(&src).unwrap();
+                self.statements.extend(code);
+                self.return_temp_str_var_label(lhs_str);
+                self.return_temp_str_var_label(rhs_str);
+                ret_reg
+            }
+            parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
 
@@ -1755,6 +1922,7 @@ mod subroutine {
         FuncMin,
         FuncCStrArgBool,
         FuncCStrArgInt,
+        UtilCompareStr,
         UtilCopyStr,
         UtilDivMod,
         UtilMul,
@@ -1785,6 +1953,7 @@ mod subroutine {
             Id::FuncMin => get_func_min(gen, id),
             Id::FuncCStrArgBool => get_func_cstr_arg_bool(gen, id),
             Id::FuncCStrArgInt => get_func_cstr_arg_int(gen, id),
+            Id::UtilCompareStr => get_util_compare_str(gen, id),
             Id::UtilCopyStr => get_util_copy_str(gen, id),
             Id::UtilDivMod => get_util_div_mod(gen, id),
             Id::UtilMul => get_util_mul(gen, id),
@@ -2168,6 +2337,63 @@ mod subroutine {
                     cycle = gen.jump_label(),
                     copy = gen.jump_label(),
                     temp = gen.var_label()
+                )
+                .trim_start_matches('\n'),
+            )
+            .unwrap(),
+        }
+    }
+
+    // Util Compare Str
+    fn get_util_compare_str<T: Gen>(gen: &mut T, id: Id) -> Src {
+        // GR1 .. adr of s_buf (lhs)
+        // GR2 .. s_len (lhs)
+        // GR3 .. adr of s_buf (rhs)
+        // GR4 .. s_len (rhs)
+        // GR0 .. -1 if lhs < rhs, 0 if lhs == rhs, 1 if lhs > rhs
+        Src {
+            dependencies: Vec::new(),
+            statements: casl2::parse(
+                format!(
+                    r#"
+{prog}   PUSH  0,GR1            ; {comment}
+         PUSH  0,GR2
+         PUSH  0,GR3
+         PUSH  0,GR4
+         PUSH  0,GR5
+         XOR   GR0,GR0
+{cycle}  AND   GR2,GR2
+         JPL   {next}
+         CPL   GR2,GR4
+         JNZ   {less}
+         JUMP  {ret}
+{next}   AND   GR4,GR4
+         JZE   {great}
+         LD    GR5,0,GR1
+         CPL   GR5,0,GR3
+         JMI   {less}
+         JPL   {great}
+         LAD   GR1,1,GR1
+         LAD   GR2,-1,GR2
+         LAD   GR3,1,GR3
+         LAD   GR4,-1,GR4
+         JUMP  {cycle}
+{less}   LAD   GR0,-1
+{great}  OR    GR0,=1
+{ret}    POP   GR5
+         POP   GR4
+         POP   GR3
+         POP   GR2
+         POP   GR1
+         RET
+"#,
+                    prog = id.label(),
+                    comment = format!("{:?}", id),
+                    cycle = gen.jump_label(),
+                    next = gen.jump_label(),
+                    less = gen.jump_label(),
+                    great = gen.jump_label(),
+                    ret = gen.jump_label()
                 )
                 .trim_start_matches('\n'),
             )
@@ -2959,9 +3185,9 @@ Dim n As Integer
 Do
     Print "Number?"
     Input s
-'    If s = "end" Then
+    If s = "end" Then
         Exit Do
-'    End If
+    End If
 '    n = CInt(s)
 '    If n < 1 Then
         Print "Invalid Input"
