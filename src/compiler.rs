@@ -87,9 +87,6 @@ struct Compiler {
     //  後尾: 現在の式展開中の箇所から"近い"箇所で使用してるレジスタ
     registers_deque: VecDeque<casl2::Register>,
 
-    // ループや条件分岐の脱出先のコードにラベルをつけるためその脱出ラベルを保持
-    next_statement_label: Option<casl2::Label>,
-
     // 次のcasl2ステートメントにコメントをつける
     next_statement_comment: Option<String>,
 
@@ -172,7 +169,6 @@ impl Compiler {
             exit_labels: HashMap::new(),
             registers_used: 0,
             registers_deque: VecDeque::with_capacity(7),
-            next_statement_label: None,
             next_statement_comment: None,
             statements: vec![casl2::Statement::labeled(
                 program_name,
@@ -293,6 +289,14 @@ impl Compiler {
         req_id.label()
     }
 
+    // casl2テキストソースに埋め込める形でコメントを取得する
+    fn get_comment_with_semicolon_if_exists(&mut self) -> String {
+        self.next_statement_comment
+            .take()
+            .map(|s| format!(" ; {}", s))
+            .unwrap_or_else(String::new)
+    }
+
     // コンパイル最終工程
     fn finish(self) -> Vec<casl2::Statement> {
         let Self {
@@ -304,7 +308,6 @@ impl Compiler {
             lit_str_labels,
             temp_int_var_labels,
             temp_str_var_labels,
-            next_statement_label,
             subroutine_codes,
             mut statements,
             ..
@@ -312,7 +315,7 @@ impl Compiler {
 
         // RET ステートメント
         statements.push(casl2::Statement::Code {
-            label: next_statement_label,
+            label: None,
             command: casl2::Command::Ret,
             comment: None,
         });
@@ -736,7 +739,7 @@ impl Compiler {
         // ループ継続の判定部分
 
         let (saves, recovers) =
-            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
+            self.get_save_registers_src(true, std::slice::from_ref(&casl2::Register::Gr1));
 
         let mut condition_src = String::new();
 
@@ -773,7 +776,7 @@ impl Compiler {
         // ループ末尾 (カウンタの更新など)
 
         let (saves, recovers) =
-            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
+            self.get_save_registers_src(true, std::slice::from_ref(&casl2::Register::Gr1));
 
         let mut tail_src = String::new();
 
@@ -881,7 +884,7 @@ impl Compiler {
         // ループ継続の判定部分
 
         let (saves, recovers) =
-            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
+            self.get_save_registers_src(true, std::slice::from_ref(&casl2::Register::Gr1));
 
         let mut condition_src = String::new();
 
@@ -923,7 +926,7 @@ impl Compiler {
         // ループ末尾 (カウンタの更新など)
 
         let (saves, recovers) =
-            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
+            self.get_save_registers_src(true, std::slice::from_ref(&casl2::Register::Gr1));
 
         let mut tail_src = String::new();
 
@@ -1145,7 +1148,7 @@ impl Compiler {
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2])
+            self.get_save_registers_src(true, &[Gr1, Gr2])
         };
 
         let var_label = self.int_var_labels.get(var_name).expect("BUG");
@@ -1179,77 +1182,67 @@ impl Compiler {
     // Input ステートメント
     // 文字列変数へのコンソール入力
     fn compile_input_string(&mut self, var_name: &str) {
-        let label = self.next_statement_label.take();
         let StrLabels { len, buf, .. } = self.str_var_labels.get(var_name).expect("BUG");
-        self.statements.push(casl2::Statement::Code {
-            label,
-            command: casl2::Command::In {
+        self.statements.push(casl2::Statement::code_with_comment(
+            casl2::Command::In {
                 pos: buf.into(),
                 len: len.into(),
             },
-            comment: Some(format!("Input {}", var_name)),
-        });
+            &format!("Input {}", var_name),
+        ));
     }
 
     // Print ステートメント
     // 真理値リテラルの画面出力
     fn compile_print_lit_boolean(&mut self, value: bool) {
-        let label = self.next_statement_label.take();
         let s = if value { "True" } else { "False" };
         let StrLabels { len, buf, .. } = self.get_lit_str_labels(s);
-        self.statements.push(casl2::Statement::Code {
-            label,
-            command: casl2::Command::Out {
+        self.statements.push(casl2::Statement::code_with_comment(
+            casl2::Command::Out {
                 pos: buf.into(),
                 len: len.into(),
             },
-            comment: Some(format!("Print {}", s)),
-        });
+            &format!("Print {}", s),
+        ));
     }
 
     // Print ステートメント
     // 数字リテラルの画面出力
     fn compile_print_lit_integer(&mut self, value: i32) {
-        let label = self.next_statement_label.take();
         let StrLabels { len, buf, .. } = self.get_lit_str_labels(&value.to_string());
-        self.statements.push(casl2::Statement::Code {
-            label,
-            command: casl2::Command::Out {
+        self.statements.push(casl2::Statement::code_with_comment(
+            casl2::Command::Out {
                 pos: buf.into(),
                 len: len.into(),
             },
-            comment: Some(format!("Print {}", value)),
-        });
+            &format!("Print {}", value),
+        ));
     }
 
     // Print ステートメント
     // 文字列リテラルの画面出力
     fn compile_print_lit_string(&mut self, value: &str) {
-        let label = self.next_statement_label.take();
         let StrLabels { len, buf, .. } = self.get_lit_str_labels(value);
-        self.statements.push(casl2::Statement::Code {
-            label,
-            command: casl2::Command::Out {
+        self.statements.push(casl2::Statement::code_with_comment(
+            casl2::Command::Out {
                 pos: buf.into(),
                 len: len.into(),
             },
-            comment: Some(format!(r#"Print "{}""#, value.replace('"', r#""""#))),
-        });
+            &format!(r#"Print "{}""#, value.replace('"', r#""""#)),
+        ));
     }
 
     // Print ステートメント
     // 文字列変数の画面出力
     fn compile_print_var_string(&mut self, var_name: &str) {
-        let label = self.next_statement_label.take();
         let StrLabels { len, buf, .. } = self.str_var_labels.get(var_name).expect("BUG");
-        self.statements.push(casl2::Statement::Code {
-            label,
-            command: casl2::Command::Out {
+        self.statements.push(casl2::Statement::code_with_comment(
+            casl2::Command::Out {
                 pos: buf.into(),
                 len: len.into(),
             },
-            comment: Some(format!("Print {}", var_name)),
-        });
+            &format!("Print {}", var_name),
+        ));
     }
 
     // Print ステートメント
@@ -1263,7 +1256,7 @@ impl Compiler {
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+            self.get_save_registers_src(true, &[Gr1, Gr2, Gr3])
         };
 
         let mut src = saves;
@@ -1346,15 +1339,30 @@ impl Compiler {
 
     // subrutine引数のレジスタなどの一時利用のとき
     // 一時退避するためのソースコードと復帰するためのソースコードを生成
-    fn get_save_registers_src(&self, regs: &[casl2::Register]) -> (String, String) {
+    fn get_save_registers_src(
+        &mut self,
+        with_comment: bool,
+        regs: &[casl2::Register],
+    ) -> (String, String) {
         let mut saves = String::new();
         let mut recovers = String::new();
 
-        // next_statement_comment や next_statement_label をどうするか…
+        // next_statement_comment をどうするか…
 
         for reg in regs.iter() {
             if !self.is_idle_register(*reg) {
-                writeln!(&mut saves, " PUSH 0,{}", reg).unwrap();
+                if with_comment {
+                    let comment = self.get_comment_with_semicolon_if_exists();
+                    writeln!(
+                        &mut saves,
+                        " PUSH 0,{reg} {comment}",
+                        reg = reg,
+                        comment = comment
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(&mut saves, " PUSH 0,{}", reg).unwrap();
+                }
                 writeln!(&mut recovers, " POP {}", reg).unwrap();
             }
         }
@@ -1410,7 +1418,7 @@ impl Compiler {
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+            self.get_save_registers_src(true, &[Gr1, Gr2, Gr3])
         };
 
         let mut src = saves;
@@ -1527,12 +1535,13 @@ impl Compiler {
                 let cmpstr = self.load_subroutine(subroutine::Id::UtilCompareStr);
                 let (saves, recovers) = {
                     use casl2::Register::*;
-                    self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+                    self.get_save_registers_src(true, &[Gr1, Gr2, Gr3, Gr4])
                 };
+                let comment = self.get_comment_with_semicolon_if_exists();
                 let mut src = saves;
                 writeln!(
                     &mut src,
-                    r#" LAD   GR1,{lhspos}
+                    r#" LAD   GR1,{lhspos} {comment}
                         LD    GR2,{lhslen}
                         LAD   GR3,{rhspos}
                         LD    GR4,{rhslen}
@@ -1540,6 +1549,7 @@ impl Compiler {
                         SLL   GR0,15
                         SRA   GR0,15
                         XOR   GR0,=#FFFF"#,
+                    comment = comment,
                     lhspos = lhs_str.buf,
                     lhslen = lhs_str.len,
                     rhspos = rhs_str.buf,
@@ -1648,7 +1658,7 @@ impl Compiler {
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+            self.get_save_registers_src(true, &[Gr1, Gr2, Gr3])
         };
 
         let mut src = saves;
@@ -1689,7 +1699,7 @@ impl Compiler {
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+            self.get_save_registers_src(true, &[Gr1, Gr2, Gr3])
         };
 
         let mut src = saves;
@@ -1730,7 +1740,7 @@ impl Compiler {
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+            self.get_save_registers_src(true, &[Gr1, Gr2, Gr3])
         };
 
         let mut src = saves;
@@ -1764,14 +1774,13 @@ impl Compiler {
     // (式展開の処理の一部)
     // 整数変数の読み込み
     fn compile_variable_integer(&mut self, var_name: &str) -> casl2::Register {
-        let label = self.next_statement_label.take();
         let comment = self.next_statement_comment.take();
         let reg = self.get_idle_register();
         let var_label = self.int_var_labels.get(var_name).expect("BUG");
 
         // LD REG,VAR
         self.statements.push(casl2::Statement::Code {
-            label,
+            label: None,
             command: casl2::Command::A {
                 code: casl2::A::Ld,
                 r: reg,
@@ -1787,13 +1796,12 @@ impl Compiler {
     // (式展開の処理の一部)
     // 整数リテラルの読み込み
     fn compile_literal_integer(&mut self, value: i32) -> casl2::Register {
-        let label = self.next_statement_label.take();
         let comment = self.next_statement_comment.take();
         let reg = self.get_idle_register();
 
         // LAD REG,VALUE
         self.statements.push(casl2::Statement::Code {
-            label,
+            label: None,
             command: casl2::Command::A {
                 code: casl2::A::Lad,
                 r: reg,
@@ -1816,11 +1824,48 @@ impl Compiler {
     ) -> casl2::Register {
         use tokenizer::Function::*;
         match func {
-            CInt => todo!(),
+            CInt => self.call_function_cint(param),
             Len => todo!(),
             Max => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMax),
             Min => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMin),
             CBool | CStr => unreachable!("BUG"),
+        }
+    }
+
+    // (式展開の処理の一部)
+    // CInt(<boolean>/<string>) の処理
+    fn call_function_cint(&mut self, param: &parser::Expr) -> casl2::Register {
+        match param.return_type() {
+            parser::ExprType::Boolean => self.compile_int_expr(param),
+            parser::ExprType::String => {
+                let arg_str = self.compile_str_expr(param);
+                let cint = self.load_subroutine(subroutine::Id::FuncCInt);
+                let ret_reg = self.get_idle_register();
+                let (saves, recovers) = {
+                    use casl2::Register::*;
+                    self.get_save_registers_src(true, &[Gr1, Gr2])
+                };
+                let comment = self.get_comment_with_semicolon_if_exists();
+                let mut src = saves;
+                writeln!(
+                    &mut src,
+                    r#" LAD   GR1,{strpos} {comment}
+                        LD    GR2,{strlen}
+                        CALL  {cint}"#,
+                    comment = comment,
+                    strpos = arg_str.buf,
+                    strlen = arg_str.len,
+                    cint = cint
+                )
+                .unwrap();
+                src.push_str(&recovers);
+                writeln!(&mut src, " LD {reg},GR0", reg = ret_reg).unwrap();
+                let code = casl2::parse(&src).unwrap();
+                self.statements.extend(code);
+                self.return_temp_str_var_label(arg_str);
+                ret_reg
+            }
+            parser::ExprType::Integer | parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
 
@@ -1871,7 +1916,7 @@ impl Compiler {
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2])
+            self.get_save_registers_src(true, &[Gr1, Gr2])
         };
 
         let mut src = saves;
@@ -3188,7 +3233,7 @@ Do
     If s = "end" Then
         Exit Do
     End If
-'    n = CInt(s)
+    n = CInt(s)
 '    If n < 1 Then
         Print "Invalid Input"
         Continue Do
