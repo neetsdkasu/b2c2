@@ -1505,7 +1505,7 @@ impl Compiler {
             LessOrEequal => todo!(),
             GreaterOrEqual => todo!(),
             Equal => self.compile_bin_op_boolean_eq(lhs, rhs),
-            LessThan => todo!(),
+            LessThan => self.compile_bin_op_boolean_less_than(lhs, rhs),
             GreaterThan => todo!(),
 
             // 二項演算子ではないものや、真理値を返さないもの
@@ -1513,6 +1513,37 @@ impl Compiler {
             | Concat | OpenBracket | CloseBracket | Comma => {
                 unreachable!("BUG")
             }
+        }
+    }
+
+    // (式展開の処理の一部)
+    // 比較演算子( < )
+    fn compile_bin_op_boolean_less_than(
+        &mut self,
+        lhs: &parser::Expr,
+        rhs: &parser::Expr,
+    ) -> casl2::Register {
+        assert_eq!(lhs.return_type(), rhs.return_type());
+
+        match lhs.return_type() {
+            parser::ExprType::Integer => {
+                let lhs_reg = self.compile_int_expr(lhs);
+                let rhs_reg = self.compile_int_expr(rhs);
+                self.restore_register(lhs_reg);
+                self.statements.extend(
+                    casl2::parse(&format!(
+                        r#" SUBA  {lhs},{rhs}
+                        SRA   {lhs},15"#,
+                        lhs = lhs_reg,
+                        rhs = rhs_reg
+                    ))
+                    .unwrap(),
+                );
+                self.set_register_idle(rhs_reg);
+                lhs_reg
+            }
+            parser::ExprType::String => todo!(),
+            parser::ExprType::Boolean | parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
 
@@ -3234,10 +3265,10 @@ Do
         Exit Do
     End If
     n = CInt(s)
-'    If n < 1 Then
+    If n < 1 Then
         Print "Invalid Input"
         Continue Do
-'    End If
+    End If
 '    If n Mod 15 = 0 Then
 '        s = "FizzBuzz"
 '    ElseIf n Mod 3 = 0 Then
