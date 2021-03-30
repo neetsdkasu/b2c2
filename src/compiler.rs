@@ -575,7 +575,12 @@ impl Compiler {
     ) {
         self.next_statement_comment = Some(format!("If {} Then", condition));
 
-        let mut label = self.get_new_jump_label();
+        let end_label = self.get_new_jump_label();
+
+        let labels: Vec<_> = (0..else_blocks.len())
+            .map(|_| self.get_new_jump_label())
+            .chain(vec![end_label.clone()])
+            .collect();
 
         let condition_reg = self.compile_int_expr(condition);
 
@@ -586,19 +591,26 @@ impl Compiler {
                 r#" AND {reg},{reg}
                 JZE {next}"#,
                 reg = condition_reg,
-                next = label
+                next = labels.first().expect("BUG")
             ))
             .unwrap(),
         );
 
-        for stmt in block {
+        for stmt in block.iter() {
             self.compile(stmt);
         }
 
-        for else_stmt in else_blocks {
+        let label_iter = labels.iter().zip(labels.iter().skip(1));
+
+        for (else_stmt, (head, next)) in else_blocks.iter().zip(label_iter) {
             self.statements
-                .push(casl2::Statement::labeled(&label, casl2::Command::Nop));
-            label = self.get_new_jump_label();
+                .push(casl2::Statement::code(casl2::Command::P {
+                    code: casl2::P::Jump,
+                    adr: casl2::Adr::label(&end_label),
+                    x: None,
+                }));
+            self.statements
+                .push(casl2::Statement::labeled(&head, casl2::Command::Nop));
 
             match else_stmt {
                 parser::Statement::ElseIf { condition, block } => {
@@ -613,18 +625,18 @@ impl Compiler {
                             r#" AND {reg},{reg}
                             JZE {next}"#,
                             reg = condition_reg,
-                            next = label
+                            next = next
                         ))
                         .unwrap(),
                     );
 
-                    for stmt in block {
+                    for stmt in block.iter() {
                         self.compile(stmt);
                     }
                 }
                 parser::Statement::Else { block } => {
                     self.next_statement_comment = Some("Else".to_string());
-                    for stmt in block {
+                    for stmt in block.iter() {
                         self.compile(stmt);
                     }
                 }
@@ -633,7 +645,7 @@ impl Compiler {
         }
 
         self.statements
-            .push(casl2::Statement::labeled(&label, casl2::Command::Nop));
+            .push(casl2::Statement::labeled(&end_label, casl2::Command::Nop));
     }
 
     // Continue {Do/For}
@@ -1129,12 +1141,14 @@ impl Compiler {
             self.compile(stmt);
         }
 
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::P {
+        self.statements.push(casl2::Statement::code_with_comment(
+            casl2::Command::P {
                 code: casl2::P::Jump,
                 adr: casl2::Adr::label(&loop_label),
                 x: None,
-            }));
+            },
+            "Loop",
+        ));
 
         self.statements
             .push(casl2::Statement::labeled(&exit_label, casl2::Command::Nop));
@@ -1558,11 +1572,32 @@ impl Compiler {
 
         match lhs.return_type() {
             parser::ExprType::Boolean => todo!(),
-            parser::ExprType::Integer => todo!(),
+            parser::ExprType::Integer => {
+                let lhs_reg = self.compile_int_expr(lhs);
+                let rhs_reg = self.compile_int_expr(rhs);
+                self.restore_register(lhs_reg);
+                self.statements.extend(
+                    casl2::parse(&format!(
+                        r#" SUBA  {lhs},{rhs}
+                            LD    {rhs},{lhs}
+                            XOR   {rhs},=#FFFF
+                            LAD   {rhs},1,{rhs}
+                            OR    {lhs},{rhs}
+                            SRA   {lhs},15
+                            XOR   {lhs},=#FFFF"#,
+                        lhs = lhs_reg,
+                        rhs = rhs_reg
+                    ))
+                    .unwrap(),
+                );
+                self.set_register_idle(rhs_reg);
+                lhs_reg
+            }
             parser::ExprType::String => {
+                let ret_reg = self.get_idle_register();
+                self.set_register_idle(ret_reg);
                 let lhs_str = self.compile_str_expr(lhs);
                 let rhs_str = self.compile_str_expr(rhs);
-                let ret_reg = self.get_idle_register();
                 let cmpstr = self.load_subroutine(subroutine::Id::UtilCompareStr);
                 let (saves, recovers) = {
                     use casl2::Register::*;
@@ -1594,6 +1629,7 @@ impl Compiler {
                 self.statements.extend(code);
                 self.return_temp_str_var_label(lhs_str);
                 self.return_temp_str_var_label(rhs_str);
+                self.set_register_used(ret_reg);
                 ret_reg
             }
             parser::ExprType::ParamList => unreachable!("BUG"),
@@ -1869,9 +1905,10 @@ impl Compiler {
         match param.return_type() {
             parser::ExprType::Boolean => self.compile_int_expr(param),
             parser::ExprType::String => {
+                let ret_reg = self.get_idle_register();
+                self.set_register_idle(ret_reg);
                 let arg_str = self.compile_str_expr(param);
                 let cint = self.load_subroutine(subroutine::Id::FuncCInt);
-                let ret_reg = self.get_idle_register();
                 let (saves, recovers) = {
                     use casl2::Register::*;
                     self.get_save_registers_src(true, &[Gr1, Gr2])
@@ -1894,6 +1931,7 @@ impl Compiler {
                 let code = casl2::parse(&src).unwrap();
                 self.statements.extend(code);
                 self.return_temp_str_var_label(arg_str);
+                self.set_register_used(ret_reg);
                 ret_reg
             }
             parser::ExprType::Integer | parser::ExprType::ParamList => unreachable!("BUG"),
@@ -3269,15 +3307,15 @@ Do
         Print "Invalid Input"
         Continue Do
     End If
-'    If n Mod 15 = 0 Then
+    If n Mod 15 = 0 Then
 '        s = "FizzBuzz"
-'    ElseIf n Mod 3 = 0 Then
+    ElseIf n Mod 3 = 0 Then
 '        s = "Fizz"
-'    ElseIf n Mod 5 = 0 Then
+    ElseIf n Mod 5 = 0 Then
 '        s = "Buzz"
-'    Else
+    Else
 '        s = CStr(n)
-'    End If
+    End If
     Print s
 Loop
 "#;
