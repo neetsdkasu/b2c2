@@ -470,10 +470,7 @@ impl Compiler {
                 value: _,
             } => todo!(),
             AssignInteger { var_name, value } => self.compile_assign_integer(var_name, value),
-            AssignString {
-                var_name: _,
-                value: _,
-            } => todo!(),
+            AssignString { var_name, value } => self.compile_assign_string(var_name, value),
             AssignSubInto {
                 var_name: _,
                 value: _,
@@ -672,6 +669,73 @@ impl Compiler {
             },
             &format!("Exit {}", keyword),
         ));
+    }
+
+    // Assign String ステートメント
+    // str_var = str_expr
+    fn compile_assign_string(&mut self, var_name: &str, value: &parser::Expr) {
+        self.next_statement_comment =
+            Some(format!("{var} = {value}", var = var_name, value = value));
+
+        let value_label = self.compile_str_expr(value);
+        let var_label = self.str_var_labels.get(var_name).cloned().expect("BUG");
+        let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(true, &[Gr1, Gr2, Gr3, Gr4])
+        };
+
+        let comment = self.get_comment_with_semicolon_if_exists();
+
+        let mut src = saves;
+
+        if let StrLabels {
+            buf,
+            label_type: StrLabelType::Lit(s),
+            ..
+        } = &value_label
+        {
+            writeln!(
+                &mut src,
+                r#" LAD   GR1,{dstpos} {comment}
+                    LAD   GR2,{dstlen}
+                    LAD   GR3,{srcpos}
+                    LAD   GR4,{srclen}
+                    CALL  {copystr}"#,
+                comment = comment,
+                dstpos = var_label.buf,
+                dstlen = var_label.len,
+                srcpos = buf,
+                srclen = s.chars().count(),
+                copystr = copystr
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                &mut src,
+                r#" LAD   GR1,{dstpos} {comment}
+                    LAD   GR2,{dstlen}
+                    LAD   GR3,{srcpos}
+                    LD    GR4,{srclen}
+                    CALL  {copystr}"#,
+                comment = comment,
+                dstpos = var_label.buf,
+                dstlen = var_label.len,
+                srcpos = value_label.buf,
+                srclen = value_label.len,
+                copystr = copystr
+            )
+            .unwrap();
+        }
+
+        src.push_str(&recovers);
+
+        let code = casl2::parse(&src).unwrap();
+
+        self.statements.extend(code);
+
+        self.return_temp_str_var_label(value_label);
     }
 
     // Assign Integer ステートメント
@@ -3308,13 +3372,13 @@ Do
         Continue Do
     End If
     If n Mod 15 = 0 Then
-'        s = "FizzBuzz"
+        s = "FizzBuzz"
     ElseIf n Mod 3 = 0 Then
-'        s = "Fizz"
+        s = "Fizz"
     ElseIf n Mod 5 = 0 Then
-'        s = "Buzz"
+        s = "Buzz"
     Else
-'        s = CStr(n)
+        s = CStr(n)
     End If
     Print s
 Loop
