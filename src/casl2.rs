@@ -2,7 +2,10 @@ use std::fmt;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum Statement {
-    Comment(String),
+    Comment {
+        indent: usize,
+        text: String,
+    },
     Code {
         label: Option<Label>,
         command: Command,
@@ -44,11 +47,21 @@ impl Statement {
     }
 
     pub fn comment(comment: &str) -> Self {
-        Self::Comment(comment.into())
+        Self::Comment {
+            indent: 0,
+            text: comment.into(),
+        }
+    }
+
+    pub fn comment_with_indent(indent: usize, comment: &str) -> Self {
+        Self::Comment {
+            indent,
+            text: comment.into(),
+        }
     }
 
     pub fn is_comment(&self) -> bool {
-        matches!(self, Self::Comment(_))
+        matches!(self, Self::Comment { .. })
     }
 
     pub fn is_code(&self) -> bool {
@@ -466,9 +479,18 @@ impl Builder {
     }
 
     fn comment(mut self, comment: &str) -> Self {
-        self.program
-            .statements
-            .push(Statement::Comment(comment.into()));
+        self.program.statements.push(Statement::Comment {
+            indent: 0,
+            text: comment.into(),
+        });
+        self
+    }
+
+    fn comment_with_indent(mut self, indent: usize, comment: &str) -> Self {
+        self.program.statements.push(Statement::Comment {
+            indent,
+            text: comment.into(),
+        });
         self
     }
 
@@ -662,7 +684,7 @@ impl fmt::Display for Command {
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            Self::Comment(text) => format!("; {}", text),
+            Self::Comment { indent, text } => format!("{0:1$}; {2}", "", indent, text),
             Self::Code {
                 label,
                 command,
@@ -725,7 +747,11 @@ mod parser {
             let mut label: Option<Label> = None;
             if tokenizer.space() {
                 if let Some(comment) = tokenizer.comment() {
-                    return Some(Statement::Comment(comment));
+                    let indent = tokenizer.space_count;
+                    return Some(Statement::Comment {
+                        indent,
+                        text: comment,
+                    });
                 }
             } else if let Some(word) = tokenizer.word() {
                 let word = Label::from(word);
@@ -737,7 +763,10 @@ mod parser {
                 }
                 label = Some(word);
             } else if let Some(comment) = tokenizer.comment() {
-                return Some(Statement::Comment(comment));
+                return Some(Statement::Comment {
+                    indent: 0,
+                    text: comment,
+                });
             } else {
                 return None;
             }
@@ -1045,6 +1074,7 @@ mod parser {
         chars: std::str::Chars<'a>,
         stack: Vec<char>,
         temp: String,
+        space_count: usize,
     }
 
     enum Token {
@@ -1063,6 +1093,7 @@ mod parser {
                 chars: s.chars(),
                 stack: Vec::new(),
                 temp: String::new(),
+                space_count: 0,
             }
         }
 
@@ -1191,6 +1222,7 @@ mod parser {
                     break;
                 }
             }
+            self.space_count = self.temp.chars().count();
             self.clear();
             true
         }
