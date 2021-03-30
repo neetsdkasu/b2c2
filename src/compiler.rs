@@ -1,3 +1,4 @@
+use self::extends::*;
 use crate::casl2;
 use crate::parser;
 use crate::tokenizer;
@@ -314,15 +315,11 @@ impl Compiler {
         } = self;
 
         // RET ステートメント
-        statements.push(casl2::Statement::Code {
-            label: None,
-            command: casl2::Command::Ret,
-            comment: None,
-        });
+        statements.code(casl2::Command::Ret);
 
         // 組み込みサブルーチンのコード
-        for (_, mut code) in subroutine_codes.into_iter().collect::<BTreeMap<_, _>>() {
-            statements.append(&mut code);
+        for (_, code) in subroutine_codes.into_iter().collect::<BTreeMap<_, _>>() {
+            statements.code(code);
         }
 
         // 真理値変数 B**
@@ -331,11 +328,8 @@ impl Compiler {
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
-            statements.push(casl2::Statement::labeled_with_comment(
-                &label,
-                casl2::Command::Ds { size: 1 },
-                &format!("Dim {} As Boolean", var_name),
-            ));
+            statements.comment(format!("Dim {} As Boolean", var_name));
+            statements.labeled(label, casl2::Command::Ds { size: 1 });
         }
 
         // 整数変数 I**
@@ -344,11 +338,8 @@ impl Compiler {
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
-            statements.push(casl2::Statement::labeled_with_comment(
-                &label,
-                casl2::Command::Ds { size: 1 },
-                &format!("Dim {} As Integer", var_name),
-            ));
+            statements.comment(format!("Dim {} As Integer", var_name));
+            statements.labeled(label, casl2::Command::Ds { size: 1 });
         }
 
         // 文字列変数 SL** SB**
@@ -357,15 +348,10 @@ impl Compiler {
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
-            statements.push(casl2::Statement::labeled_with_comment(
-                &labels.len,
-                casl2::Command::Ds { size: 1 },
-                &format!("Dim {} As String", var_name),
-            ));
-            statements.push(casl2::Statement::labeled(
-                &labels.buf,
-                casl2::Command::Ds { size: 256 },
-            ));
+            let StrLabels { buf, len, .. } = labels;
+            statements.comment(format!("Dim {} As String", var_name));
+            statements.labeled(len, casl2::Command::Ds { size: 1 });
+            statements.labeled(buf, casl2::Command::Ds { size: 256 });
         }
 
         // 真理値配列(固定長) BA**
@@ -374,11 +360,8 @@ impl Compiler {
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
-            statements.push(casl2::Statement::labeled_with_comment(
-                &label,
-                casl2::Command::Ds { size: size as u16 },
-                &format!("Dim {}({}) As Boolean", var_name, size - 1),
-            ));
+            statements.comment(format!("Dim {}({}) As Boolean", var_name, size - 1));
+            statements.labeled(label, casl2::Command::Ds { size: size as u16 });
         }
 
         // 整数配列(固定長) IA**
@@ -387,31 +370,20 @@ impl Compiler {
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
-            statements.push(casl2::Statement::labeled_with_comment(
-                &label,
-                casl2::Command::Ds { size: size as u16 },
-                &format!("Dim {}({}) As Integer", var_name, size - 1),
-            ));
+            statements.comment(format!("Dim {}({}) As Integer", var_name, size - 1));
+            statements.labeled(label, casl2::Command::Ds { size: size as u16 });
         }
 
         // 式展開等で使う一時変数(整数/真理値で共有) T**
         for label in temp_int_var_labels.into_iter().collect::<BTreeSet<_>>() {
-            statements.push(casl2::Statement::labeled(
-                &label,
-                casl2::Command::Ds { size: 1 },
-            ));
+            statements.labeled(label, casl2::Command::Ds { size: 1 });
         }
 
         // 式展開等で使う一時変数(文字列) TL** TB**
         for labels in temp_str_var_labels.into_iter().collect::<BTreeSet<_>>() {
-            statements.push(casl2::Statement::labeled(
-                &labels.len,
-                casl2::Command::Ds { size: 1 },
-            ));
-            statements.push(casl2::Statement::labeled(
-                &labels.buf,
-                casl2::Command::Ds { size: 256 },
-            ));
+            let StrLabels { buf, len, .. } = labels;
+            statements.labeled(len, casl2::Command::Ds { size: 1 });
+            statements.labeled(buf, casl2::Command::Ds { size: 256 });
         }
 
         // IN/OUTで使用する文字列定数 LL** LB**
@@ -420,29 +392,27 @@ impl Compiler {
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
-            statements.push(casl2::Statement::labeled(
-                &labels.len,
+            let StrLabels { buf, len, .. } = labels;
+            statements.labeled(
+                len,
                 casl2::Command::Dc {
                     constants: vec![casl2::Constant::Dec(literal.chars().count() as i16)],
                 },
-            ));
+            );
             if literal.is_empty() {
-                statements.push(casl2::Statement::labeled(
-                    &labels.buf,
-                    casl2::Command::Ds { size: 0 },
-                ));
+                statements.labeled(buf, casl2::Command::Ds { size: 0 });
             } else {
-                statements.push(casl2::Statement::labeled(
-                    &labels.buf,
+                statements.labeled(
+                    buf,
                     casl2::Command::Dc {
                         constants: vec![casl2::Constant::Str(literal.clone())],
                     },
-                ));
+                );
             }
         }
 
         // END ステートメント
-        statements.push(casl2::Statement::code(casl2::Command::End));
+        statements.code(casl2::Command::End);
 
         statements
     }
@@ -570,7 +540,7 @@ impl Compiler {
         block: &[parser::Statement],
         else_blocks: &[parser::Statement],
     ) {
-        self.next_statement_comment = Some(format!("If {} Then", condition));
+        self.comment(format!("If {} Then", condition));
 
         let end_label = self.get_new_jump_label();
 
@@ -2622,6 +2592,134 @@ mod subroutine {
     }
 }
 
+mod extends {
+    use super::*;
+
+    pub trait AddComment<T> {
+        fn comment(&mut self, text: T);
+    }
+
+    pub trait AddCode<T> {
+        fn code(&mut self, src: T);
+    }
+
+    pub trait AddLabeledCode<L> {
+        fn labeled(&mut self, label: L, command: casl2::Command);
+    }
+
+    impl<T> AddComment<T> for Compiler
+    where
+        Vec<casl2::Statement>: AddComment<T>,
+    {
+        fn comment(&mut self, text: T) {
+            self.statements.comment(text);
+        }
+    }
+
+    impl AddComment<&str> for Vec<casl2::Statement> {
+        fn comment(&mut self, text: &str) {
+            self.push(casl2::Statement::comment_with_indent(35, text));
+        }
+    }
+
+    impl AddComment<String> for Vec<casl2::Statement> {
+        fn comment(&mut self, text: String) {
+            self.push(casl2::Statement::Comment { indent: 35, text });
+        }
+    }
+
+    impl<T> AddCode<T> for Compiler
+    where
+        Vec<casl2::Statement>: AddCode<T>,
+    {
+        fn code(&mut self, src: T) {
+            self.statements.code(src);
+        }
+    }
+
+    impl AddCode<&str> for Vec<casl2::Statement> {
+        fn code(&mut self, src: &str) {
+            self.extend(casl2::parse(src.trim_start_matches('\n').trim_end()).unwrap());
+        }
+    }
+
+    impl AddCode<Vec<casl2::Statement>> for Vec<casl2::Statement> {
+        fn code(&mut self, src: Vec<casl2::Statement>) {
+            self.extend(src);
+        }
+    }
+
+    impl AddCode<casl2::Statement> for Vec<casl2::Statement> {
+        fn code(&mut self, src: casl2::Statement) {
+            self.push(src);
+        }
+    }
+
+    impl AddCode<casl2::Command> for Vec<casl2::Statement> {
+        fn code(&mut self, src: casl2::Command) {
+            self.push(casl2::Statement::code(src));
+        }
+    }
+
+    impl<T> AddLabeledCode<T> for Compiler
+    where
+        Vec<casl2::Statement>: AddLabeledCode<T> + AddCode<casl2::Command>,
+    {
+        fn labeled(&mut self, label: T, command: casl2::Command) {
+            self.statements.labeled(label, command);
+        }
+    }
+
+    impl AddLabeledCode<&str> for Vec<casl2::Statement> {
+        fn labeled(&mut self, label: &str, command: casl2::Command) {
+            self.push(casl2::Statement::labeled(label, command));
+        }
+    }
+
+    impl AddLabeledCode<String> for Vec<casl2::Statement> {
+        fn labeled(&mut self, label: String, command: casl2::Command) {
+            self.push(casl2::Statement::Code {
+                label: Some(label.into()),
+                command,
+                comment: None,
+            });
+        }
+    }
+
+    impl AddLabeledCode<casl2::Label> for Vec<casl2::Statement> {
+        fn labeled(&mut self, label: casl2::Label, command: casl2::Command) {
+            self.push(casl2::Statement::Code {
+                label: Some(label),
+                command,
+                comment: None,
+            });
+        }
+    }
+
+    impl AddLabeledCode<&casl2::Label> for Vec<casl2::Statement> {
+        fn labeled(&mut self, label: &casl2::Label, command: casl2::Command) {
+            self.push(casl2::Statement::Code {
+                label: Some(label.clone()),
+                command,
+                comment: None,
+            });
+        }
+    }
+
+    impl<T> AddLabeledCode<Option<T>> for Vec<casl2::Statement>
+    where
+        Self: AddLabeledCode<T> + AddCode<casl2::Command>,
+    {
+        fn labeled(&mut self, label: Option<T>, command: casl2::Command) {
+            if let Some(t) = label {
+                self.labeled(t, command);
+            } else {
+                self.code(command);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -2837,16 +2935,24 @@ LB4    DC     'Test@1234'
                 r#"
 TEST   START
        RET
-B2     DS     1     ; Dim boolVar1 As Boolean
-B5     DS     1     ; Dim boolVar2 As Boolean
-I3     DS     1     ; Dim intVar2 As Integer
-I8     DS     1     ; Dim intVar1 As Integer
-SL1    DS     1     ; Dim strVar1 As String
+                                   ; Dim boolVar1 As Boolean
+B2     DS     1     
+                                   ; Dim boolVar2 As Boolean
+B5     DS     1     
+                                   ; Dim intVar2 As Integer
+I3     DS     1     
+                                   ; Dim intVar1 As Integer
+I8     DS     1     
+                                   ; Dim strVar1 As String
+SL1    DS     1     
 SB1    DS     256
-SL6    DS     1     ; Dim strVar2 As String
+                                   ; Dim strVar2 As String
+SL6    DS     1     
 SB6    DS     256
-BA4    DS     32    ; Dim boolArr1(31) As Boolean
-IA7    DS     155   ; Dim intArr1(154) As Integer
+                                   ; Dim boolArr1(31) As Boolean
+BA4    DS     32     
+                                   ; Dim intArr1(154) As Integer
+IA7    DS     155   
        END
             "#
                 .trim()
@@ -2972,11 +3078,14 @@ TEST   START
        OUT    SB2,SL2     ; Print strVar2
        OUT    SB1,SL1     ; Print strVar1
        RET
-SL1    DS     1           ; Dim strVar1 As String
+                                   ; Dim strVar1 As String
+SL1    DS     1           
 SB1    DS     256
-SL2    DS     1           ; Dim strVar2 As String
+                                   ; Dim strVar2 As String
+SL2    DS     1           
 SB2    DS     256
-SL3    DS     1           ; Dim strVar3 As String
+                                   ; Dim strVar3 As String
+SL3    DS     1           
 SB3    DS     256
        END
             "#
@@ -3006,11 +3115,14 @@ TEST   START
        IN     SB2,SL2     ; Input strVar2
        IN     SB1,SL1     ; Input strVar1
        RET
-SL1    DS     1           ; Dim strVar1 As String
+                                   ; Dim strVar1 As String
+SL1    DS     1           
 SB1    DS     256
-SL2    DS     1           ; Dim strVar2 As String
+                                   ; Dim strVar2 As String
+SL2    DS     1           
 SB2    DS     256
-SL3    DS     1           ; Dim strVar3 As String
+                                   ; Dim strVar3 As String
+SL3    DS     1           
 SB3    DS     256
        END
             "#
@@ -3071,12 +3183,14 @@ TEST   START
         statements.extend(
             casl2::parse(
                 r#"
-I1     DS     1           ; Dim intVar1 As Integer
+                                   ; Dim intVar1 As Integer
+I1     DS     1           
 TL1    DS     1
 TB1    DS     256
        END
             "#
-                .trim(),
+                .trim_start_matches('\n')
+                .trim_end(),
             )
             .unwrap(),
         );
@@ -3117,7 +3231,8 @@ J2                   NOP
                      JUMP   J1         ; Next i
 J3                   NOP
                      RET
-I1                   DS 1              ; Dim i As Integer
+                                   ; Dim i As Integer
+I1                   DS 1              
 T1                   DS 1
                      END
 "#
@@ -3159,7 +3274,8 @@ J2                   NOP
                      JUMP   J1         ; Next i
 J3                   NOP
                      RET
-I1                   DS 1              ; Dim i As Integer
+                                   ; Dim i As Integer
+I1                   DS 1              
 T1                   DS 1
                      END
 "#
@@ -3201,7 +3317,8 @@ J2                   NOP
                      JUMP   J1         ; Next i
 J3                   NOP
                      RET
-I1                   DS 1              ; Dim i As Integer
+                                   ; Dim i As Integer
+I1                   DS 1              
 T1                   DS 1
                      END
 "#
@@ -3252,8 +3369,10 @@ J4                   NOP
                      JUMP   J1         ; Next I
 J5                   NOP
                      RET
-I1                   DS 1              ; Dim S As Integer
-I2                   DS 1              ; Dim I As Integer
+                                   ; Dim S As Integer
+I1                   DS 1              
+                                   ; Dim I As Integer
+I2                   DS 1              
 T1                   DS 1
 T2                   DS 1
                      END
@@ -3284,7 +3403,8 @@ T2                   DS 1
                      LAD    GR7,22,GR7
                      ST     GR7,I1
                      RET
-I1                   DS 1              ; Dim x As Integer
+                                   ; Dim x As Integer
+I1                   DS 1              
                      END
 "#
             )
@@ -3315,8 +3435,10 @@ I1                   DS 1              ; Dim x As Integer
                      ADDA   GR7,GR6
                      ST     GR7,I1
                      RET
-I1                   DS 1              ; Dim x As Integer
-I2                   DS 1              ; Dim y As Integer
+                                   ; Dim x As Integer
+I1                   DS 1              
+                                   ; Dim y As Integer
+I2                   DS 1              
                      END
 "#
             )
