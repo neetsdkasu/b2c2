@@ -88,9 +88,6 @@ struct Compiler {
     //  後尾: 現在の式展開中の箇所から"近い"箇所で使用してるレジスタ
     registers_deque: VecDeque<casl2::Register>,
 
-    // 次のcasl2ステートメントにコメントをつける
-    next_statement_comment: Option<String>,
-
     // 生成するCASL2コード本体
     statements: Vec<casl2::Statement>,
 }
@@ -170,7 +167,6 @@ impl Compiler {
             exit_labels: HashMap::new(),
             registers_used: 0,
             registers_deque: VecDeque::with_capacity(7),
-            next_statement_comment: None,
             statements: vec![casl2::Statement::labeled(
                 program_name,
                 casl2::Command::Start { entry_point: None },
@@ -290,14 +286,6 @@ impl Compiler {
         req_id.label()
     }
 
-    // casl2テキストソースに埋め込める形でコメントを取得する
-    fn get_comment_with_semicolon_if_exists(&mut self) -> String {
-        self.next_statement_comment
-            .take()
-            .map(|s| format!(" ; {}", s))
-            .unwrap_or_else(String::new)
-    }
-
     // コンパイル最終工程
     fn finish(self) -> Vec<casl2::Statement> {
         let Self {
@@ -316,11 +304,6 @@ impl Compiler {
 
         // RET ステートメント
         statements.code(casl2::Command::Ret);
-
-        // 組み込みサブルーチンのコード
-        for (_, code) in subroutine_codes.into_iter().collect::<BTreeMap<_, _>>() {
-            statements.code(code);
-        }
 
         // 真理値変数 B**
         for (label, var_name) in bool_var_labels
@@ -409,6 +392,11 @@ impl Compiler {
                     },
                 );
             }
+        }
+
+        // 組み込みサブルーチンのコード
+        for (_, code) in subroutine_codes.into_iter().collect::<BTreeMap<_, _>>() {
+            statements.code(code);
         }
 
         // END ステートメント
@@ -553,15 +541,12 @@ impl Compiler {
 
         self.set_register_idle(condition_reg);
 
-        self.statements.extend(
-            casl2::parse(&format!(
-                r#" AND {reg},{reg}
+        self.code(format!(
+            r#" AND {reg},{reg}
                 JZE {next}"#,
-                reg = condition_reg,
-                next = labels.first().expect("BUG")
-            ))
-            .unwrap(),
-        );
+            reg = condition_reg,
+            next = labels.first().expect("BUG")
+        ));
 
         for stmt in block.iter() {
             self.compile(stmt);
@@ -570,39 +555,36 @@ impl Compiler {
         let label_iter = labels.iter().zip(labels.iter().skip(1));
 
         for (else_stmt, (head, next)) in else_blocks.iter().zip(label_iter) {
-            self.statements
-                .push(casl2::Statement::code(casl2::Command::P {
-                    code: casl2::P::Jump,
-                    adr: casl2::Adr::label(&end_label),
-                    x: None,
-                }));
-            self.statements
-                .push(casl2::Statement::labeled(&head, casl2::Command::Nop));
+            self.code(casl2::Command::P {
+                code: casl2::P::Jump,
+                adr: casl2::Adr::label(&end_label),
+                x: None,
+            });
 
             match else_stmt {
                 parser::Statement::ElseIf { condition, block } => {
-                    self.next_statement_comment = Some(format!("ElseIf {} Then", condition));
+                    self.comment(format!("ElseIf {} Then", condition));
+                    self.labeled(head, casl2::Command::Nop);
 
                     let condition_reg = self.compile_int_expr(condition);
 
                     self.set_register_idle(condition_reg);
 
-                    self.statements.extend(
-                        casl2::parse(&format!(
-                            r#" AND {reg},{reg}
+                    self.code(format!(
+                        r#" AND {reg},{reg}
                             JZE {next}"#,
-                            reg = condition_reg,
-                            next = next
-                        ))
-                        .unwrap(),
-                    );
+                        reg = condition_reg,
+                        next = next
+                    ));
 
                     for stmt in block.iter() {
                         self.compile(stmt);
                     }
                 }
                 parser::Statement::Else { block } => {
-                    self.next_statement_comment = Some("Else".to_string());
+                    self.comment("Else");
+                    self.labeled(head, casl2::Command::Nop);
+
                     for stmt in block.iter() {
                         self.compile(stmt);
                     }
@@ -611,99 +593,83 @@ impl Compiler {
             }
         }
 
-        self.statements
-            .push(casl2::Statement::labeled(&end_label, casl2::Command::Nop));
+        self.comment("End If");
+        self.labeled(end_label, casl2::Command::Nop);
     }
 
     // Continue {Do/For}
     fn compile_continue_loop(&mut self, exit_id: usize, keyword: &str) {
         let loop_label = self.get_loop_label(exit_id);
-        self.statements.push(casl2::Statement::code_with_comment(
-            casl2::Command::P {
-                code: casl2::P::Jump,
-                adr: casl2::Adr::label(&loop_label),
-                x: None,
-            },
-            &format!("Continue {}", keyword),
-        ));
+        self.comment(format!("Continue {}", keyword));
+        // JUMP {loop}
+        self.code(casl2::Command::P {
+            code: casl2::P::Jump,
+            adr: casl2::Adr::label(&loop_label),
+            x: None,
+        });
     }
 
     // Exit {Do/For/Select}
     fn compile_exit_block(&mut self, exit_id: usize, keyword: &str) {
         let exit_label = self.get_exit_label(exit_id);
-        self.statements.push(casl2::Statement::code_with_comment(
-            casl2::Command::P {
-                code: casl2::P::Jump,
-                adr: casl2::Adr::label(&exit_label),
-                x: None,
-            },
-            &format!("Exit {}", keyword),
-        ));
+        self.comment(format!("Exit {}", keyword));
+        // JUMP {exit}
+        self.code(casl2::Command::P {
+            code: casl2::P::Jump,
+            adr: casl2::Adr::label(&exit_label),
+            x: None,
+        });
     }
 
     // Assign String ステートメント
     // str_var = str_expr
     fn compile_assign_string(&mut self, var_name: &str, value: &parser::Expr) {
-        self.next_statement_comment =
-            Some(format!("{var} = {value}", var = var_name, value = value));
+        self.comment(format!("{var} = {value}", var = var_name, value = value));
 
         let value_label = self.compile_str_expr(value);
-        let var_label = self.str_var_labels.get(var_name).cloned().expect("BUG");
         let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
+        let var_label = self.str_var_labels.get(var_name).expect("BUG");
 
-        let (saves, recovers) = {
-            use casl2::Register::*;
-            self.get_save_registers_src(true, &[Gr1, Gr2, Gr3, Gr4])
-        };
-
-        let comment = self.get_comment_with_semicolon_if_exists();
-
-        let mut src = saves;
-
-        if let StrLabels {
+        let src = if let StrLabels {
             buf,
             label_type: StrLabelType::Lit(s),
             ..
         } = &value_label
         {
-            writeln!(
-                &mut src,
-                r#" LAD   GR1,{dstpos} {comment}
+            format!(
+                r#" LAD   GR1,{dstpos}
                     LAD   GR2,{dstlen}
                     LAD   GR3,{srcpos}
                     LAD   GR4,{srclen}
                     CALL  {copystr}"#,
-                comment = comment,
                 dstpos = var_label.buf,
                 dstlen = var_label.len,
                 srcpos = buf,
                 srclen = s.chars().count(),
                 copystr = copystr
             )
-            .unwrap();
         } else {
-            writeln!(
-                &mut src,
-                r#" LAD   GR1,{dstpos} {comment}
+            format!(
+                r#" LAD   GR1,{dstpos}
                     LAD   GR2,{dstlen}
                     LAD   GR3,{srcpos}
                     LD    GR4,{srclen}
                     CALL  {copystr}"#,
-                comment = comment,
                 dstpos = var_label.buf,
                 dstlen = var_label.len,
                 srcpos = value_label.buf,
                 srclen = value_label.len,
                 copystr = copystr
             )
-            .unwrap();
-        }
+        };
 
-        src.push_str(&recovers);
-
-        let code = casl2::parse(&src).unwrap();
-
-        self.statements.extend(code);
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+        };
+        self.code(saves);
+        self.code(src);
+        self.code(recovers);
 
         self.return_temp_str_var_label(value_label);
     }
@@ -711,18 +677,18 @@ impl Compiler {
     // Assign Integer ステートメント
     // int_var = int_expr
     fn compile_assign_integer(&mut self, var_name: &str, value: &parser::Expr) {
-        self.next_statement_comment =
-            Some(format!("{var} = {value}", var = var_name, value = value));
+        self.comment(format!("{var} = {value}", var = var_name, value = value));
         let reg = self.compile_int_expr(value);
         let var_label = self.int_var_labels.get(var_name).expect("BUG");
+        let adr = casl2::Adr::label(var_label);
 
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::A {
-                code: casl2::A::St,
-                r: reg,
-                adr: casl2::Adr::label(var_label),
-                x: None,
-            }));
+        // ST {reg},{var}
+        self.code(casl2::Command::A {
+            code: casl2::A::St,
+            r: reg,
+            adr,
+            x: None,
+        });
 
         self.set_register_idle(reg);
     }
@@ -743,7 +709,7 @@ impl Compiler {
             unreachable!("BUG");
         };
 
-        self.next_statement_comment = Some(format!(
+        self.comment(format!(
             "For {counter} = {init} To {end} Step {step}",
             counter = counter,
             init = init,
@@ -754,13 +720,12 @@ impl Compiler {
         // calc {end}
         let end_var = self.get_temp_int_var_label();
         let end_reg = self.compile_int_expr(end);
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::A {
-                code: casl2::A::St,
-                r: end_reg,
-                adr: casl2::Adr::label(&end_var),
-                x: None,
-            }));
+        self.code(casl2::Command::A {
+            code: casl2::A::St,
+            r: end_reg,
+            adr: casl2::Adr::label(&end_var),
+            x: None,
+        });
         self.set_register_idle(end_reg);
 
         // カウンタの準備
@@ -768,13 +733,12 @@ impl Compiler {
 
         // calc {init} and assign to {counter}
         let init_reg = self.compile_int_expr(init);
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::A {
-                code: casl2::A::St,
-                r: init_reg,
-                adr: casl2::Adr::label(&counter_var),
-                x: None,
-            }));
+        self.code(casl2::Command::A {
+            code: casl2::A::St,
+            r: init_reg,
+            adr: casl2::Adr::label(&counter_var),
+            x: None,
+        });
         self.set_register_idle(init_reg);
 
         // ラベルの準備
@@ -785,34 +749,26 @@ impl Compiler {
         // ループ継続の判定部分
 
         let (saves, recovers) =
-            self.get_save_registers_src(true, std::slice::from_ref(&casl2::Register::Gr1));
+            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
 
-        let mut condition_src = String::new();
+        self.code(format!("{cond} NOP", cond = condition_label));
 
-        writeln!(&mut condition_src, "{cond} NOP", cond = condition_label).unwrap();
+        self.code(saves);
 
-        condition_src.push_str(&saves);
-
-        writeln!(
-            &mut condition_src,
+        self.code(format!(
             r#" LD    GR1,{counter}
                 CPA   GR1,{end}"#,
             counter = counter_var,
             end = end_var
-        )
-        .unwrap();
+        ));
 
-        condition_src.push_str(&recovers);
+        self.code(recovers);
 
         if step < 0 {
-            writeln!(&mut condition_src, " JMI {exit}", exit = exit_label).unwrap();
+            self.code(format!(" JMI {exit}", exit = exit_label));
         } else {
-            writeln!(&mut condition_src, " JPL {exit}", exit = exit_label).unwrap();
+            self.code(format!(" JPL {exit}", exit = exit_label));
         }
-
-        let condition_code = casl2::parse(&condition_src).unwrap();
-
-        self.statements.extend(condition_code);
 
         // ループ内のコードを実行
         for stmt in block.iter() {
@@ -822,38 +778,25 @@ impl Compiler {
         // ループ末尾 (カウンタの更新など)
 
         let (saves, recovers) =
-            self.get_save_registers_src(true, std::slice::from_ref(&casl2::Register::Gr1));
+            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
 
-        let mut tail_src = String::new();
+        self.comment(format!("Next {counter}", counter = counter));
 
-        writeln!(&mut tail_src, "{next} NOP", next = loop_label).unwrap();
+        self.code(format!("{next} NOP", next = loop_label));
 
-        tail_src.push_str(&saves);
+        self.code(saves);
 
-        writeln!(
-            &mut tail_src,
+        self.code(format!(
             r#" LD    GR1,{counter}
                 LAD   GR1,{step},GR1
                 ST    GR1,{counter}"#,
             counter = counter_var,
             step = step
-        )
-        .unwrap();
+        ));
 
-        tail_src.push_str(&recovers);
-
-        writeln!(
-            &mut tail_src,
-            " JUMP {cond} ; Next {counter}",
-            cond = condition_label,
-            counter = counter
-        )
-        .unwrap();
-        writeln!(&mut tail_src, "{exit} NOP", exit = exit_label).unwrap();
-
-        let tail_code = casl2::parse(&tail_src).unwrap();
-
-        self.statements.extend(tail_code);
+        self.code(recovers);
+        self.code(format!(" JUMP {cond}", cond = condition_label));
+        self.code(format!("{exit} NOP", exit = exit_label));
 
         self.return_temp_int_var_label(end_var);
     }
@@ -874,7 +817,7 @@ impl Compiler {
             unreachable!("BUG");
         };
 
-        self.next_statement_comment = Some(format!(
+        self.comment(format!(
             "For {counter} = {init} To {end} Step {step}",
             counter = counter,
             init = init,
@@ -885,25 +828,23 @@ impl Compiler {
         // calc {step}
         let step_var = self.get_temp_int_var_label();
         let step_reg = self.compile_int_expr(step);
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::A {
-                code: casl2::A::St,
-                r: step_reg,
-                adr: casl2::Adr::label(&step_var),
-                x: None,
-            }));
+        self.code(casl2::Command::A {
+            code: casl2::A::St,
+            r: step_reg,
+            adr: casl2::Adr::label(&step_var),
+            x: None,
+        });
         self.set_register_idle(step_reg);
 
         // calc {end}
         let end_var = self.get_temp_int_var_label();
         let end_reg = self.compile_int_expr(end);
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::A {
-                code: casl2::A::St,
-                r: end_reg,
-                adr: casl2::Adr::label(&end_var),
-                x: None,
-            }));
+        self.code(casl2::Command::A {
+            code: casl2::A::St,
+            r: end_reg,
+            adr: casl2::Adr::label(&end_var),
+            x: None,
+        });
         self.set_register_idle(end_reg);
 
         // カウンタの準備
@@ -911,13 +852,12 @@ impl Compiler {
 
         // calc {init} and assign to {counter}
         let init_reg = self.compile_int_expr(init);
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::A {
-                code: casl2::A::St,
-                r: init_reg,
-                adr: casl2::Adr::label(&counter_var),
-                x: None,
-            }));
+        self.code(casl2::Command::A {
+            code: casl2::A::St,
+            r: init_reg,
+            adr: casl2::Adr::label(&counter_var),
+            x: None,
+        });
         self.set_register_idle(init_reg);
 
         // ラベルの準備
@@ -930,16 +870,13 @@ impl Compiler {
         // ループ継続の判定部分
 
         let (saves, recovers) =
-            self.get_save_registers_src(true, std::slice::from_ref(&casl2::Register::Gr1));
+            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
 
-        let mut condition_src = String::new();
+        self.code(format!("{cond} NOP", cond = condition_label));
 
-        writeln!(&mut condition_src, "{cond} NOP", cond = condition_label).unwrap();
+        self.code(saves);
 
-        condition_src.push_str(&saves);
-
-        writeln!(
-            &mut condition_src,
+        self.code(format!(
             r#" LD    GR1,{step}
                 JMI   {nega}
                 LD    GR1,{counter}
@@ -953,16 +890,11 @@ impl Compiler {
             nega = negastep_label,
             end = end_var,
             block = blockhead_label
-        )
-        .unwrap();
+        ));
 
-        condition_src.push_str(&recovers);
+        self.code(recovers);
 
-        writeln!(&mut condition_src, " JPL {exit}", exit = exit_label).unwrap();
-
-        let condition_code = casl2::parse(&condition_src).unwrap();
-
-        self.statements.extend(condition_code);
+        self.code(format!(" JPL {exit}", exit = exit_label));
 
         // ループ内のコードを実行
         for stmt in block.iter() {
@@ -972,38 +904,25 @@ impl Compiler {
         // ループ末尾 (カウンタの更新など)
 
         let (saves, recovers) =
-            self.get_save_registers_src(true, std::slice::from_ref(&casl2::Register::Gr1));
+            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
 
-        let mut tail_src = String::new();
+        self.comment(format!("Next {counter}", counter = counter));
+        self.code(format!("{next} NOP", next = loop_label));
 
-        writeln!(&mut tail_src, "{next} NOP", next = loop_label).unwrap();
+        self.code(saves);
 
-        tail_src.push_str(&saves);
-
-        writeln!(
-            &mut tail_src,
+        self.code(format!(
             r#" LD    GR1,{counter}
                 ADDA  GR1,{step}
                 ST    GR1,{counter}"#,
             counter = counter_var,
             step = step_var
-        )
-        .unwrap();
+        ));
 
-        tail_src.push_str(&recovers);
+        self.code(recovers);
+        self.code(format!(" JUMP {cond}", cond = condition_label));
+        self.code(format!("{exit} NOP", exit = exit_label));
 
-        writeln!(
-            &mut tail_src,
-            " JUMP {cond} ; Next {counter}",
-            cond = condition_label,
-            counter = counter
-        )
-        .unwrap();
-        writeln!(&mut tail_src, "{exit} NOP", exit = exit_label).unwrap();
-
-        let tail_code = casl2::parse(&tail_src).unwrap();
-
-        self.statements.extend(tail_code);
         self.return_temp_int_var_label(end_var);
         self.return_temp_int_var_label(step_var);
     }
@@ -1031,54 +950,38 @@ impl Compiler {
             .map(|case_stmt| (case_stmt, self.get_new_jump_label()))
             .collect();
 
-        self.next_statement_comment = Some(format!("Select Case {}", value));
+        self.comment(format!("Select Case {}", value));
 
         let value_reg = self.compile_int_expr(value);
 
         for (case_stmt, label) in case_blocks.iter() {
             match case_stmt {
                 parser::Statement::CaseInteger { values, .. } => {
-                    let mut comment = Some(format!(
-                        "Case {}",
-                        values
-                            .iter()
-                            .map(|v| v.to_string())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ));
                     for case_value in values.iter() {
                         use parser::CaseIntegerItem::*;
                         let adr = match case_value {
                             Integer(value) => casl2::Adr::LiteralDec(*value as i16),
                             Character(ch) => casl2::Adr::LiteralStr(ch.to_string()),
                         };
-                        self.statements.push(casl2::Statement::Code {
-                            label: None,
-                            command: casl2::Command::A {
-                                code: casl2::A::Cpa,
-                                r: value_reg,
-                                adr,
-                                x: None,
-                            },
-                            comment: comment.take(),
+                        self.code(casl2::Command::A {
+                            code: casl2::A::Cpa,
+                            r: value_reg,
+                            adr,
+                            x: None,
                         });
-                        self.statements
-                            .push(casl2::Statement::code(casl2::Command::P {
-                                code: casl2::P::Jze,
-                                adr: casl2::Adr::label(label),
-                                x: None,
-                            }));
+                        self.code(casl2::Command::P {
+                            code: casl2::P::Jze,
+                            adr: casl2::Adr::label(label),
+                            x: None,
+                        });
                     }
                 }
                 parser::Statement::CaseElse { .. } => {
-                    self.statements.push(casl2::Statement::code_with_comment(
-                        casl2::Command::P {
-                            code: casl2::P::Jump,
-                            adr: casl2::Adr::label(label),
-                            x: None,
-                        },
-                        "Case Else",
-                    ));
+                    self.code(casl2::Command::P {
+                        code: casl2::P::Jump,
+                        adr: casl2::Adr::label(label),
+                        x: None,
+                    });
                 }
                 _ => unreachable!("BUG"),
             }
@@ -1089,44 +992,55 @@ impl Compiler {
         let exit_label = self.get_exit_label(exit_id);
 
         if !has_else {
-            self.statements
-                .push(casl2::Statement::code(casl2::Command::P {
-                    code: casl2::P::Jump,
-                    adr: casl2::Adr::label(&exit_label),
-                    x: None,
-                }));
+            self.code(casl2::Command::P {
+                code: casl2::P::Jump,
+                adr: casl2::Adr::label(&exit_label),
+                x: None,
+            });
         }
 
         for (case_stmt, label) in case_blocks.iter() {
-            self.statements
-                .push(casl2::Statement::labeled(&label, casl2::Command::Nop));
             match case_stmt {
-                parser::Statement::CaseInteger { block, .. }
-                | parser::Statement::CaseElse { block } => {
+                parser::Statement::CaseInteger { values, block } => {
+                    self.comment(format!(
+                        "Case {}",
+                        values
+                            .iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                    self.labeled(label, casl2::Command::Nop);
+                    for stmt in block.iter() {
+                        self.compile(stmt);
+                    }
+                }
+                parser::Statement::CaseElse { block } => {
+                    self.comment("Case Else");
+                    self.labeled(label, casl2::Command::Nop);
                     for stmt in block.iter() {
                         self.compile(stmt);
                     }
                 }
                 _ => unreachable!("BUG"),
             }
-            self.statements
-                .push(casl2::Statement::code(casl2::Command::P {
-                    code: casl2::P::Jump,
-                    adr: casl2::Adr::label(&exit_label),
-                    x: None,
-                }));
-        }
-
-        let last_stmt = self.statements.last_mut().expect("BUG");
-        assert_eq!(
-            last_stmt,
-            &casl2::Statement::code(casl2::Command::P {
+            self.code(casl2::Command::P {
                 code: casl2::P::Jump,
                 adr: casl2::Adr::label(&exit_label),
                 x: None,
-            })
+            });
+        }
+
+        assert_eq!(
+            self.statements.pop(),
+            Some(casl2::Statement::code(casl2::Command::P {
+                code: casl2::P::Jump,
+                adr: casl2::Adr::label(&exit_label),
+                x: None,
+            }))
         );
-        *last_stmt = casl2::Statement::labeled(&exit_label, casl2::Command::Nop);
+        self.comment("End Select");
+        self.labeled(exit_label, casl2::Command::Nop);
     }
 
     // Dim ステートメント
@@ -1168,24 +1082,21 @@ impl Compiler {
         let loop_label = self.get_loop_label(exit_id);
         let exit_label = self.get_exit_label(exit_id);
 
-        self.statements
-            .push(casl2::Statement::labeled(&loop_label, casl2::Command::Nop));
+        self.comment("Do");
+        self.labeled(&loop_label, casl2::Command::Nop);
 
         for stmt in block.iter() {
             self.compile(stmt);
         }
 
-        self.statements.push(casl2::Statement::code_with_comment(
-            casl2::Command::P {
-                code: casl2::P::Jump,
-                adr: casl2::Adr::label(&loop_label),
-                x: None,
-            },
-            "Loop",
-        ));
+        self.comment("Loop");
+        self.code(casl2::Command::P {
+            code: casl2::P::Jump,
+            adr: casl2::Adr::label(&loop_label),
+            x: None,
+        });
 
-        self.statements
-            .push(casl2::Statement::labeled(&exit_label, casl2::Command::Nop));
+        self.labeled(exit_label, casl2::Command::Nop);
     }
 
     // Input ステートメント
@@ -1193,36 +1104,26 @@ impl Compiler {
     fn compile_input_integer(&mut self, var_name: &str) {
         let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
         let s_labels = self.get_temp_str_var_label();
+        let var_label = self.int_var_labels.get(var_name).cloned().expect("BUG");
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(true, &[Gr1, Gr2])
+            self.get_save_registers_src(&[Gr1, Gr2])
         };
 
-        let var_label = self.int_var_labels.get(var_name).expect("BUG");
-
-        let mut src = saves;
-
-        writeln!(
-            &mut src,
-            r#" IN    {pos},{len}  ; {comment}
+        self.comment(format!("Input {}", var_name));
+        self.code(saves);
+        self.code(format!(
+            r#" IN    {pos},{len}
                 LAD   GR1,{pos}
                 LD    GR2,{len}
                 CALL  {cint}"#,
             pos = s_labels.buf,
             len = s_labels.len,
-            cint = cint_label,
-            comment = format!("Input {}", var_name)
-        )
-        .unwrap();
-
-        src.push_str(&recovers);
-
-        writeln!(&mut src, " ST GR0,{var}", var = var_label).unwrap();
-
-        let code = casl2::parse(&src).unwrap();
-
-        self.statements.extend(code);
+            cint = cint_label
+        ));
+        self.code(recovers);
+        self.code(format!(" ST GR0,{var}", var = var_label));
 
         self.return_temp_str_var_label(s_labels);
     }
@@ -1230,14 +1131,13 @@ impl Compiler {
     // Input ステートメント
     // 文字列変数へのコンソール入力
     fn compile_input_string(&mut self, var_name: &str) {
-        let StrLabels { len, buf, .. } = self.str_var_labels.get(var_name).expect("BUG");
-        self.statements.push(casl2::Statement::code_with_comment(
-            casl2::Command::In {
-                pos: buf.into(),
-                len: len.into(),
-            },
-            &format!("Input {}", var_name),
-        ));
+        let StrLabels { len, buf, .. } = self.str_var_labels.get(var_name).cloned().expect("BUG");
+        self.comment(format!("Input {}", var_name));
+        // IN {var_pos},{var_len}
+        self.code(casl2::Command::In {
+            pos: buf.into(),
+            len: len.into(),
+        });
     }
 
     // Print ステートメント
@@ -1245,58 +1145,51 @@ impl Compiler {
     fn compile_print_lit_boolean(&mut self, value: bool) {
         let s = if value { "True" } else { "False" };
         let StrLabels { len, buf, .. } = self.get_lit_str_labels(s);
-        self.statements.push(casl2::Statement::code_with_comment(
-            casl2::Command::Out {
-                pos: buf.into(),
-                len: len.into(),
-            },
-            &format!("Print {}", s),
-        ));
+        self.comment(format!("Print {}", s));
+        // OUT {lit_pos},{lit_len}
+        self.code(casl2::Command::Out {
+            pos: buf.into(),
+            len: len.into(),
+        });
     }
 
     // Print ステートメント
     // 数字リテラルの画面出力
     fn compile_print_lit_integer(&mut self, value: i32) {
         let StrLabels { len, buf, .. } = self.get_lit_str_labels(&value.to_string());
-        self.statements.push(casl2::Statement::code_with_comment(
-            casl2::Command::Out {
-                pos: buf.into(),
-                len: len.into(),
-            },
-            &format!("Print {}", value),
-        ));
+        self.comment(format!("Print {}", value));
+        self.code(casl2::Command::Out {
+            pos: buf.into(),
+            len: len.into(),
+        });
     }
 
     // Print ステートメント
     // 文字列リテラルの画面出力
     fn compile_print_lit_string(&mut self, value: &str) {
         let StrLabels { len, buf, .. } = self.get_lit_str_labels(value);
-        self.statements.push(casl2::Statement::code_with_comment(
-            casl2::Command::Out {
-                pos: buf.into(),
-                len: len.into(),
-            },
-            &format!(r#"Print "{}""#, value.replace('"', r#""""#)),
-        ));
+        self.comment(format!(r#"Print "{}""#, value.replace('"', r#""""#)));
+        self.code(casl2::Command::Out {
+            pos: buf.into(),
+            len: len.into(),
+        });
     }
 
     // Print ステートメント
     // 文字列変数の画面出力
     fn compile_print_var_string(&mut self, var_name: &str) {
-        let StrLabels { len, buf, .. } = self.str_var_labels.get(var_name).expect("BUG");
-        self.statements.push(casl2::Statement::code_with_comment(
-            casl2::Command::Out {
-                pos: buf.into(),
-                len: len.into(),
-            },
-            &format!("Print {}", var_name),
-        ));
+        let StrLabels { len, buf, .. } = self.str_var_labels.get(var_name).cloned().expect("BUG");
+        self.comment(format!("Print {}", var_name));
+        self.code(casl2::Command::Out {
+            pos: buf.into(),
+            len: len.into(),
+        });
     }
 
     // Print ステートメント
     // 整数の計算結果の画面出力
     fn compile_print_expr_integer(&mut self, value: &parser::Expr) {
-        self.next_statement_comment = Some(format!("Print {}", value));
+        self.comment(format!("Print {}", value));
 
         let value_reg = self.compile_int_expr(value);
         let call_label = self.load_subroutine(subroutine::Id::FuncCStrArgInt);
@@ -1304,13 +1197,12 @@ impl Compiler {
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(true, &[Gr1, Gr2, Gr3])
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
         };
 
-        let mut src = saves;
+        self.code(saves);
 
-        writeln!(
-            &mut src,
+        self.code(format!(
             r#" LD    GR3,{value}
                 LAD   GR1,{buf}
                 LAD   GR2,{len}
@@ -1320,14 +1212,9 @@ impl Compiler {
             buf = &str_labels.buf,
             len = &str_labels.len,
             cstr = call_label
-        )
-        .unwrap();
+        ));
 
-        src.push_str(&recovers);
-
-        let code = casl2::parse(&src).unwrap();
-
-        self.statements.extend(code);
+        self.code(recovers);
 
         self.set_register_idle(value_reg);
         self.return_temp_str_var_label(str_labels);
@@ -1351,12 +1238,11 @@ impl Compiler {
         }
         self.registers_deque.rotate_left(1);
         let reg = *self.registers_deque.back().expect("BUG");
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::P {
-                code: casl2::P::Push,
-                adr: casl2::Adr::Dec(0),
-                x: Some(TryFrom::try_from(reg).expect("BUG")),
-            }));
+        self.code(casl2::Command::P {
+            code: casl2::P::Push,
+            adr: casl2::Adr::Dec(0),
+            x: Some(TryFrom::try_from(reg).expect("BUG")),
+        });
         reg
     }
 
@@ -1366,8 +1252,7 @@ impl Compiler {
             return;
         }
         self.set_register_used(reg);
-        self.statements
-            .push(casl2::Statement::code(casl2::Command::Pop { r: reg }));
+        self.code(casl2::Command::Pop { r: reg });
     }
 
     // アイドル中のレスジスタを使用中に変更
@@ -1387,30 +1272,13 @@ impl Compiler {
 
     // subrutine引数のレジスタなどの一時利用のとき
     // 一時退避するためのソースコードと復帰するためのソースコードを生成
-    fn get_save_registers_src(
-        &mut self,
-        with_comment: bool,
-        regs: &[casl2::Register],
-    ) -> (String, String) {
+    fn get_save_registers_src(&mut self, regs: &[casl2::Register]) -> (String, String) {
         let mut saves = String::new();
         let mut recovers = String::new();
 
-        // next_statement_comment をどうするか…
-
         for reg in regs.iter() {
             if !self.is_idle_register(*reg) {
-                if with_comment {
-                    let comment = self.get_comment_with_semicolon_if_exists();
-                    writeln!(
-                        &mut saves,
-                        " PUSH 0,{reg} {comment}",
-                        reg = reg,
-                        comment = comment
-                    )
-                    .unwrap();
-                } else {
-                    writeln!(&mut saves, " PUSH 0,{}", reg).unwrap();
-                }
+                writeln!(&mut saves, " PUSH 0,{}", reg).unwrap();
                 writeln!(&mut recovers, " POP {}", reg).unwrap();
             }
         }
@@ -1466,10 +1334,10 @@ impl Compiler {
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(true, &[Gr1, Gr2, Gr3])
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
         };
 
-        let mut src = saves;
+        self.code(saves);
 
         let t_labels = self.get_temp_str_var_label();
 
@@ -1479,8 +1347,9 @@ impl Compiler {
             parser::ExprType::String | parser::ExprType::ParamList => unreachable!("BUG"),
         };
 
-        writeln!(
-            &mut src,
+        let call_label = self.load_subroutine(id);
+
+        self.code(format!(
             r#" LD    GR3,{value}
                 LAD   GR1,{buf}
                 LAD   GR2,{len}
@@ -1488,15 +1357,10 @@ impl Compiler {
             value = value_reg,
             len = t_labels.len,
             buf = t_labels.buf,
-            call = self.load_subroutine(id)
-        )
-        .unwrap();
+            call = call_label
+        ));
 
-        src.push_str(&recovers);
-
-        let code = casl2::parse(&src).unwrap();
-
-        self.statements.extend(code);
+        self.code(recovers);
 
         self.set_register_idle(value_reg);
 
@@ -1578,15 +1442,12 @@ impl Compiler {
                 let lhs_reg = self.compile_int_expr(lhs);
                 let rhs_reg = self.compile_int_expr(rhs);
                 self.restore_register(lhs_reg);
-                self.statements.extend(
-                    casl2::parse(&format!(
-                        r#" SUBA  {lhs},{rhs}
+                self.code(format!(
+                    r#" SUBA  {lhs},{rhs}
                         SRA   {lhs},15"#,
-                        lhs = lhs_reg,
-                        rhs = rhs_reg
-                    ))
-                    .unwrap(),
-                );
+                    lhs = lhs_reg,
+                    rhs = rhs_reg
+                ));
                 self.set_register_idle(rhs_reg);
                 lhs_reg
             }
@@ -1610,20 +1471,17 @@ impl Compiler {
                 let lhs_reg = self.compile_int_expr(lhs);
                 let rhs_reg = self.compile_int_expr(rhs);
                 self.restore_register(lhs_reg);
-                self.statements.extend(
-                    casl2::parse(&format!(
-                        r#" SUBA  {lhs},{rhs}
+                self.code(format!(
+                    r#" SUBA  {lhs},{rhs}
                             LD    {rhs},{lhs}
                             XOR   {rhs},=#FFFF
                             LAD   {rhs},1,{rhs}
                             OR    {lhs},{rhs}
                             SRA   {lhs},15
                             XOR   {lhs},=#FFFF"#,
-                        lhs = lhs_reg,
-                        rhs = rhs_reg
-                    ))
-                    .unwrap(),
-                );
+                    lhs = lhs_reg,
+                    rhs = rhs_reg
+                ));
                 self.set_register_idle(rhs_reg);
                 lhs_reg
             }
@@ -1635,13 +1493,11 @@ impl Compiler {
                 let cmpstr = self.load_subroutine(subroutine::Id::UtilCompareStr);
                 let (saves, recovers) = {
                     use casl2::Register::*;
-                    self.get_save_registers_src(true, &[Gr1, Gr2, Gr3, Gr4])
+                    self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
                 };
-                let comment = self.get_comment_with_semicolon_if_exists();
-                let mut src = saves;
-                writeln!(
-                    &mut src,
-                    r#" LAD   GR1,{lhspos} {comment}
+                self.code(saves);
+                self.code(format!(
+                    r#" LAD   GR1,{lhspos}
                         LD    GR2,{lhslen}
                         LAD   GR3,{rhspos}
                         LD    GR4,{rhslen}
@@ -1649,18 +1505,14 @@ impl Compiler {
                         SLL   GR0,15
                         SRA   GR0,15
                         XOR   GR0,=#FFFF"#,
-                    comment = comment,
                     lhspos = lhs_str.buf,
                     lhslen = lhs_str.len,
                     rhspos = rhs_str.buf,
                     rhslen = rhs_str.len,
                     cmpstr = cmpstr
-                )
-                .unwrap();
-                src.push_str(&recovers);
-                writeln!(&mut src, " LD {reg},GR0", reg = ret_reg).unwrap();
-                let code = casl2::parse(&src).unwrap();
-                self.statements.extend(code);
+                ));
+                self.code(recovers);
+                self.code(format!(" LD {reg},GR0", reg = ret_reg));
                 self.return_temp_str_var_label(lhs_str);
                 self.return_temp_str_var_label(rhs_str);
                 self.set_register_used(ret_reg);
@@ -1705,8 +1557,7 @@ impl Compiler {
             _ => None,
         };
         if let Some(src) = with_lit_src {
-            let code = casl2::parse(&src).unwrap();
-            self.statements.extend(code);
+            self.code(src);
             return lhs_reg;
         }
 
@@ -1739,9 +1590,7 @@ impl Compiler {
             }
         };
 
-        let code = casl2::parse(&src).unwrap();
-
-        self.statements.extend(code);
+        self.code(src);
 
         self.set_register_idle(rhs_reg);
 
@@ -1759,13 +1608,12 @@ impl Compiler {
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(true, &[Gr1, Gr2, Gr3])
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
         };
 
-        let mut src = saves;
+        self.code(saves);
 
-        writeln!(
-            &mut src,
+        self.code(format!(
             r#" PUSH  0,{rhs}
                 LD    GR2,{lhs}
                 POP   GR3
@@ -1773,16 +1621,11 @@ impl Compiler {
             rhs = rhs_reg,
             lhs = lhs_reg,
             mul = mul_label
-        )
-        .unwrap();
+        ));
 
-        src.push_str(&recovers);
+        self.code(recovers);
 
-        writeln!(&mut src, " LD {lhs},GR0", lhs = lhs_reg).unwrap();
-
-        let code = casl2::parse(&src).unwrap();
-
-        self.statements.extend(code);
+        self.code(format!(" LD {lhs},GR0", lhs = lhs_reg));
 
         self.set_register_idle(rhs_reg);
 
@@ -1800,13 +1643,12 @@ impl Compiler {
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(true, &[Gr1, Gr2, Gr3])
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
         };
 
-        let mut src = saves;
+        self.code(saves);
 
-        writeln!(
-            &mut src,
+        self.code(format!(
             r#" PUSH  0,{rhs}
                 LD    GR2,{lhs}
                 POP   GR3
@@ -1814,16 +1656,11 @@ impl Compiler {
             rhs = rhs_reg,
             lhs = lhs_reg,
             divmod = divmod_label
-        )
-        .unwrap();
+        ));
 
-        src.push_str(&recovers);
+        self.code(recovers);
 
-        writeln!(&mut src, " LD {lhs},GR0", lhs = lhs_reg).unwrap();
-
-        let code = casl2::parse(&src).unwrap();
-
-        self.statements.extend(code);
+        self.code(format!(" LD {lhs},GR0", lhs = lhs_reg));
 
         self.set_register_idle(rhs_reg);
 
@@ -1841,13 +1678,12 @@ impl Compiler {
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(true, &[Gr1, Gr2, Gr3])
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
         };
 
-        let mut src = saves;
+        self.code(saves);
 
-        writeln!(
-            &mut src,
+        self.code(format!(
             r#" PUSH  0,{rhs}
                 LD    GR2,{lhs}
                 POP   GR3
@@ -1856,16 +1692,11 @@ impl Compiler {
             rhs = rhs_reg,
             lhs = lhs_reg,
             divmod = divmod_label
-        )
-        .unwrap();
+        ));
 
-        src.push_str(&recovers);
+        self.code(recovers);
 
-        writeln!(&mut src, " LD {lhs},GR0", lhs = lhs_reg).unwrap();
-
-        let code = casl2::parse(&src).unwrap();
-
-        self.statements.extend(code);
+        self.code(format!(" LD {lhs},GR0", lhs = lhs_reg));
 
         self.set_register_idle(rhs_reg);
 
@@ -1875,20 +1706,16 @@ impl Compiler {
     // (式展開の処理の一部)
     // 整数変数の読み込み
     fn compile_variable_integer(&mut self, var_name: &str) -> casl2::Register {
-        let comment = self.next_statement_comment.take();
         let reg = self.get_idle_register();
         let var_label = self.int_var_labels.get(var_name).expect("BUG");
+        let adr = casl2::Adr::label(var_label);
 
         // LD REG,VAR
-        self.statements.push(casl2::Statement::Code {
-            label: None,
-            command: casl2::Command::A {
-                code: casl2::A::Ld,
-                r: reg,
-                adr: casl2::Adr::label(var_label),
-                x: None,
-            },
-            comment,
+        self.code(casl2::Command::A {
+            code: casl2::A::Ld,
+            r: reg,
+            adr,
+            x: None,
         });
 
         reg
@@ -1897,19 +1724,14 @@ impl Compiler {
     // (式展開の処理の一部)
     // 整数リテラルの読み込み
     fn compile_literal_integer(&mut self, value: i32) -> casl2::Register {
-        let comment = self.next_statement_comment.take();
         let reg = self.get_idle_register();
 
         // LAD REG,VALUE
-        self.statements.push(casl2::Statement::Code {
-            label: None,
-            command: casl2::Command::A {
-                code: casl2::A::Lad,
-                r: reg,
-                adr: casl2::Adr::Dec(value as i16),
-                x: None,
-            },
-            comment,
+        self.code(casl2::Command::A {
+            code: casl2::A::Lad,
+            r: reg,
+            adr: casl2::Adr::Dec(value as i16),
+            x: None,
         });
 
         reg
@@ -1945,25 +1767,19 @@ impl Compiler {
                 let cint = self.load_subroutine(subroutine::Id::FuncCInt);
                 let (saves, recovers) = {
                     use casl2::Register::*;
-                    self.get_save_registers_src(true, &[Gr1, Gr2])
+                    self.get_save_registers_src(&[Gr1, Gr2])
                 };
-                let comment = self.get_comment_with_semicolon_if_exists();
-                let mut src = saves;
-                writeln!(
-                    &mut src,
-                    r#" LAD   GR1,{strpos} {comment}
+                self.code(saves);
+                self.code(format!(
+                    r#" LAD   GR1,{strpos}
                         LD    GR2,{strlen}
                         CALL  {cint}"#,
-                    comment = comment,
                     strpos = arg_str.buf,
                     strlen = arg_str.len,
                     cint = cint
-                )
-                .unwrap();
-                src.push_str(&recovers);
-                writeln!(&mut src, " LD {reg},GR0", reg = ret_reg).unwrap();
-                let code = casl2::parse(&src).unwrap();
-                self.statements.extend(code);
+                ));
+                self.code(recovers);
+                self.code(format!(" LD {reg},GR0", reg = ret_reg));
                 self.return_temp_str_var_label(arg_str);
                 self.set_register_used(ret_reg);
                 ret_reg
@@ -2019,13 +1835,12 @@ impl Compiler {
 
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(true, &[Gr1, Gr2])
+            self.get_save_registers_src(&[Gr1, Gr2])
         };
 
-        let mut src = saves;
+        self.code(saves);
 
-        writeln!(
-            &mut src,
+        self.code(format!(
             r#" PUSH  0,{rhs}
                 LD    GR1,{lhs}
                 POP   GR2
@@ -2033,16 +1848,11 @@ impl Compiler {
             lhs = lhs_reg,
             rhs = rhs_reg,
             sub = sub_label
-        )
-        .unwrap();
+        ));
 
-        src.push_str(&recovers);
+        self.code(recovers);
 
-        writeln!(&mut src, " LD {lhs},GR0", lhs = lhs_reg).unwrap();
-
-        let code = casl2::parse(&src).unwrap();
-
-        self.statements.extend(code);
+        self.code(format!(" LD {lhs},GR0", lhs = lhs_reg));
 
         self.set_register_idle(rhs_reg);
         lhs_reg
@@ -2117,15 +1927,16 @@ mod subroutine {
             statements: casl2::parse(
                 format!(
                     r#"
-{prog} LD    GR0,GR1    ; {comment}
+                                   ; {comment}
+{prog} LD    GR0,GR1
        JMI   {mi}
        RET
 {mi}   XOR   GR0,GR0
        SUBA  GR0,GR1
        RET
 "#,
-                    prog = id.label(),
                     comment = format!("{:?}", id),
+                    prog = id.label(),
                     mi = gen.jump_label()
                 )
                 .trim_start_matches('\n'),
@@ -2144,15 +1955,16 @@ mod subroutine {
             statements: casl2::parse(
                 format!(
                     r#"
-{prog} CPA   GR1,GR2    ; {comment}
+                                   ; {comment}
+{prog} CPA   GR1,GR2
        JMI   {mi}
        LD    GR0,GR1
        RET
 {mi}   LD    GR0,GR2
        RET
 "#,
-                    prog = id.label(),
                     comment = format!("{:?}", id),
+                    prog = id.label(),
                     mi = gen.jump_label()
                 )
                 .trim_start_matches('\n'),
@@ -2171,15 +1983,16 @@ mod subroutine {
             statements: casl2::parse(
                 format!(
                     r#"
-{prog} CPA   GR1,GR2    ; {comment}
+                                   ; {comment}
+{prog} CPA   GR1,GR2
        JMI   {mi}
        LD    GR0,GR2
        RET
 {mi}   LD    GR0,GR1
        RET
 "#,
-                    prog = id.label(),
                     comment = format!("{:?}", id),
+                    prog = id.label(),
                     mi = gen.jump_label()
                 )
                 .trim_start_matches('\n'),
@@ -2198,7 +2011,8 @@ mod subroutine {
             statements: casl2::parse(
                 format!(
                     r#"
-{prog} PUSH  0,GR1    ; {comment}
+                                   ; {comment}
+{prog} PUSH  0,GR1
        PUSH  0,GR2
        PUSH  0,GR3
        PUSH  0,GR4
@@ -2240,8 +2054,8 @@ mod subroutine {
        POP   GR1
        RET
 "#,
-                    prog = id.label(),
                     comment = format!("{:?}", id),
+                    prog = id.label(),
                     ret = gen.jump_label(),
                     read = gen.jump_label(),
                     mi = gen.jump_label()
@@ -2263,7 +2077,8 @@ mod subroutine {
             statements: casl2::parse(
                 format!(
                     r#"
-{prog}  AND   GR3,GR3     ; {comment}
+                                   ; {comment}
+{prog}  AND   GR3,GR3
         JNZ   {ok}
         XOR   GR0,GR0
         LAD   GR1,-1
@@ -2310,8 +2125,8 @@ mod subroutine {
         POP   GR2
         RET
 "#,
-                    prog = id.label(),
                     comment = format!("{:?}", id),
+                    prog = id.label(),
                     abs = Id::FuncAbs.label(),
                     mul = Id::UtilMul.label(),
                     ok = gen.jump_label(),
@@ -2337,7 +2152,8 @@ mod subroutine {
             statements: casl2::parse(
                 format!(
                     r#"
-{prog}   PUSH  0,GR2     ; {comment}
+                                   ; {comment}
+{prog}   PUSH  0,GR2
          PUSH  0,GR3
          PUSH  0,GR4
          PUSH  0,GR5
@@ -2368,8 +2184,8 @@ mod subroutine {
          POP   GR2
          RET
 "#,
-                    prog = id.label(),
                     comment = format!("{:?}", id),
+                    prog = id.label(),
                     cycle1 = gen.jump_label(),
                     add1 = gen.jump_label(),
                     raise1 = gen.jump_label(),
@@ -2394,7 +2210,8 @@ mod subroutine {
             statements: casl2::parse(
                 format!(
                     r#"
-{prog}   PUSH  0,GR3            ; {comment}
+                                   ; {comment}
+{prog}   PUSH  0,GR3
          PUSH  0,GR4
          AND   GR3,GR3
          LAD   GR3,='FalseTrue'
@@ -2407,8 +2224,8 @@ mod subroutine {
          POP   GR3
          RET
 "#,
-                    prog = id.label(),
                     comment = format!("{:?}", id),
+                    prog = id.label(),
                     copy = Id::UtilCopyStr.label(),
                     ret = gen.jump_label()
                 )
@@ -2428,7 +2245,8 @@ mod subroutine {
             statements: casl2::parse(
                 format!(
                     r#"
-{prog}   AND   GR3,GR3            ; {comment}
+                                   ; {comment}
+{prog}   AND   GR3,GR3
          JNZ   {init}
          LAD   GR3,1
          ST    GR3,0,GR2
@@ -2477,8 +2295,8 @@ mod subroutine {
          RET
 {temp}   DS    6
 "#,
-                    prog = id.label(),
                     comment = format!("{:?}", id),
+                    prog = id.label(),
                     rem = Id::UtilDivMod.label(),
                     init = gen.jump_label(),
                     start = gen.jump_label(),
@@ -2504,7 +2322,8 @@ mod subroutine {
             statements: casl2::parse(
                 format!(
                     r#"
-{prog}   PUSH  0,GR1            ; {comment}
+                                   ; {comment}
+{prog}   PUSH  0,GR1
          PUSH  0,GR2
          PUSH  0,GR3
          PUSH  0,GR4
@@ -2535,8 +2354,8 @@ mod subroutine {
          POP   GR1
          RET
 "#,
-                    prog = id.label(),
                     comment = format!("{:?}", id),
+                    prog = id.label(),
                     cycle = gen.jump_label(),
                     next = gen.jump_label(),
                     less = gen.jump_label(),
@@ -2561,7 +2380,8 @@ mod subroutine {
             statements: casl2::parse(
                 format!(
                     r#"
-{prog}   PUSH  0,GR1            ; {comment}
+                                   ; {comment}
+{prog}   PUSH  0,GR1
          PUSH  0,GR2
          PUSH  0,GR3
          PUSH  0,GR4
@@ -2580,8 +2400,8 @@ mod subroutine {
          POP   GR1
          RET
 "#,
-                    prog = id.label(),
                     comment = format!("{:?}", id),
+                    prog = id.label(),
                     cycle = gen.jump_label(),
                     ret = gen.jump_label()
                 )
@@ -2643,6 +2463,18 @@ mod extends {
         }
     }
 
+    impl AddCode<String> for Vec<casl2::Statement> {
+        fn code(&mut self, src: String) {
+            self.extend(casl2::parse(src.trim_start_matches('\n').trim_end()).unwrap());
+        }
+    }
+
+    impl AddCode<&String> for Vec<casl2::Statement> {
+        fn code(&mut self, src: &String) {
+            self.extend(casl2::parse(src.trim_start_matches('\n').trim_end()).unwrap());
+        }
+    }
+
     impl AddCode<Vec<casl2::Statement>> for Vec<casl2::Statement> {
         fn code(&mut self, src: Vec<casl2::Statement>) {
             self.extend(src);
@@ -2680,6 +2512,16 @@ mod extends {
         fn labeled(&mut self, label: String, command: casl2::Command) {
             self.push(casl2::Statement::Code {
                 label: Some(label.into()),
+                command,
+                comment: None,
+            });
+        }
+    }
+
+    impl AddLabeledCode<&String> for Vec<casl2::Statement> {
+        fn labeled(&mut self, label: &String, command: casl2::Command) {
+            self.push(casl2::Statement::Code {
+                label: Some(label.clone().into()),
                 command,
                 comment: None,
             });
@@ -2756,10 +2598,10 @@ mod test {
             ' Let int1 = Not (Not int1 + Not 1)
             ' Let int1 = Len(str1)
             ' Let int1 = CInt(bool1)
-            ' Let int1 = CInt(str1)
+            Let int1 = CInt(str1)
             ' Let bool1 = CBool(int1)
             ' Let str1 = CStr(bool1)
-            ' Let str1 = CStr(int1)
+            Let str1 = CStr(int1)
             ' Let str1 = "prifix" & (str1 & "suffix")
             For i = 1 To 10
                 Print "X"
@@ -2807,6 +2649,37 @@ mod test {
                 Continue Do
                 Exit Do
             Loop
+            If int1 = 123 Then
+                Print "X"
+            ' ElseIf int1 + 3 <> (999 * 10) Then
+                Print "X"
+            ElseIf int1 - 4 < (543 + 123) Then
+                Print "X"
+            ' ElseIf int1 - 4 <= (543 + 123) Then
+                Print "X"
+            ' ElseIf int1 - 4 > (543 + 123) Then
+                Print "X"
+            ' ElseIf int1 - 4 >= (543 + 123) Then
+                Print "X"
+            Else If str1 = "xyz" Then
+                Print "X"
+            ' ElseIf str1 <> "xyz" Then
+                Print "X"
+            ' ElseIf str1 < "xyz" Then
+                Print "X"
+            ' ElseIf str1 <= "xyz" Then
+                Print "X"
+            ' ElseIf str1 > "xyz" Then
+                Print "X"
+            ' ElseIf str1 >= "xyz" Then
+                Print "X"
+            ' ElseIf Not bool1 = False Then
+                Print "X"
+            ' ElseIf bool1 <> Not False Then
+                Print "X"
+            Else
+                Print "X"
+            End If
         "#;
 
         let mut cursor = std::io::Cursor::new(src);
@@ -2936,23 +2809,23 @@ LB4    DC     'Test@1234'
 TEST   START
        RET
                                    ; Dim boolVar1 As Boolean
-B2     DS     1     
+B2     DS     1
                                    ; Dim boolVar2 As Boolean
-B5     DS     1     
+B5     DS     1
                                    ; Dim intVar2 As Integer
-I3     DS     1     
+I3     DS     1
                                    ; Dim intVar1 As Integer
-I8     DS     1     
+I8     DS     1
                                    ; Dim strVar1 As String
-SL1    DS     1     
+SL1    DS     1
 SB1    DS     256
                                    ; Dim strVar2 As String
-SL6    DS     1     
+SL6    DS     1
 SB6    DS     256
                                    ; Dim boolArr1(31) As Boolean
-BA4    DS     32     
+BA4    DS     32
                                    ; Dim intArr1(154) As Integer
-IA7    DS     155   
+IA7    DS     155
        END
             "#
                 .trim()
@@ -2975,10 +2848,14 @@ IA7    DS     155
             casl2::parse(
                 r#"
 TEST   START
-       OUT    LB1,LL1     ; Print True
-       OUT    LB2,LL2     ; Print False
-       OUT    LB2,LL2     ; Print False
-       OUT    LB1,LL1     ; Print True
+                                   ; Print True
+       OUT    LB1,LL1
+                                   ; Print False
+       OUT    LB2,LL2
+                                   ; Print False
+       OUT    LB2,LL2
+                                   ; Print True
+       OUT    LB1,LL1
        RET
 LL1    DC     4
 LB1    DC     'True'
@@ -3006,10 +2883,14 @@ LB2    DC     'False'
             casl2::parse(
                 r#"
 TEST   START
-       OUT    LB1,LL1     ; Print 1234
-       OUT    LB2,LL2     ; Print 999
-       OUT    LB3,LL3     ; Print -100
-       OUT    LB1,LL1     ; Print 1234
+                                   ; Print 1234
+       OUT    LB1,LL1
+                                   ; Print 999
+       OUT    LB2,LL2
+                                   ; Print -100
+       OUT    LB3,LL3
+                                   ; Print 1234
+       OUT    LB1,LL1
        RET
 LL1    DC     4
 LB1    DC     '1234'
@@ -3039,10 +2920,14 @@ LB3    DC     '-100'
             casl2::parse(
                 r#"
 TEST   START
-       OUT    LB1,LL1     ; Print "ABCD"
-       OUT    LB2,LL2     ; Print "hey you!"
-       OUT    LB3,LL3     ; Print ""
-       OUT    LB1,LL1     ; Print "ABCD"
+                                   ; Print "ABCD"
+       OUT    LB1,LL1
+                                   ; Print "hey you!"
+       OUT    LB2,LL2
+                                   ; Print ""
+       OUT    LB3,LL3
+                                   ; Print "ABCD"
+       OUT    LB1,LL1
        RET
 LL1    DC     4
 LB1    DC     'ABCD'
@@ -3074,18 +2959,21 @@ LB3    DS     0
             casl2::parse(
                 r#"
 TEST   START
-       OUT    SB3,SL3     ; Print strVar3
-       OUT    SB2,SL2     ; Print strVar2
-       OUT    SB1,SL1     ; Print strVar1
+                                   ; Print strVar3
+       OUT    SB3,SL3
+                                   ; Print strVar2
+       OUT    SB2,SL2
+                                   ; Print strVar1
+       OUT    SB1,SL1
        RET
                                    ; Dim strVar1 As String
-SL1    DS     1           
+SL1    DS     1
 SB1    DS     256
                                    ; Dim strVar2 As String
-SL2    DS     1           
+SL2    DS     1
 SB2    DS     256
                                    ; Dim strVar3 As String
-SL3    DS     1           
+SL3    DS     1
 SB3    DS     256
        END
             "#
@@ -3111,18 +2999,21 @@ SB3    DS     256
             casl2::parse(
                 r#"
 TEST   START
-       IN     SB3,SL3     ; Input strVar3
-       IN     SB2,SL2     ; Input strVar2
-       IN     SB1,SL1     ; Input strVar1
+                                   ; Input strVar3
+       IN     SB3,SL3
+                                   ; Input strVar2
+       IN     SB2,SL2
+                                   ; Input strVar1
+       IN     SB1,SL1
        RET
                                    ; Dim strVar1 As String
-SL1    DS     1           
+SL1    DS     1
 SB1    DS     256
                                    ; Dim strVar2 As String
-SL2    DS     1           
+SL2    DS     1
 SB2    DS     256
                                    ; Dim strVar3 As String
-SL3    DS     1           
+SL3    DS     1
 SB3    DS     256
        END
             "#
@@ -3165,7 +3056,8 @@ SB3    DS     256
             format!(
                 r#"
 TEST   START
-       IN     TB1,TL1     ; Input intVar1
+                                   ; Input intVar1
+       IN     TB1,TL1
        LAD    GR1,TB1
        LD     GR2,TL1
        CALL   {}
@@ -3178,22 +3070,23 @@ TEST   START
         )
         .unwrap();
 
-        statements.extend(subroutine::get_src(&mut t, id).statements);
-
         statements.extend(
             casl2::parse(
                 r#"
                                    ; Dim intVar1 As Integer
-I1     DS     1           
+I1     DS     1
 TL1    DS     1
 TB1    DS     256
-       END
             "#
                 .trim_start_matches('\n')
                 .trim_end(),
             )
             .unwrap(),
         );
+
+        statements.extend(subroutine::get_src(&mut t, id).statements);
+
+        statements.push(casl2::Statement::code(casl2::Command::End));
 
         assert_eq!(compiler.finish(), statements);
     }
@@ -3216,7 +3109,8 @@ TB1    DS     256
             statements,
             casl2::parse(
                 r#"TEST  START
-                     LAD    GR7,10     ; For i = 1 To 10 Step 1
+                                   ; For i = 1 To 10 Step 1
+                     LAD    GR7,10
                      ST     GR7,T1
                      LAD    GR7,1
                      ST     GR7,I1
@@ -3224,15 +3118,16 @@ J1                   NOP
                      LD     GR1,I1
                      CPA    GR1,T1
                      JPL    J3
+                                   ; Next i
 J2                   NOP
                      LD     GR1,I1
                      LAD    GR1,1,GR1
                      ST     GR1,I1
-                     JUMP   J1         ; Next i
+                     JUMP   J1
 J3                   NOP
                      RET
                                    ; Dim i As Integer
-I1                   DS 1              
+I1                   DS 1
 T1                   DS 1
                      END
 "#
@@ -3259,7 +3154,8 @@ T1                   DS 1
             statements,
             casl2::parse(
                 r#"TEST  START
-                     LAD    GR7,10     ; For i = 1 To 10 Step 1
+                                   ; For i = 1 To 10 Step 1
+                     LAD    GR7,10
                      ST     GR7,T1
                      LAD    GR7,1
                      ST     GR7,I1
@@ -3267,15 +3163,16 @@ J1                   NOP
                      LD     GR1,I1
                      CPA    GR1,T1
                      JPL    J3
+                                   ; Next i
 J2                   NOP
                      LD     GR1,I1
                      LAD    GR1,1,GR1
                      ST     GR1,I1
-                     JUMP   J1         ; Next i
+                     JUMP   J1
 J3                   NOP
                      RET
                                    ; Dim i As Integer
-I1                   DS 1              
+I1                   DS 1
 T1                   DS 1
                      END
 "#
@@ -3302,7 +3199,8 @@ T1                   DS 1
             statements,
             casl2::parse(
                 r#"TEST  START
-                     LAD    GR7,8      ; For i = 24 To 8 Step -2
+                                   ; For i = 24 To 8 Step -2
+                     LAD    GR7,8
                      ST     GR7,T1
                      LAD    GR7,24
                      ST     GR7,I1
@@ -3310,15 +3208,16 @@ J1                   NOP
                      LD     GR1,I1
                      CPA    GR1,T1
                      JMI    J3
+                                   ; Next i
 J2                   NOP
                      LD     GR1,I1
                      LAD    GR1,-2,GR1
                      ST     GR1,I1
-                     JUMP   J1         ; Next i
+                     JUMP   J1
 J3                   NOP
                      RET
                                    ; Dim i As Integer
-I1                   DS 1              
+I1                   DS 1
 T1                   DS 1
                      END
 "#
@@ -3346,7 +3245,8 @@ T1                   DS 1
             statements,
             casl2::parse(
                 r#"TEST  START
-                     LD     GR7,I1     ; For I = 1 To 10 Step S
+                                   ; For I = 1 To 10 Step S
+                     LD     GR7,I1
                      ST     GR7,T1
                      LAD    GR7,10
                      ST     GR7,T2
@@ -3362,17 +3262,18 @@ J2                   LD     GR1,T2
                      CPA    GR1,I2
 J3                   NOP
                      JPL    J5
+                                   ; Next I
 J4                   NOP
                      LD     GR1,I2
                      ADDA   GR1,T1
                      ST     GR1,I2
-                     JUMP   J1         ; Next I
+                     JUMP   J1
 J5                   NOP
                      RET
                                    ; Dim S As Integer
-I1                   DS 1              
+I1                   DS 1
                                    ; Dim I As Integer
-I2                   DS 1              
+I2                   DS 1
 T1                   DS 1
 T2                   DS 1
                      END
@@ -3399,12 +3300,13 @@ T2                   DS 1
             statements,
             casl2::parse(
                 r#"TEST  START
-                     LAD    GR7,11     ; x = (11 + 22)
+                                   ; x = (11 + 22)
+                     LAD    GR7,11
                      LAD    GR7,22,GR7
                      ST     GR7,I1
                      RET
                                    ; Dim x As Integer
-I1                   DS 1              
+I1                   DS 1
                      END
 "#
             )
@@ -3430,15 +3332,16 @@ I1                   DS 1
             statements,
             casl2::parse(
                 r#"TEST  START
-                     LAD    GR7,11     ; x = (11 + y)
+                                   ; x = (11 + y)
+                     LAD    GR7,11
                      LD     GR6,I2
                      ADDA   GR7,GR6
                      ST     GR7,I1
                      RET
                                    ; Dim x As Integer
-I1                   DS 1              
+I1                   DS 1
                                    ; Dim y As Integer
-I2                   DS 1              
+I2                   DS 1
                      END
 "#
             )
@@ -3473,6 +3376,10 @@ Next i
         let code = parser::parse(&mut cursor).unwrap().unwrap();
 
         let statements = compile("FIZZBUZZ", &code[..]).unwrap();
+
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
 
         assert!(!statements.is_empty()); // dummy assert
     }
