@@ -259,6 +259,7 @@ impl Parser {
                     ExprType::Boolean if matches!(var_type, VarType::ArrayOfBoolean(_)) => {
                         self.add_statement(Statement::AssignElement {
                             var_name: name.into(),
+                            var_type,
                             index: param,
                             value: expr,
                         });
@@ -268,6 +269,7 @@ impl Parser {
                     {
                         self.add_statement(Statement::AssignElement {
                             var_name: name.into(),
+                            var_type,
                             index: param,
                             value: expr,
                         });
@@ -1671,6 +1673,7 @@ pub enum Statement {
     },
     AssignElement {
         var_name: String,
+        var_type: VarType,
         index: Expr,
         value: Expr,
     },
