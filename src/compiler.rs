@@ -418,10 +418,7 @@ impl Compiler {
                 index: _,
                 value: _,
             } => todo!(),
-            AssignBoolean {
-                var_name: _,
-                value: _,
-            } => todo!(),
+            AssignBoolean { var_name, value } => self.compile_assign_boolean(var_name, value),
             AssignElement {
                 var_name: _,
                 index: _,
@@ -619,6 +616,28 @@ impl Compiler {
             adr: casl2::Adr::label(&exit_label),
             x: None,
         });
+    }
+
+    // Assign Boolean ステートメント
+    // bool_var = bool_expr
+    fn compile_assign_boolean(&mut self, var_name: &str, value: &parser::Expr) {
+        assert!(matches!(value.return_type(), parser::ExprType::Boolean));
+
+        self.comment(format!("{var} = {value}", var = var_name, value = value));
+
+        let reg = self.compile_int_expr(value);
+        let var_label = self.bool_var_labels.get(var_name).expect("BUG");
+        let adr = casl2::Adr::label(var_label);
+
+        // ST {reg},{var}
+        self.code(casl2::Command::A {
+            code: casl2::A::St,
+            r: reg,
+            adr,
+            x: None,
+        });
+
+        self.set_register_idle(reg);
     }
 
     // Assign String ステートメント
@@ -1200,6 +1219,7 @@ impl Compiler {
             self.get_save_registers_src(&[Gr1, Gr2, Gr3])
         };
 
+        self.comment(format!("Print {}", value));
         self.code(saves);
         self.code(format!(
             r#" LD    GR3,{reg}
@@ -1235,6 +1255,7 @@ impl Compiler {
             labels
         };
 
+        self.comment(format!("Print {}", value));
         self.code(format!(
             r#" OUT  {pos},{len}"#,
             pos = labels.buf,
@@ -1435,12 +1456,12 @@ impl Compiler {
             CharOfVarString(_var_name, _index) => todo!(),
             FunctionBoolean(_func, _param) => todo!(),
             FunctionInteger(func, param) => self.compile_function_integer(func, param),
-            LitBoolean(_lit_bool) => todo!(),
+            LitBoolean(lit_bool) => self.compile_literal_boolean(*lit_bool),
             LitInteger(lit_int) => self.compile_literal_integer(*lit_int),
             LitCharacter(_lit_char) => todo!(),
             UnaryOperatorInteger(_op, _value) => todo!(),
             UnaryOperatorBoolean(_op, _value) => todo!(),
-            VarBoolean(_var_name) => todo!(),
+            VarBoolean(var_name) => self.compile_variable_boolean(var_name),
             VarInteger(var_name) => self.compile_variable_integer(var_name),
             VarArrayOfBoolean(_arr_name, _index) => todo!(),
             VarArrayOfInteger(_arr_name, _index) => todo!(),
@@ -1789,6 +1810,41 @@ impl Compiler {
             code: casl2::A::Lad,
             r: reg,
             adr: casl2::Adr::Dec(value as i16),
+            x: None,
+        });
+
+        reg
+    }
+
+    // (式展開の処理の一部)
+    // 真理値変数の読み込み
+    fn compile_variable_boolean(&mut self, var_name: &str) -> casl2::Register {
+        let reg = self.get_idle_register();
+        let var_label = self.bool_var_labels.get(var_name).expect("BUG");
+        let adr = casl2::Adr::label(var_label);
+
+        // LD REG,VAR
+        self.code(casl2::Command::A {
+            code: casl2::A::Ld,
+            r: reg,
+            adr,
+            x: None,
+        });
+
+        reg
+    }
+
+    // (式展開の処理の一部)
+    // 真理値リテラルの読み込み
+    fn compile_literal_boolean(&mut self, value: bool) -> casl2::Register {
+        let reg = self.get_idle_register();
+        let value = if value { 0xFFFF } else { 0x0000 };
+
+        // LAD REG,VALUE
+        self.code(casl2::Command::A {
+            code: casl2::A::Lad,
+            r: reg,
+            adr: casl2::Adr::Hex(value),
             x: None,
         });
 
@@ -2638,7 +2694,7 @@ mod test {
             Print False
             Print 1234
             Print "Text"
-            ' Print bool1
+            Print bool1
             Print int1
             Print str1
             Print 1 + 2 + 3 + int1
@@ -2657,11 +2713,18 @@ mod test {
             ' Let int1 = - (-int1 + -1)
             ' Let int1 = Not (Not int1 + Not 1)
             ' Let int1 = Len(str1)
-            ' Let int1 = CInt(bool1)
+            Let int1 = CInt(bool1)
             Let int1 = CInt(str1)
+            Let int1 = int1
+            Let int1 = 123
             ' Let bool1 = CBool(int1)
-            ' Let str1 = CStr(bool1)
+            Let bool1 = 123 < int1
+            Let bool1 = bool1
+            Let bool1 = True
+            Let str1 = CStr(bool1)
             Let str1 = CStr(int1)
+            Let str1 = str1
+            Let str1 = "XYZ ABC"
             ' Let str1 = "prifix" & (str1 & "suffix")
             For i = 1 To 10
                 Print "X"
