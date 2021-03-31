@@ -496,9 +496,9 @@ impl Compiler {
             PrintLitInteger { value } => self.compile_print_lit_integer(*value),
             PrintLitString { value } => self.compile_print_lit_string(value),
             PrintVarString { var_name } => self.compile_print_var_string(var_name),
-            PrintExprBoolan { value: _ } => todo!(),
+            PrintExprBoolan { value } => self.compile_print_expr_boolean(value),
             PrintExprInteger { value } => self.compile_print_expr_integer(value),
-            PrintExprString { value: _ } => todo!(),
+            PrintExprString { value } => self.compile_print_expr_string(value),
 
             // IfやSelectの内側で処理する
             ElseIf { .. }
@@ -1184,6 +1184,64 @@ impl Compiler {
             pos: buf.into(),
             len: len.into(),
         });
+    }
+
+    // Print ステートメント
+    // 真理値の演算結果の画面出力
+    fn compile_print_expr_boolean(&mut self, value: &parser::Expr) {
+        assert!(matches!(value.return_type(), parser::ExprType::Boolean));
+
+        let reg = self.compile_int_expr(value);
+        let labels = self.get_temp_str_var_label();
+        let cstr = self.load_subroutine(subroutine::Id::FuncCStrArgBool);
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD    GR3,{reg}
+                LAD   GR1,{pos}
+                LAD   GR2,{len}
+                CALL  {cstr}
+                OUT   {pos},{len}"#,
+            reg = reg,
+            pos = labels.buf,
+            len = labels.len,
+            cstr = cstr
+        ));
+        self.code(recovers);
+
+        self.set_register_idle(reg);
+        self.return_temp_str_var_label(labels);
+    }
+
+    // Print ステートメント
+    // 文字列の演算結果の画面出力
+    fn compile_print_expr_string(&mut self, value: &parser::Expr) {
+        assert!(matches!(value.return_type(), parser::ExprType::String));
+
+        let labels = self.compile_str_expr(value);
+
+        let labels = if let StrLabels {
+            label_type: StrLabelType::Lit(s),
+            ..
+        } = labels
+        {
+            self.get_lit_str_labels(&s)
+        } else {
+            labels
+        };
+
+        self.code(format!(
+            r#" OUT  {pos},{len}"#,
+            pos = labels.buf,
+            len = labels.len
+        ));
+
+        self.return_temp_str_var_label(labels);
     }
 
     // Print ステートメント
@@ -2584,6 +2642,8 @@ mod test {
             Print int1
             Print str1
             Print 1 + 2 + 3 + int1
+            Print (123 < 10)
+            Print CStr(123 < 999)
             Let int1 = (1 + int1) + 2
             Let int1 = (1 - int1) - 2
             Let int1 = (1 << int1) << 2
