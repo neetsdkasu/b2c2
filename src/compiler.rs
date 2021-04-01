@@ -263,10 +263,18 @@ impl Compiler {
         if let Some(labels) = self.lit_str_labels.get(literal) {
             return labels.clone();
         }
-        StrLabels {
-            len: format!("={}", literal.chars().count()),
-            buf: format!("='{}'", literal.replace('\'', "''")),
-            label_type: StrLabelType::Lit(literal.to_string()),
+        if literal.is_empty() {
+            StrLabels {
+                len: "=0".to_string(),
+                buf: "=0".to_string(),
+                label_type: StrLabelType::Lit(literal.to_string()),
+            }
+        } else {
+            StrLabels {
+                len: format!("={}", literal.chars().count()),
+                buf: format!("='{}'", literal.replace('\'', "''")),
+                label_type: StrLabelType::Lit(literal.to_string()),
+            }
         }
     }
 
@@ -1410,6 +1418,8 @@ impl Compiler {
     fn compile_print_expr_boolean(&mut self, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Boolean));
 
+        self.comment(format!("Print {}", value));
+
         let reg = self.compile_int_expr(value);
         let labels = self.get_temp_str_var_label();
         let cstr = self.load_subroutine(subroutine::Id::FuncCStrArgBool);
@@ -1419,7 +1429,6 @@ impl Compiler {
             self.get_save_registers_src(&[Gr1, Gr2, Gr3])
         };
 
-        self.comment(format!("Print {}", value));
         self.code(saves);
         self.code(format!(
             r#" LD    GR3,{reg}
@@ -1443,6 +1452,8 @@ impl Compiler {
     fn compile_print_expr_string(&mut self, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::String));
 
+        self.comment(format!("Print {}", value));
+
         let labels = self.compile_str_expr(value);
 
         let labels = if let StrLabels {
@@ -1455,7 +1466,6 @@ impl Compiler {
             labels
         };
 
-        self.comment(format!("Print {}", value));
         self.code(format!(
             r#" OUT  {pos},{len}"#,
             pos = labels.buf,
@@ -2347,11 +2357,30 @@ impl Compiler {
         use tokenizer::Function::*;
         match func {
             CInt => self.call_function_cint(param),
-            Len => todo!(),
+            Len => self.call_function_len(param),
             Max => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMax),
             Min => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMin),
             CBool | CStr => unreachable!("BUG"),
         }
+    }
+
+    // (式展開の処理の一部)
+    // Len(<string>) の処理
+    fn call_function_len(&mut self, param: &parser::Expr) -> casl2::Register {
+        assert!(matches!(param.return_type(), parser::ExprType::String));
+
+        let reg = self.get_idle_register();
+        self.set_register_idle(reg);
+
+        let str_labels = self.compile_str_expr(param);
+
+        self.set_register_used(reg);
+
+        self.code(format!(" LD {reg},{len}", reg = reg, len = str_labels.len));
+
+        self.return_temp_str_var_label(str_labels);
+
+        reg
     }
 
     // (式展開の処理の一部)
@@ -4133,7 +4162,6 @@ Loop
 
     #[test]
     fn print_primes_works() {
-        // 1000行超えそう…
         let src = r#"
 ' *** PRINT PRIMES ***
 Dim flag(255) As Boolean
@@ -4156,6 +4184,7 @@ For i = 2 To 255
         flag(j) = True
     Next j
 Next i
+Print "PRIMES: " & CStr(count)
 s = ""
 For i = 0 To count - 1
     If prime(i) < 10 Then
@@ -4164,7 +4193,7 @@ For i = 0 To count - 1
         s = s & " "
     End If
     s = s & CStr(prime(i)) & ","
-    If i Mod 20 = 19 Then
+    If i Mod 10 = 9 Then
         Print s
         s = ""
     End If
@@ -4178,7 +4207,7 @@ End If
 
         let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-        let statements = compile("FIZZBUZZ", &code[..]).unwrap();
+        let statements = compile("PRIMES", &code[..]).unwrap();
 
         statements.iter().for_each(|line| {
             eprintln!("{}", line);
