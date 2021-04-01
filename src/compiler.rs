@@ -1621,7 +1621,7 @@ impl Compiler {
     ) -> StrLabels {
         assert!(matches!(lhs.return_type(), parser::ExprType::String));
         assert_eq!(lhs.return_type(), rhs.return_type());
-        
+
         let lhs_labels = self.compile_str_expr(lhs);
         let rhs_labels = self.compile_str_expr(rhs);
 
@@ -1953,13 +1953,42 @@ impl Compiler {
             GreaterOrEqual => todo!(),
             Equal => self.compile_bin_op_boolean_eq(lhs, rhs),
             LessThan => self.compile_bin_op_boolean_less_than(lhs, rhs),
-            GreaterThan => todo!(),
+            GreaterThan => self.compile_bin_op_boolean_greater_than(lhs, rhs),
 
             // 二項演算子ではないものや、真理値を返さないもの
             ShiftLeft | ShiftRight | Add | Sub | Mul | Div | Mod | Not | AddInto | SubInto
             | Concat | OpenBracket | CloseBracket | Comma => {
                 unreachable!("BUG")
             }
+        }
+    }
+
+    // (式展開の処理の一部)
+    // 比較演算子( > )
+    fn compile_bin_op_boolean_greater_than(
+        &mut self,
+        lhs: &parser::Expr,
+        rhs: &parser::Expr,
+    ) -> casl2::Register {
+        assert_eq!(lhs.return_type(), rhs.return_type());
+
+        match lhs.return_type() {
+            parser::ExprType::Integer => {
+                let lhs_reg = self.compile_int_expr(lhs);
+                let rhs_reg = self.compile_int_expr(rhs);
+                self.restore_register(lhs_reg);
+                self.code(format!(
+                    r#" SUBA  {rhs},{lhs}
+                        SRA   {rhs},15
+                        LD    {lhs},{rhs}"#,
+                    lhs = lhs_reg,
+                    rhs = rhs_reg
+                ));
+                self.set_register_idle(rhs_reg);
+                lhs_reg
+            }
+            parser::ExprType::String => todo!(),
+            parser::ExprType::Boolean | parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
 
