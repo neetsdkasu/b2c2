@@ -444,10 +444,10 @@ impl Compiler {
             AssignString { var_name, value } => self.compile_assign_string(var_name, value),
             AssignSubInto { var_name, value } => self.compile_assign_sub_into(var_name, value),
             AssignSubIntoElement {
-                var_name: _,
-                index: _,
-                value: _,
-            } => todo!(),
+                var_name,
+                index,
+                value,
+            } => self.compile_assign_sub_into_element(var_name, index, value),
             ContinueDo { exit_id } => self.compile_continue_loop(*exit_id, "Do"),
             ContinueFor { exit_id } => self.compile_continue_loop(*exit_id, "For"),
             Dim { var_name, var_type } => self.compile_dim(var_name, var_type),
@@ -629,6 +629,68 @@ impl Compiler {
             adr: casl2::Adr::label(&exit_label),
             x: None,
         });
+    }
+
+    // Assign Sub Into Element ステートメント
+    // int_arr(index) -= int_expr
+    fn compile_assign_sub_into_element(
+        &mut self,
+        var_name: &str,
+        index: &parser::Expr,
+        value: &parser::Expr,
+    ) {
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+        assert!(matches!(value.return_type(), parser::ExprType::Integer));
+
+        self.comment(format!(
+            "{var}( {index} ) -= {value}",
+            var = var_name,
+            index = index,
+            value = value
+        ));
+
+        let (arr_label, arr_size) = self.int_arr_labels.get(var_name).cloned().expect("BUG");
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+
+        let index_reg = self.compile_int_expr(index);
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD   GR1,{index}
+                LAD  GR2,{size}
+                CALL {fit}"#,
+            index = index_reg,
+            size = arr_size,
+            fit = safe_index
+        ));
+        self.code(recovers);
+        self.code(format!(" LD {index},GR0", index = index_reg));
+
+        let value_reg = self.compile_int_expr(value);
+
+        self.restore_register(index_reg);
+
+        let reg = self.get_idle_register();
+
+        self.code(format!(
+            r#" LD    {reg},{arr},{index}
+                SUBA  {reg},{value}
+                ST    {reg},{arr},{index}"#,
+            reg = reg,
+            value = value_reg,
+            arr = arr_label,
+            index = index_reg
+        ));
+
+        self.set_register_idle(reg);
+        self.set_register_idle(value_reg);
+        self.set_register_idle(index_reg);
     }
 
     // Assign Sub Into ステートメント
@@ -3519,7 +3581,7 @@ mod test {
             int1 += 123 * 5
             intArr1(5 + 1) += 123 - 4
             int1 -= 123 \ 3
-            ' intArr1(4 - 3) -= 123 Mod 2
+            intArr1(4 - 3) -= 123 Mod 2
             For i = 1 To 10
                 Print "X"
             Next i
