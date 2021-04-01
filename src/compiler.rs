@@ -3430,12 +3430,12 @@ mod test {
             Let str1 = CStr(int1)
             Let str1 = str1
             Let str1 = "XYZ ABC"
-            ' Let str1 = "prifix" & (str1 & "suffix")
+            Let str1 = "prefix" & (str1 & "suffix")
             Let intArr1(1 * 2) = 123 * int1
             Let boolArr1(5 - 3) = True
             Let str1(3 * 0) = "A"c
-            ' Let int1 = intArr1(0 + 1) * str1(3 + 1)
-            ' Let bool1 = boolArr1(5 * 1) And bool1
+            Let int1 = intArr1(0 + 1) * str1(3 + 1)
+            Let bool1 = boolArr1(5 * 1) And Not bool1 Or False Xor True
             For i = 1 To 10
                 Print "X"
             Next i
@@ -3488,11 +3488,11 @@ mod test {
                 Print "X"
             ElseIf int1 - 4 < (543 + 123) Then
                 Print "X"
-            ' ElseIf int1 - 4 <= (543 + 123) Then
+            ElseIf int1 - 4 <= (543 + 123) Then
                 Print "X"
-            ' ElseIf int1 - 4 > (543 + 123) Then
+            ElseIf int1 - 4 > (543 + 123) Then
                 Print "X"
-            ' ElseIf int1 - 4 >= (543 + 123) Then
+            ElseIf int1 - 4 >= (543 + 123) Then
                 Print "X"
             Else If str1 = "xyz" Then
                 Print "X"
