@@ -453,10 +453,10 @@ impl Compiler {
             Dim { var_name, var_type } => self.compile_dim(var_name, var_type),
             DoLoop { exit_id, block } => self.compile_do_loop(*exit_id, block),
             DoLoopUntil {
-                exit_id: _,
-                condition: _,
-                block: _,
-            } => todo!(),
+                exit_id,
+                condition,
+                block,
+            } => self.compile_do_loop_until(*exit_id, condition, block),
             DoLoopWhile {
                 exit_id: _,
                 condition: _,
@@ -529,6 +529,46 @@ impl Compiler {
             | ProvisionalCaseString { .. }
             | ProvisionalCaseElse => unreachable!("BUG"),
         }
+    }
+
+    // Do
+    // Loop Until <condition>
+    // ステートメント
+    fn compile_do_loop_until(
+        &mut self,
+        exit_id: usize,
+        condition: &parser::Expr,
+        block: &[parser::Statement],
+    ) {
+        assert!(matches!(condition.return_type(), parser::ExprType::Boolean));
+
+        self.comment("Do");
+
+        let top_label = self.get_new_jump_label();
+        let loop_label = self.get_loop_label(exit_id);
+        let exit_label = self.get_exit_label(exit_id);
+
+        self.labeled(&top_label, casl2::Command::Nop);
+
+        for stmt in block.iter() {
+            self.compile(stmt);
+        }
+
+        self.comment(format!("Loop Until {cond}", cond = condition));
+        self.labeled(loop_label, casl2::Command::Nop);
+
+        let cond_reg = self.compile_int_expr(condition);
+
+        self.code(format!(
+            r#" AND {reg},{reg}
+                JZE {next}"#,
+            reg = cond_reg,
+            next = top_label
+        ));
+
+        self.set_register_idle(cond_reg);
+
+        self.labeled(exit_label, casl2::Command::Nop);
     }
 
     // If ステートメント
@@ -3628,6 +3668,9 @@ mod test {
                 Continue Do
                 Exit Do
             Loop
+            Do
+                int1 += 1
+            Loop Until int1 > 10
             If int1 = 123 Then
                 Print "X"
             ' ElseIf int1 + 3 <> (999 * 10) Then
