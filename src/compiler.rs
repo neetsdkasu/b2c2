@@ -1,8 +1,9 @@
-use self::extends::*;
+use self::ext::*;
 use crate::casl2;
 use crate::parser;
 use crate::tokenizer;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::convert::TryFrom;
 use std::fmt::Write;
 
 type CompileError = String;
@@ -409,10 +410,7 @@ impl Compiler {
     fn compile(&mut self, stmt: &parser::Statement) {
         use parser::Statement::*;
         match stmt {
-            AssignAddInto {
-                var_name: _,
-                value: _,
-            } => todo!(),
+            AssignAddInto { var_name, value } => self.compile_assign_add_into(var_name, value),
             AssignAddIntoElement {
                 var_name: _,
                 index: _,
@@ -628,6 +626,14 @@ impl Compiler {
         });
     }
 
+    // Assign Add Into ステートメント
+    // int_var += int_expr
+    fn compile_assign_add_into(&mut self, var_name: &str, value: &parser::Expr) {
+        assert!(matches!(value.return_type(), parser::ExprType::Integer));
+
+        todo!();
+    }
+
     // Assign Boolean Element ステートメント
     // bool_arr(index) = bool_expr
     fn compile_assign_boolean_element(
@@ -661,13 +667,14 @@ impl Compiler {
         self.code(format!(
             r#" LD    GR1,{index}
                 LAD   GR2,{size}
-                CALL  {fit}
-                LD    {index},GR0"#,
+                CALL  {fit}"#,
             index = index_reg,
             size = arr_size,
             fit = safe_index
         ));
         self.code(recovers);
+
+        self.code(format!(" LD {index},GR0", index = index_reg));
 
         let value_reg = self.compile_int_expr(value);
 
@@ -717,13 +724,14 @@ impl Compiler {
         self.code(format!(
             r#" LD    GR1,{index}
                 LAD   GR2,{size}
-                CALL  {fit}
-                LD    {index},GR0"#,
+                CALL  {fit}"#,
             index = index_reg,
             size = arr_size,
             fit = safe_index
         ));
         self.code(recovers);
+
+        self.code(format!(" LD {index},GR0", index = index_reg));
 
         let value_reg = self.compile_int_expr(value);
 
@@ -748,8 +756,6 @@ impl Compiler {
         index: &parser::Expr,
         value: &parser::Expr,
     ) {
-        use std::convert::TryFrom;
-
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
@@ -775,13 +781,14 @@ impl Compiler {
         self.code(format!(
             r#" LD    GR1,{index}
                 LD    GR2,{size}
-                CALL  {fit}
-                LD    {index},GR0"#,
+                CALL  {fit}"#,
             index = index_reg,
             size = str_labels.len,
             fit = safe_index
         ));
         self.code(recovers);
+
+        self.code(format!(" LD {index},GR0", index = index_reg));
 
         let value_reg = self.compile_int_expr(value);
 
@@ -1487,7 +1494,6 @@ impl Compiler {
     // アイドル中のレジスタを取得
     fn get_idle_register(&mut self) -> casl2::Register {
         use casl2::Register::{self, *};
-        use std::convert::TryFrom;
         const REG: [Register; 7] = [Gr7, Gr6, Gr5, Gr4, Gr3, Gr2, Gr1];
         for &reg in REG.iter() {
             if self.is_idle_register(reg) {
@@ -1632,19 +1638,23 @@ impl Compiler {
         match expr {
             BinaryOperatorBoolean(op, lhs, rhs) => self.compile_bin_op_boolean(*op, lhs, rhs),
             BinaryOperatorInteger(op, lhs, rhs) => self.compile_bin_op_integer(*op, lhs, rhs),
-            CharOfLitString(_lit_str, _index) => todo!(),
-            CharOfVarString(_var_name, _index) => todo!(),
+            CharOfLitString(lit_str, index) => self.compile_character_of_literal(lit_str, index),
+            CharOfVarString(var_name, index) => self.compile_character_of_variable(var_name, index),
             FunctionBoolean(_func, _param) => todo!(),
             FunctionInteger(func, param) => self.compile_function_integer(func, param),
             LitBoolean(lit_bool) => self.compile_literal_boolean(*lit_bool),
             LitInteger(lit_int) => self.compile_literal_integer(*lit_int),
-            LitCharacter(_lit_char) => todo!(),
+            LitCharacter(lit_char) => self.compile_literal_character(*lit_char),
             UnaryOperatorInteger(_op, _value) => todo!(),
             UnaryOperatorBoolean(_op, _value) => todo!(),
             VarBoolean(var_name) => self.compile_variable_boolean(var_name),
             VarInteger(var_name) => self.compile_variable_integer(var_name),
-            VarArrayOfBoolean(_arr_name, _index) => todo!(),
-            VarArrayOfInteger(_arr_name, _index) => todo!(),
+            VarArrayOfBoolean(arr_name, index) => {
+                self.compile_variable_array_of_boolean(arr_name, index)
+            }
+            VarArrayOfInteger(arr_name, index) => {
+                self.compile_variable_array_of_integer(arr_name, index)
+            }
 
             // 戻り値が整数でも真理値でもないもの
             BinaryOperatorString(..)
@@ -1653,6 +1663,180 @@ impl Compiler {
             | VarString(..)
             | ParamList(_) => unreachable!("BUG"),
         }
+    }
+
+    // (式展開の処理の一部)
+    // 文字リテラルを返す
+    fn compile_literal_character(&mut self, lit_char: char) -> casl2::Register {
+        let reg = self.get_idle_register();
+
+        if lit_char == '\'' {
+            self.code(format!(r#" LD {reg},=''''"#, reg = reg));
+        } else {
+            self.code(format!(r#" LD {reg},='{ch}'"#, reg = reg, ch = lit_char));
+        }
+
+        reg
+    }
+
+    // (式展開の処理の一部)
+    // 文字列リテラルの文字を取り出す
+    fn compile_character_of_literal(
+        &mut self,
+        lit_str: &str,
+        index: &parser::Expr,
+    ) -> casl2::Register {
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+
+        let index_reg = self.compile_int_expr(index);
+
+        let str_labels = self.get_lit_str_label_if_exists(lit_str);
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD    GR1,{index}
+                LD    GR2,{size}
+                CALL  {fit}"#,
+            index = index_reg,
+            size = str_labels.len,
+            fit = safe_index
+        ));
+        self.code(recovers);
+        self.code(format!(
+            r#" LD    {index},GR0
+                LD    {index},{lit},{index}"#,
+            index = index_reg,
+            lit = str_labels.buf
+        ));
+
+        index_reg
+    }
+
+    // (式展開の処理の一部)
+    // 文字列変数の文字を取り出す
+    fn compile_character_of_variable(
+        &mut self,
+        var_name: &str,
+        index: &parser::Expr,
+    ) -> casl2::Register {
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+
+        let index_reg = self.compile_int_expr(index);
+
+        let str_labels = self.str_var_labels.get(var_name).cloned().expect("BUG");
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD    GR1,{index}
+                LD    GR2,{size}
+                CALL  {fit}"#,
+            index = index_reg,
+            size = str_labels.len,
+            fit = safe_index
+        ));
+        self.code(recovers);
+        self.code(format!(
+            r#" LD    {index},GR0
+                LD    {index},{var},{index}"#,
+            index = index_reg,
+            var = str_labels.buf
+        ));
+
+        index_reg
+    }
+
+    // (式展開の処理の一部)
+    // 真理値配列の要素を取り出す
+    fn compile_variable_array_of_boolean(
+        &mut self,
+        arr_name: &str,
+        index: &parser::Expr,
+    ) -> casl2::Register {
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+
+        let index_reg = self.compile_int_expr(index);
+
+        let (arr_label, arr_size) = self.bool_arr_labels.get(arr_name).cloned().expect("BUG");
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD    GR1,{index}
+                LAD   GR2,{size}
+                CALL  {fit}"#,
+            index = index_reg,
+            size = arr_size,
+            fit = safe_index
+        ));
+        self.code(recovers);
+        self.code(format!(
+            r#" LD    {index},GR0
+                LD    {index},{arr},{index}"#,
+            index = index_reg,
+            arr = arr_label
+        ));
+
+        index_reg
+    }
+
+    // (式展開の処理の一部)
+    // 整数配列の要素を取り出す
+    fn compile_variable_array_of_integer(
+        &mut self,
+        arr_name: &str,
+        index: &parser::Expr,
+    ) -> casl2::Register {
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+
+        let index_reg = self.compile_int_expr(index);
+
+        let (arr_label, arr_size) = self.int_arr_labels.get(arr_name).cloned().expect("BUG");
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD    GR1,{index}
+                LAD   GR2,{size}
+                CALL  {fit}"#,
+            index = index_reg,
+            size = arr_size,
+            fit = safe_index
+        ));
+        self.code(recovers);
+        self.code(format!(
+            r#" LD    {index},GR0
+                LD    {index},{arr},{index}"#,
+            index = index_reg,
+            arr = arr_label
+        ));
+
+        index_reg
     }
 
     // (式展開の処理の一部)
@@ -2741,7 +2925,7 @@ mod subroutine {
     }
 }
 
-mod extends {
+mod ext {
     use super::*;
 
     pub trait AddComment<T> {
