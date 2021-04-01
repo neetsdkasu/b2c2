@@ -257,19 +257,22 @@ impl Parser {
                 let expr = self.parse_expr(rest)?;
                 match expr.return_type() {
                     ExprType::Boolean if matches!(var_type, VarType::ArrayOfBoolean(_)) => {
-                        self.add_statement(Statement::AssignElement {
+                        self.add_statement(Statement::AssignBooleanElement {
                             var_name: name.into(),
-                            var_type,
                             index: param,
                             value: expr,
                         });
                     }
-                    ExprType::Integer
-                        if matches!(var_type, VarType::String | VarType::ArrayOfInteger(_)) =>
-                    {
-                        self.add_statement(Statement::AssignElement {
+                    ExprType::Integer if matches!(var_type, VarType::ArrayOfInteger(_)) => {
+                        self.add_statement(Statement::AssignIntegerElement {
                             var_name: name.into(),
-                            var_type,
+                            index: param,
+                            value: expr,
+                        });
+                    }
+                    ExprType::Integer if matches!(var_type, VarType::String) => {
+                        self.add_statement(Statement::AssignCharacterElement {
+                            var_name: name.into(),
                             index: param,
                             value: expr,
                         });
@@ -1671,9 +1674,18 @@ pub enum Statement {
         var_name: String,
         value: Expr,
     },
-    AssignElement {
+    AssignBooleanElement {
         var_name: String,
-        var_type: VarType,
+        index: Expr,
+        value: Expr,
+    },
+    AssignIntegerElement {
+        var_name: String,
+        index: Expr,
+        value: Expr,
+    },
+    AssignCharacterElement {
+        var_name: String,
         index: Expr,
         value: Expr,
     },

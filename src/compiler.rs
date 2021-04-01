@@ -419,12 +419,21 @@ impl Compiler {
                 value: _,
             } => todo!(),
             AssignBoolean { var_name, value } => self.compile_assign_boolean(var_name, value),
-            AssignElement {
-                var_name: _,
-                var_type: _,
-                index: _,
-                value: _,
-            } => todo!(),
+            AssignBooleanElement {
+                var_name,
+                index,
+                value,
+            } => self.compile_assign_boolean_element(var_name, index, value),
+            AssignIntegerElement {
+                var_name,
+                index,
+                value,
+            } => self.compile_assign_integer_element(var_name, index, value),
+            AssignCharacterElement {
+                var_name,
+                index,
+                value,
+            } => self.compile_assign_character_element(var_name, index, value),
             AssignInteger { var_name, value } => self.compile_assign_integer(var_name, value),
             AssignString { var_name, value } => self.compile_assign_string(var_name, value),
             AssignSubInto {
@@ -617,6 +626,176 @@ impl Compiler {
             adr: casl2::Adr::label(&exit_label),
             x: None,
         });
+    }
+
+    // Assign Boolean Element ステートメント
+    // bool_arr(index) = bool_expr
+    fn compile_assign_boolean_element(
+        &mut self,
+        var_name: &str,
+        index: &parser::Expr,
+        value: &parser::Expr,
+    ) {
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+        assert!(matches!(value.return_type(), parser::ExprType::Boolean));
+
+        self.comment(format!(
+            "{var}( {index} ) = {value}",
+            var = var_name,
+            index = index,
+            value = value
+        ));
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+
+        let (arr_label, arr_size) = self.bool_arr_labels.get(var_name).cloned().expect("BUG");
+
+        let index_reg = self.compile_int_expr(index);
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD    GR1,{index}
+                LAD   GR2,{size}
+                CALL  {fit}
+                LD    {index},GR0"#,
+            index = index_reg,
+            size = arr_size,
+            fit = safe_index
+        ));
+        self.code(recovers);
+
+        let value_reg = self.compile_int_expr(value);
+
+        self.restore_register(index_reg);
+
+        self.code(format!(
+            r#" ST {value},{arr},{index}"#,
+            value = value_reg,
+            arr = arr_label,
+            index = index_reg
+        ));
+
+        self.set_register_idle(value_reg);
+        self.set_register_idle(index_reg);
+    }
+
+    // Assign Integer Element ステートメント
+    // int_arr(index) = int_expr
+    fn compile_assign_integer_element(
+        &mut self,
+        var_name: &str,
+        index: &parser::Expr,
+        value: &parser::Expr,
+    ) {
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+        assert!(matches!(value.return_type(), parser::ExprType::Integer));
+
+        self.comment(format!(
+            "{var}( {index} ) = {value}",
+            var = var_name,
+            index = index,
+            value = value
+        ));
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+
+        let (arr_label, arr_size) = self.int_arr_labels.get(var_name).cloned().expect("BUG");
+
+        let index_reg = self.compile_int_expr(index);
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD    GR1,{index}
+                LAD   GR2,{size}
+                CALL  {fit}
+                LD    {index},GR0"#,
+            index = index_reg,
+            size = arr_size,
+            fit = safe_index
+        ));
+        self.code(recovers);
+
+        let value_reg = self.compile_int_expr(value);
+
+        self.restore_register(index_reg);
+
+        self.code(format!(
+            r#" ST {value},{arr},{index}"#,
+            value = value_reg,
+            arr = arr_label,
+            index = index_reg
+        ));
+
+        self.set_register_idle(value_reg);
+        self.set_register_idle(index_reg);
+    }
+
+    // Assign Character Element ステートメント
+    // str_var(index) = int_expr
+    fn compile_assign_character_element(
+        &mut self,
+        var_name: &str,
+        index: &parser::Expr,
+        value: &parser::Expr,
+    ) {
+        use std::convert::TryFrom;
+
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+        assert!(matches!(value.return_type(), parser::ExprType::Integer));
+
+        self.comment(format!(
+            "{var}( {index} ) = {value}",
+            var = var_name,
+            index = index,
+            value = value
+        ));
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+
+        let str_labels = self.str_var_labels.get(var_name).cloned().expect("BUG");
+
+        let index_reg = self.compile_int_expr(index);
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD    GR1,{index}
+                LD    GR2,{size}
+                CALL  {fit}
+                LD    {index},GR0"#,
+            index = index_reg,
+            size = str_labels.len,
+            fit = safe_index
+        ));
+        self.code(recovers);
+
+        let value_reg = self.compile_int_expr(value);
+
+        self.restore_register(index_reg);
+
+        self.code(format!(
+            r#" ST {value},{arr},{index}"#,
+            value = value_reg,
+            arr = str_labels.buf,
+            index = casl2::IndexRegister::try_from(index_reg).expect("BUG")
+        ));
+
+        self.set_register_idle(value_reg);
+        self.set_register_idle(index_reg);
     }
 
     // Assign Boolean ステートメント
@@ -1408,7 +1587,7 @@ impl Compiler {
         }
     }
 
-    // CStr関数
+    // CStr(<boolean>/<integer>) 関数
     fn call_function_cstr(&mut self, param: &parser::Expr) -> StrLabels {
         let value_reg = self.compile_int_expr(param);
 
@@ -1999,6 +2178,7 @@ mod subroutine {
         UtilCopyStr,
         UtilDivMod,
         UtilMul,
+        UtilSafeIndex,
     }
 
     impl Id {
@@ -2030,6 +2210,7 @@ mod subroutine {
             Id::UtilCopyStr => get_util_copy_str(gen, id),
             Id::UtilDivMod => get_util_div_mod(gen, id),
             Id::UtilMul => get_util_mul(gen, id),
+            Id::UtilSafeIndex => get_util_safe_index(gen, id),
         }
     }
 
@@ -2174,6 +2355,39 @@ mod subroutine {
                     ret = gen.jump_label(),
                     read = gen.jump_label(),
                     mi = gen.jump_label()
+                )
+                .trim_start_matches('\n'),
+            )
+            .unwrap(),
+        }
+    }
+
+    // Safe Index
+    fn get_util_safe_index<T: Gen>(_gen: &mut T, id: Id) -> Src {
+        // GR1 index of array
+        // GR2 size of array
+        // GR0 = Max(0, Min(GR1, GR2 - 1))
+        Src {
+            dependencies: vec![Id::FuncMax, Id::FuncMin],
+            statements: casl2::parse(
+                format!(
+                    r#"
+                                   ; {comment}
+{prog}  PUSH   0,GR1
+        PUSH   0,GR2
+        LAD    GR2,-1,GR2
+        CALL   {min}
+        XOR    GR1,GR1
+        LD     GR2,GR0
+        CALL   {max}
+        POP    GR2
+        POP    GR1
+        RET
+"#,
+                    comment = format!("{:?}", id),
+                    prog = id.label(),
+                    min = Id::FuncMin.label(),
+                    max = Id::FuncMax.label()
                 )
                 .trim_start_matches('\n'),
             )
@@ -2688,9 +2902,12 @@ mod test {
             Dim bool1 As Boolean
             Dim int1 As Integer
             Dim str1 As String
+            Dim intArr1(10) As Integer
+            Dim boolArr1(10) As Boolean
             Dim i As Integer
             Dim j As Integer
             Input int1
+            ' Input intArr1(3)
             Input str1
             Print False
             Print 1234
@@ -2727,6 +2944,11 @@ mod test {
             Let str1 = str1
             Let str1 = "XYZ ABC"
             ' Let str1 = "prifix" & (str1 & "suffix")
+            Let intArr1(1 * 2) = 123 * int1
+            Let boolArr1(5 - 3) = True
+            Let str1(3 * 0) = "A"c
+            ' Let int1 = intArr1(0 + 1) * str1(3 + 1)
+            ' Let bool1 = boolArr1(5 * 1) And bool1
             For i = 1 To 10
                 Print "X"
             Next i
