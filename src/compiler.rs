@@ -492,10 +492,10 @@ impl Compiler {
                 case_blocks,
             } => self.compile_select_integer(*exit_id, value, case_blocks),
             SelectString {
-                exit_id: _,
-                value: _,
-                case_blocks: _,
-            } => todo!(),
+                exit_id,
+                value,
+                case_blocks,
+            } => self.compile_select_string(*exit_id, value, case_blocks),
             InputElementInteger {
                 var_name: _,
                 index: _,
@@ -529,6 +529,116 @@ impl Compiler {
             | ProvisionalCaseString { .. }
             | ProvisionalCaseElse => unreachable!("BUG"),
         }
+    }
+
+    // Select Case <string> ステートメント
+    fn compile_select_string(
+        &mut self,
+        exit_id: usize,
+        value: &parser::Expr,
+        case_blocks: &[parser::Statement],
+    ) {
+        assert!(matches!(value.return_type(), parser::ExprType::String));
+
+        self.comment(format!("Select Case {value}", value = value));
+
+        let exit_label = self.get_exit_label(exit_id);
+
+        let label_and_blocks: Vec<_> = case_blocks
+            .iter()
+            .map(|b| (self.get_new_jump_label(), b))
+            .collect();
+
+        let value_labels = self.compile_str_expr(value);
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LAD  GR1,{pos}
+                LD   GR2,{len}"#,
+            pos = value_labels.buf,
+            len = value_labels.len
+        ));
+
+        self.return_temp_str_var_label(value_labels);
+
+        let cmpstr = self.load_subroutine(subroutine::Id::UtilCompareStr);
+
+        for (label, case_stmt) in label_and_blocks.iter() {
+            match case_stmt {
+                parser::Statement::CaseString { values, .. } => {
+                    for lit in values.iter() {
+                        let lit_labels = self.get_lit_str_label_if_exists(lit);
+                        self.code(format!(
+                            r#" LAD   GR3,{pos}
+                                LAD   GR4,{len}
+                                CALL  {cmp}
+                                AND   GR0,GR0
+                                JZE   {label}"#,
+                            pos = lit_labels.buf,
+                            len = lit.chars().count(),
+                            cmp = cmpstr,
+                            label = label
+                        ));
+                    }
+                }
+                parser::Statement::CaseElse { .. } => {
+                    self.code(&recovers);
+                    self.code(format!(" JUMP {label}", label = label));
+                }
+                _ => unreachable!("BUG"),
+            }
+        }
+
+        if !matches!(case_blocks.last(), Some(parser::Statement::CaseElse { .. })) {
+            self.code(&recovers);
+            self.code(format!(" JUMP {exit}", exit = exit_label));
+        }
+
+        for (label, case_stmt) in label_and_blocks.iter() {
+            match case_stmt {
+                parser::Statement::CaseString { values, block } => {
+                    self.comment(format!(
+                        "Case {}",
+                        values
+                            .iter()
+                            .map(|s| format!("'{}'", s.replace('\'', "''")))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                    self.labeled(label, casl2::Command::Nop);
+                    self.code(&recovers);
+                    for stmt in block.iter() {
+                        self.compile(stmt);
+                    }
+                }
+                parser::Statement::CaseElse { block } => {
+                    self.comment("Case Else");
+                    self.labeled(label, casl2::Command::Nop);
+                    for stmt in block.iter() {
+                        self.compile(stmt);
+                    }
+                }
+                _ => unreachable!("BUG"),
+            }
+            self.code(format!(" JUMP {exit}", exit = exit_label));
+        }
+
+        assert_eq!(
+            self.statements.pop(),
+            Some(casl2::Statement::code(casl2::Command::P {
+                code: casl2::P::Jump,
+                adr: casl2::Adr::label(&exit_label),
+                x: None,
+            }))
+        );
+
+        self.comment("End Select");
+        self.labeled(exit_label, casl2::Command::Nop);
     }
 
     // Do While <condition>
@@ -3774,6 +3884,14 @@ mod test {
             End Select
             Select i << 1
             Case 1, 2, 4
+                Print "X"
+            Case Else
+                Print "X"
+            End Select
+            Select Case str1
+            Case "ABC","XYZ","EFG"
+                Print "X"
+            Case "1234"
                 Print "X"
             Case Else
                 Print "X"
