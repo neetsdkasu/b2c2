@@ -442,10 +442,7 @@ impl Compiler {
             } => self.compile_assign_character_element(var_name, index, value),
             AssignInteger { var_name, value } => self.compile_assign_integer(var_name, value),
             AssignString { var_name, value } => self.compile_assign_string(var_name, value),
-            AssignSubInto {
-                var_name: _,
-                value: _,
-            } => todo!(),
+            AssignSubInto { var_name, value } => self.compile_assign_sub_into(var_name, value),
             AssignSubIntoElement {
                 var_name: _,
                 index: _,
@@ -632,6 +629,32 @@ impl Compiler {
             adr: casl2::Adr::label(&exit_label),
             x: None,
         });
+    }
+
+    // Assign Sub Into ステートメント
+    // int_var -= int_expr
+    fn compile_assign_sub_into(&mut self, var_name: &str, value: &parser::Expr) {
+        assert!(matches!(value.return_type(), parser::ExprType::Integer));
+
+        self.comment(format!("{var} -= {value}", var = var_name, value = value));
+
+        let var_label = self.int_var_labels.get(var_name).cloned().expect("BUG");
+
+        let value_reg = self.compile_int_expr(value);
+
+        let reg = self.get_idle_register();
+
+        self.code(format!(
+            r#" LD    {reg},{var}
+                SUBA  {reg},{value}
+                ST    {reg},{var}"#,
+            reg = reg,
+            var = var_label,
+            value = value_reg
+        ));
+
+        self.set_register_idle(reg);
+        self.set_register_idle(value_reg);
     }
 
     // Assign Add Into Element ステートメント
@@ -3474,7 +3497,7 @@ mod test {
             Let int1 = (1 Mod int1) Mod 2
             ' Let int1 = - (-int1 + -1)
             ' Let int1 = Not (Not int1 + Not 1)
-            ' Let int1 = Len(str1)
+            Let int1 = Len(str1)
             Let int1 = CInt(bool1)
             Let int1 = CInt(str1)
             Let int1 = int1
@@ -3495,7 +3518,7 @@ mod test {
             Let bool1 = boolArr1(5 * 1) And Not bool1 Or False Xor True
             int1 += 123 * 5
             intArr1(5 + 1) += 123 - 4
-            ' int1 -= 123 \ 3
+            int1 -= 123 \ 3
             ' intArr1(4 - 3) -= 123 Mod 2
             For i = 1 To 10
                 Print "X"
