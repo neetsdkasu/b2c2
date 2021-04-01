@@ -463,10 +463,10 @@ impl Compiler {
                 block,
             } => self.compile_do_loop_while(*exit_id, condition, block),
             DoUntilLoop {
-                exit_id: _,
-                condition: _,
-                block: _,
-            } => todo!(),
+                exit_id,
+                condition,
+                block,
+            } => self.compile_do_until_loop(*exit_id, condition, block),
             DoWhileLoop {
                 exit_id: _,
                 condition: _,
@@ -529,6 +529,43 @@ impl Compiler {
             | ProvisionalCaseString { .. }
             | ProvisionalCaseElse => unreachable!("BUG"),
         }
+    }
+
+    // Do Until <condition>
+    // Loop
+    // ステートメント
+    fn compile_do_until_loop(
+        &mut self,
+        exit_id: usize,
+        condition: &parser::Expr,
+        block: &[parser::Statement],
+    ) {
+        assert!(matches!(condition.return_type(), parser::ExprType::Boolean));
+
+        let loop_label = self.get_loop_label(exit_id);
+        let exit_label = self.get_exit_label(exit_id);
+
+        self.comment(format!("Do Until {cond}", cond = condition));
+        self.labeled(&loop_label, casl2::Command::Nop);
+
+        let cond_reg = self.compile_int_expr(condition);
+
+        self.code(format!(
+            r#" AND {reg},{reg}
+                JNZ {exit}"#,
+            reg = cond_reg,
+            exit = exit_label
+        ));
+
+        self.set_register_idle(cond_reg);
+
+        for stmt in block.iter() {
+            self.compile(stmt);
+        }
+
+        self.comment("Loop");
+        self.code(format!(" JUMP {next}", next = loop_label));
+        self.labeled(exit_label, casl2::Command::Nop);
     }
 
     // Do
@@ -3714,6 +3751,9 @@ mod test {
             Do
                 int1 += 1
             Loop While int1 < 20
+            Do Until int1 > 30
+                int1 += 1
+            Loop
             If int1 = 123 Then
                 Print "X"
             ' ElseIf int1 + 3 <> (999 * 10) Then
