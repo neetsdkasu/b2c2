@@ -468,10 +468,10 @@ impl Compiler {
                 block,
             } => self.compile_do_until_loop(*exit_id, condition, block),
             DoWhileLoop {
-                exit_id: _,
-                condition: _,
-                block: _,
-            } => todo!(),
+                exit_id,
+                condition,
+                block,
+            } => self.compile_do_while_loop(*exit_id, condition, block),
             ExitDo { exit_id } => self.compile_exit_block(*exit_id, "Do"),
             ExitFor { exit_id } => self.compile_exit_block(*exit_id, "For"),
             ExitSelect { exit_id } => self.compile_exit_block(*exit_id, "Select"),
@@ -529,6 +529,43 @@ impl Compiler {
             | ProvisionalCaseString { .. }
             | ProvisionalCaseElse => unreachable!("BUG"),
         }
+    }
+
+    // Do While <condition>
+    // Loop
+    // ステートメント
+    fn compile_do_while_loop(
+        &mut self,
+        exit_id: usize,
+        condition: &parser::Expr,
+        block: &[parser::Statement],
+    ) {
+        assert!(matches!(condition.return_type(), parser::ExprType::Boolean));
+
+        let loop_label = self.get_loop_label(exit_id);
+        let exit_label = self.get_exit_label(exit_id);
+
+        self.comment(format!("Do While {cond}", cond = condition));
+        self.labeled(&loop_label, casl2::Command::Nop);
+
+        let cond_reg = self.compile_int_expr(condition);
+
+        self.code(format!(
+            r#" AND {reg},{reg}
+                JZE {exit}"#,
+            reg = cond_reg,
+            exit = exit_label
+        ));
+
+        self.set_register_idle(cond_reg);
+
+        for stmt in block.iter() {
+            self.compile(stmt);
+        }
+
+        self.comment("Loop");
+        self.code(format!(" JUMP {next}", next = loop_label));
+        self.labeled(exit_label, casl2::Command::Nop);
     }
 
     // Do Until <condition>
@@ -3752,6 +3789,9 @@ mod test {
                 int1 += 1
             Loop While int1 < 20
             Do Until int1 > 30
+                int1 += 1
+            Loop
+            Do While int1 < 40
                 int1 += 1
             Loop
             If int1 = 123 Then
