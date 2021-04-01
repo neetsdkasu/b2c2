@@ -1600,7 +1600,7 @@ impl Keyword {
             Case | Continue | Else | ElseIf | End | Exit | Dim | Do | For | If | Input | Let
             | Loop | Next | Print | Select => true,
 
-            As | Step | Then | To | Until | While => false,
+            As | Step | Then | To | Until | While | Rem => false,
         }
     }
 }

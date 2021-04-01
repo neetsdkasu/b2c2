@@ -36,7 +36,7 @@ impl<R> Tokenizer<R> {
     fn parse_line(&self, src: &str) -> Result {
         let mut line = src.trim_start();
         let mut ret: Vec<(usize, Token)> = vec![];
-        while !line.is_empty() && !is_comment(line) {
+        while !line.is_empty() && !is_comment(line, ret.is_empty()) {
             let pos = src.len() - line.len() + 1;
             match take_token(line) {
                 Some((token, rest)) => {
@@ -56,11 +56,12 @@ impl<R> Tokenizer<R> {
     }
 }
 
-fn is_comment(line: &str) -> bool {
+fn is_comment(line: &str, is_toplevel: bool) -> bool {
     line.starts_with('\'')
-        || take_word(line)
-            .filter(|(word, _)| "Rem".eq_ignore_ascii_case(word))
-            .is_some()
+        || (is_toplevel
+            && take_word(line)
+                .filter(|(word, _)| "Rem".eq_ignore_ascii_case(word))
+                .is_some())
 }
 
 fn take_token(line: &str) -> Option<(Token, &str)> {
@@ -316,6 +317,7 @@ enumdef!(
     Loop,
     Next,
     Print,
+    Rem,
     Select,
     Step,
     Then,
@@ -420,26 +422,36 @@ mod test {
     #[test]
     fn is_comment_works() {
         // comment
-        assert!(is_comment("' hoge"));
-        assert!(is_comment("'hoge"));
-        assert!(is_comment("''hoge"));
-        assert!(is_comment("'"));
-        assert!(is_comment("Rem hoge"));
-        assert!(is_comment("Rem'hoge"));
-        assert!(is_comment("Rem.hoge"));
-        assert!(is_comment("rem hoge"));
-        assert!(is_comment("REM'hoge"));
-        assert!(is_comment("rEm.hoge"));
+        assert!(is_comment("' hoge", true));
+        assert!(is_comment("'hoge", true));
+        assert!(is_comment("''hoge", true));
+        assert!(is_comment("'", true));
+        assert!(is_comment("' hoge", false));
+        assert!(is_comment("'hoge", false));
+        assert!(is_comment("''hoge", false));
+        assert!(is_comment("'", false));
+        assert!(is_comment("Rem hoge", true));
+        assert!(is_comment("Rem'hoge", true));
+        assert!(is_comment("Rem.hoge", true));
+        assert!(is_comment("rem hoge", true));
+        assert!(is_comment("REM'hoge", true));
+        assert!(is_comment("rEm.hoge", true));
         // not comment
-        assert!(!is_comment("hoge"));
-        assert!(!is_comment("h'oge"));
-        assert!(!is_comment("&hoge"));
-        assert!(!is_comment(" ' hoge"));
-        assert!(!is_comment(" Rem"));
-        assert!(!is_comment("R e m"));
-        assert!(!is_comment("\"rem\""));
-        assert!(!is_comment("Reminder"));
-        assert!(!is_comment("rem1234"));
+        assert!(!is_comment("hoge", true));
+        assert!(!is_comment("h'oge", true));
+        assert!(!is_comment("&hoge", true));
+        assert!(!is_comment(" ' hoge", true));
+        assert!(!is_comment(" Rem", true));
+        assert!(!is_comment("R e m", true));
+        assert!(!is_comment("\"rem\"", true));
+        assert!(!is_comment("Reminder", true));
+        assert!(!is_comment("rem1234", true));
+        assert!(!is_comment("Rem hoge", false));
+        assert!(!is_comment("Rem'hoge", false));
+        assert!(!is_comment("Rem.hoge", false));
+        assert!(!is_comment("rem hoge", false));
+        assert!(!is_comment("REM'hoge", false));
+        assert!(!is_comment("rEm.hoge", false));
     }
 
     #[test]
