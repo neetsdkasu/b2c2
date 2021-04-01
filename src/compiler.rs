@@ -1748,7 +1748,7 @@ impl Compiler {
             LitInteger(lit_int) => self.compile_literal_integer(*lit_int),
             LitCharacter(lit_char) => self.compile_literal_character(*lit_char),
             UnaryOperatorInteger(_op, _value) => todo!(),
-            UnaryOperatorBoolean(_op, _value) => todo!(),
+            UnaryOperatorBoolean(op, value) => self.compile_unary_op_boolean(*op, value),
             VarBoolean(var_name) => self.compile_variable_boolean(var_name),
             VarInteger(var_name) => self.compile_variable_integer(var_name),
             VarArrayOfBoolean(arr_name, index) => {
@@ -1764,6 +1764,30 @@ impl Compiler {
             | LitString(..)
             | VarString(..)
             | ParamList(_) => unreachable!("BUG"),
+        }
+    }
+
+    // (式展開の処理の一部)
+    // 真理値を返す単項演算子の処理
+    fn compile_unary_op_boolean(
+        &mut self,
+        op: tokenizer::Operator,
+        value: &parser::Expr,
+    ) -> casl2::Register {
+        use tokenizer::Operator::*;
+
+        match op {
+            Not => {
+                assert!(matches!(value.return_type(), parser::ExprType::Boolean));
+                let reg = self.compile_int_expr(value);
+                self.code(format!(" XOR {reg},=#FFFF", reg = reg));
+                reg
+            }
+
+            // 真理値を返さないもの、または単項演算子ではないもの
+            And | Xor | Or | NotEqual | LessOrEequal | GreaterOrEqual | Equal | LessThan
+            | GreaterThan | ShiftLeft | ShiftRight | Add | Sub | Mul | Div | Mod | AddInto
+            | SubInto | Concat | OpenBracket | CloseBracket | Comma => unreachable!("BUG"),
         }
     }
 
@@ -1951,25 +1975,100 @@ impl Compiler {
     ) -> casl2::Register {
         use tokenizer::Operator::*;
 
-        match op {
+        let cmd = match op {
             // lhs,rhsは真理値のみ
-            And => todo!(),
-            Xor => todo!(),
-            Or => todo!(),
+            And => "AND",
+            Xor => "XOR",
+            Or => "OR",
 
             // lhs,rhsは真理値、整数、文字列のいずれか
             NotEqual => todo!(),
-            LessOrEequal => todo!(),
-            GreaterOrEqual => todo!(),
-            Equal => self.compile_bin_op_boolean_eq(lhs, rhs),
-            LessThan => self.compile_bin_op_boolean_less_than(lhs, rhs),
-            GreaterThan => self.compile_bin_op_boolean_greater_than(lhs, rhs),
+            LessOrEequal => return self.compile_bin_op_boolean_less_or_equal(lhs, rhs),
+            GreaterOrEqual => return self.compile_bin_op_boolean_greater_or_equal(lhs, rhs),
+            Equal => return self.compile_bin_op_boolean_equal(lhs, rhs),
+            LessThan => return self.compile_bin_op_boolean_less_than(lhs, rhs),
+            GreaterThan => return self.compile_bin_op_boolean_greater_than(lhs, rhs),
 
             // 二項演算子ではないものや、真理値を返さないもの
             ShiftLeft | ShiftRight | Add | Sub | Mul | Div | Mod | Not | AddInto | SubInto
             | Concat | OpenBracket | CloseBracket | Comma => {
                 unreachable!("BUG")
             }
+        };
+
+        assert!(matches!(lhs.return_type(), parser::ExprType::Boolean));
+        assert!(matches!(rhs.return_type(), parser::ExprType::Boolean));
+
+        let lhs_reg = self.compile_int_expr(lhs);
+        let rhs_reg = self.compile_int_expr(rhs);
+
+        self.code(format!(
+            r#" {cmd} {lhs},{rhs}"#,
+            cmd = cmd,
+            lhs = lhs_reg,
+            rhs = rhs_reg
+        ));
+
+        self.set_register_idle(rhs_reg);
+        lhs_reg
+    }
+
+    // (式展開の処理の一部)
+    // 比較演算子( <= )
+    fn compile_bin_op_boolean_less_or_equal(
+        &mut self,
+        lhs: &parser::Expr,
+        rhs: &parser::Expr,
+    ) -> casl2::Register {
+        assert_eq!(lhs.return_type(), rhs.return_type());
+
+        match lhs.return_type() {
+            parser::ExprType::Integer => {
+                let lhs_reg = self.compile_int_expr(lhs);
+                let rhs_reg = self.compile_int_expr(rhs);
+                self.restore_register(lhs_reg);
+                self.code(format!(
+                    r#" SUBA  {rhs},{lhs}
+                        SRA   {rhs},15
+                        XOR   {rhs},=#FFFF
+                        LD    {lhs},{rhs}"#,
+                    lhs = lhs_reg,
+                    rhs = rhs_reg
+                ));
+                self.set_register_idle(rhs_reg);
+                lhs_reg
+            }
+            parser::ExprType::String => todo!(),
+            parser::ExprType::Boolean | parser::ExprType::ParamList => unreachable!("BUG"),
+        }
+    }
+
+    // (式展開の処理の一部)
+    // 比較演算子( >= )
+    fn compile_bin_op_boolean_greater_or_equal(
+        &mut self,
+        lhs: &parser::Expr,
+        rhs: &parser::Expr,
+    ) -> casl2::Register {
+        assert_eq!(lhs.return_type(), rhs.return_type());
+
+        match lhs.return_type() {
+            parser::ExprType::Integer => {
+                let lhs_reg = self.compile_int_expr(lhs);
+                let rhs_reg = self.compile_int_expr(rhs);
+                self.restore_register(lhs_reg);
+                self.code(format!(
+                    r#" SUBA  {lhs},{rhs}
+                        SRA   {lhs},15
+                        XOR   {lhs},=#FFFF"#,
+                    lhs = lhs_reg,
+                    rhs = rhs_reg
+                ));
+                self.set_register_idle(rhs_reg);
+                lhs_reg
+            }
+            parser::ExprType::String => todo!(),
+            parser::ExprType::Boolean | parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
 
@@ -2032,7 +2131,7 @@ impl Compiler {
 
     // (式展開の処理の一部)
     // 比較演算子( = )
-    fn compile_bin_op_boolean_eq(
+    fn compile_bin_op_boolean_equal(
         &mut self,
         lhs: &parser::Expr,
         rhs: &parser::Expr,
@@ -4208,6 +4307,37 @@ End If
         let code = parser::parse(&mut cursor).unwrap().unwrap();
 
         let statements = compile("PRIMES", &code[..]).unwrap();
+
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
+
+        assert!(!statements.is_empty()); // dummy assert
+    }
+
+    #[test]
+    fn swapcase_works() {
+        let src = r#"
+' *** SWAPCASE ***
+Dim s As String
+Dim i As Integer
+Print "Swapcase Alphabet"
+Input s
+For i = 0 To Len(s) - 1
+    If s(i) >= "A"c And s(i) <= "Z"c Then
+        s(i) = s(i) + "a"c - "A"c
+    ElseIf Not (s(i) < "a"c Or s(i) > "z"c) Then
+        s(i) = s(i) + "A"c - "a"c
+    End If
+Next i
+Print s
+"#;
+
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile("SWAPCASE", &code[..]).unwrap();
 
         statements.iter().for_each(|line| {
             eprintln!("{}", line);
