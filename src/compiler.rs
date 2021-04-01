@@ -631,7 +631,20 @@ impl Compiler {
     fn compile_assign_add_into(&mut self, var_name: &str, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
-        todo!();
+        self.comment(format!("{var} += {value}", var = var_name, value = value));
+
+        let value_reg = self.compile_int_expr(value);
+
+        let var_label = self.int_var_labels.get(var_name).cloned().expect("BUG");
+
+        self.code(format!(
+            r#" ADDA  {reg},{var}
+                ST    {reg},{var}"#,
+            reg = value_reg,
+            var = var_label
+        ));
+
+        self.set_register_idle(value_reg);
     }
 
     // Assign Boolean Element ステートメント
@@ -1555,7 +1568,7 @@ impl Compiler {
     fn compile_str_expr(&mut self, expr: &parser::Expr) -> StrLabels {
         use parser::Expr::*;
         match expr {
-            BinaryOperatorString(_op, _lhs, _rhs) => todo!(),
+            BinaryOperatorString(op, lhs, rhs) => self.compile_bin_op_string(*op, lhs, rhs),
             FunctionString(func, param) => self.compile_function_string(*func, param),
             LitString(lit_str) => self.get_lit_str_label_if_exists(lit_str),
             VarString(var_name) => self.str_var_labels.get(var_name).cloned().expect("BUG"),
@@ -1578,6 +1591,85 @@ impl Compiler {
             | VarArrayOfInteger(..)
             | ParamList(_) => unreachable!("BUG"),
         }
+    }
+
+    // 文字列を返す二項演算子の処理
+    fn compile_bin_op_string(
+        &mut self,
+        op: tokenizer::Operator,
+        lhs: &parser::Expr,
+        rhs: &parser::Expr,
+    ) -> StrLabels {
+        use tokenizer::Operator::*;
+
+        match op {
+            Concat => self.compile_bin_op_string_concat(lhs, rhs),
+
+            // 文字列を返さないもの、あるいは二項演算子ではないもの
+            And | Xor | Or | NotEqual | LessOrEequal | GreaterOrEqual | Equal | LessThan
+            | GreaterThan | ShiftLeft | ShiftRight | Add | Sub | Mul | Div | Mod | Not
+            | AddInto | SubInto | OpenBracket | CloseBracket | Comma => unreachable!("BUG"),
+        }
+    }
+
+    // 文字列を返す二項演算子の処理
+    // 文字列の結合 ( & )
+    fn compile_bin_op_string_concat(
+        &mut self,
+        lhs: &parser::Expr,
+        rhs: &parser::Expr,
+    ) -> StrLabels {
+        assert!(matches!(lhs.return_type(), parser::ExprType::String));
+        assert_eq!(lhs.return_type(), rhs.return_type());
+        
+        let lhs_labels = self.compile_str_expr(lhs);
+        let rhs_labels = self.compile_str_expr(rhs);
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+        };
+
+        self.code(saves);
+
+        let lhs_labels = if !matches!(lhs_labels.label_type, StrLabelType::Temp) {
+            let temp_labels = self.get_temp_str_var_label();
+            let copy = self.load_subroutine(subroutine::Id::UtilCopyStr);
+            self.code(format!(
+                r#" LAD   GR1,{tmppos}
+                    LAD   GR2,{tmplen}
+                    LAD   GR3,{srcpos}
+                    LD    GR4,{srclen}
+                    CALL  {copy}"#,
+                tmppos = temp_labels.buf,
+                tmplen = temp_labels.len,
+                srcpos = lhs_labels.buf,
+                srclen = lhs_labels.len,
+                copy = copy
+            ));
+            temp_labels
+        } else {
+            lhs_labels
+        };
+
+        let concat = self.load_subroutine(subroutine::Id::UtilConcatStr);
+        self.code(format!(
+            r#" LAD   GR1,{lhspos}
+                LAD   GR2,{lhslen}
+                LAD   GR3,{rhspos}
+                LD    GR4,{rhslen}
+                CALL  {concat}"#,
+            lhspos = lhs_labels.buf,
+            lhslen = lhs_labels.len,
+            rhspos = rhs_labels.buf,
+            rhslen = rhs_labels.len,
+            concat = concat
+        ));
+
+        self.code(recovers);
+
+        self.return_temp_str_var_label(rhs_labels);
+        lhs_labels
     }
 
     // 戻り値が文字列の関数の処理
@@ -2359,6 +2451,7 @@ mod subroutine {
         FuncCStrArgBool,
         FuncCStrArgInt,
         UtilCompareStr,
+        UtilConcatStr,
         UtilCopyStr,
         UtilDivMod,
         UtilMul,
@@ -2391,6 +2484,7 @@ mod subroutine {
             Id::FuncCStrArgBool => get_func_cstr_arg_bool(gen, id),
             Id::FuncCStrArgInt => get_func_cstr_arg_int(gen, id),
             Id::UtilCompareStr => get_util_compare_str(gen, id),
+            Id::UtilConcatStr => get_util_concat_str(gen, id),
             Id::UtilCopyStr => get_util_copy_str(gen, id),
             Id::UtilDivMod => get_util_div_mod(gen, id),
             Id::UtilMul => get_util_mul(gen, id),
@@ -2911,6 +3005,58 @@ mod subroutine {
          POP   GR3
          POP   GR2
          POP   GR1
+         RET
+"#,
+                    comment = format!("{:?}", id),
+                    prog = id.label(),
+                    cycle = gen.jump_label(),
+                    ret = gen.jump_label()
+                )
+                .trim_start_matches('\n'),
+            )
+            .unwrap(),
+        }
+    }
+
+    // Util Concat Str
+    fn get_util_concat_str<T: Gen>(gen: &mut T, id: Id) -> Src {
+        // GR1 .. adr of s_buf (dst,left)
+        // GR2 .. adr of s_len (dst)
+        // GR3 .. adr of s_buf (src,right)
+        // GR4 .. s_len (src)
+        //   GR1 = GR1 & GR3
+        //   GR2 = Min(GR2 + GR4, 256)
+        Src {
+            dependencies: Vec::new(),
+            statements: casl2::parse(
+                format!(
+                    r#"
+                                   ; {comment}
+{prog}   PUSH  0,GR1
+         PUSH  0,GR2
+         PUSH  0,GR3
+         PUSH  0,GR4
+         LD    GR0,0,GR2
+         LD    GR2,GR1
+         ADDL  GR1,GR0
+         LAD   GR2,256,GR2
+         ADDL  GR4,GR3
+{cycle}  CPL   GR1,GR2
+         JZE   {ret}
+         CPL   GR3,GR4
+         JZE   {ret}
+         LD    GR0,0,GR3
+         ST    GR0,0,GR1
+         LAD   GR1,1,GR1
+         LAD   GR3,1,GR3
+         JUMP  {cycle}
+{ret}    LD    GR0,GR1
+         POP   GR4
+         POP   GR3
+         POP   GR2
+         POP   GR1
+         SUBL  GR0,GR1
+         ST    GR0,0,GR2
          RET
 "#,
                     comment = format!("{:?}", id),
