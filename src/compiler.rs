@@ -512,10 +512,9 @@ impl Compiler {
                 value,
                 case_blocks,
             } => self.compile_select_string(*exit_id, value, case_blocks),
-            InputElementInteger {
-                var_name: _,
-                index: _,
-            } => todo!(),
+            InputElementInteger { var_name, index } => {
+                self.compile_input_element_integer(var_name, index)
+            }
             InputInteger { var_name } => self.compile_input_integer(var_name),
             InputString { var_name } => self.compile_input_string(var_name),
             PrintLitBoolean { value } => self.compile_print_lit_boolean(*value),
@@ -1749,6 +1748,59 @@ impl Compiler {
     }
 
     // Input ステートメント
+    // 整数配列の要素へのコンソール入力
+    fn compile_input_element_integer(&mut self, var_name: &str, index: &parser::Expr) {
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+
+        self.comment(format!(
+            "Input {arr}( {index} )",
+            arr = var_name,
+            index = index
+        ));
+
+        let index_reg = self.compile_int_expr(index);
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+        let max_label = self.load_subroutine(subroutine::Id::FuncMax);
+        let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
+        let s_labels = self.get_temp_str_var_label();
+        let (arr_label, arr_size) = self.int_arr_labels.get(var_name).cloned().expect("BUG");
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD    GR1,{index}
+                LAD   GR2,{size}
+                CALL  {fit}
+                LD    GR3,GR0
+                IN    {pos},{len}
+                XOR   GR1,GR1
+                LD    GR2,{len}
+                CALL  {max}
+                LD    GR2,GR0
+                LAD   GR1,{pos}
+                CALL  {cint}
+                ST    GR0,{arr},GR3"#,
+            index = index_reg,
+            size = arr_size,
+            fit = safe_index,
+            pos = s_labels.buf,
+            len = s_labels.len,
+            max = max_label,
+            cint = cint_label,
+            arr = arr_label
+        ));
+        self.code(recovers);
+
+        self.set_register_idle(index_reg);
+        self.return_temp_str_var_label(s_labels);
+    }
+
+    // Input ステートメント
     // 整数変数へのコンソール入力
     fn compile_input_integer(&mut self, var_name: &str) {
         let max_label = self.load_subroutine(subroutine::Id::FuncMax);
@@ -1770,14 +1822,15 @@ impl Compiler {
                 CALL  {max}
                 LD    GR2,GR0
                 LAD   GR1,{pos}
-                CALL  {cint}"#,
+                CALL  {cint}
+                ST    GR0,{var}"#,
             pos = s_labels.buf,
             len = s_labels.len,
             max = max_label,
-            cint = cint_label
+            cint = cint_label,
+            var = var_label
         ));
         self.code(recovers);
-        self.code(format!(" ST GR0,{var}", var = var_label));
 
         self.return_temp_str_var_label(s_labels);
     }

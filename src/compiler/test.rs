@@ -14,7 +14,7 @@ fn it_works() {
         Dim i As Integer
         Dim j As Integer
         Input int1
-        ' Input intArr1(3)
+        Input intArr1(3)
         Input str1
         Print False
         Print 1234
@@ -61,101 +61,101 @@ fn it_works() {
         int1 -= 123 \ 3
         intArr1(4 - 3) -= 123 Mod 2
         For i = 1 To 10
-        Print "X"
+            Print "X"
         Next i
         For i = int1 To int1 Step -5
-        Print "X"
+            Print "X"
         Next i
         For i = int1 - 3 To (int1 << 4) - 2 Step int1 + 1
-        Print "X"
+            Print "X"
         Next i
         For i = 1 To 10
-        For j = 1 To 10
-            Print "X"
-        Next j
+            For j = 1 To 10
+                Print "X"
+            Next j
         Next i
         Select Case i
-        Case 1, 2
-        Print "X"
-        Case 3, 4, "A"C, "B"C, 55
-        Print "X"
-        Case Else
-        Print "X"
+            Case 1, 2
+                Print "X"
+            Case 3, 4, "A"C, "B"C, 55
+                Print "X"
+            Case Else
+                Print "X"
         End Select
         Select Case i
-        Case 10, 11, 12
-        Print "X"
+            Case 10, 11, 12
+                Print "X"
         End Select
         Select Case i + 10
-        Case Else
-        Print "X"
+            Case Else
+                Print "X"
         End Select
         Select Case i * i
         End Select
         Select i
-        Case 1, 2, 3
-        Print "X"
+            Case 1, 2, 3
+                Print "X"
         End Select
         Select i << 1
-        Case 1, 2, 4
-        Print "X"
-        Case Else
-        Print "X"
+            Case 1, 2, 4
+                Print "X"
+            Case Else
+                Print "X"
         End Select
         Select Case str1
-        Case "ABC","XYZ","EFG"
-        Print "X"
-        Case "1234"
-        Print "X"
-        Case Else
-        Print "X"
+            Case "ABC","XYZ","EFG"
+                Print "X"
+            Case "1234"
+                Print "X"
+            Case Else
+                Print "X"
         End Select
         Do
-        Continue Do
-        Exit Do
+            Continue Do
+            Exit Do
         Loop
         Do
-        int1 += 1
+            int1 += 1
         Loop Until int1 > 10
         Do
-        int1 += 1
+            int1 += 1
         Loop While int1 < 20
         Do Until int1 > 30
-        int1 += 1
+            int1 += 1
         Loop
         Do While int1 < 40
-        int1 += 1
+            int1 += 1
         Loop
         If int1 = 123 Then
-        Print "X"
-        ' ElseIf int1 + 3 <> (999 * 10) Then
-        Print "X"
+            Print "X"
+        ElseIf int1 + 3 <> (999 * 10) Then
+            Print "X"
         ElseIf int1 - 4 < (543 + 123) Then
-        Print "X"
+            Print "X"
         ElseIf int1 - 4 <= (543 + 123) Then
-        Print "X"
+            Print "X"
         ElseIf int1 - 4 > (543 + 123) Then
-        Print "X"
+            Print "X"
         ElseIf int1 - 4 >= (543 + 123) Then
-        Print "X"
+            Print "X"
         Else If str1 = "xyz" Then
-        Print "X"
+            Print "X"
         ' ElseIf str1 <> "xyz" Then
-        Print "X"
+            Print "X"
         ' ElseIf str1 < "xyz" Then
-        Print "X"
+            Print "X"
         ' ElseIf str1 <= "xyz" Then
-        Print "X"
+            Print "X"
         ' ElseIf str1 > "xyz" Then
-        Print "X"
+            Print "X"
         ' ElseIf str1 >= "xyz" Then
-        Print "X"
+            Print "X"
         ' ElseIf Not bool1 = False Then
-        Print "X"
+            Print "X"
         ' ElseIf bool1 <> Not False Then
-        Print "X"
+            Print "X"
         Else
-        Print "X"
+            Print "X"
         End If
         "#;
 
