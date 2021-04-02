@@ -2230,8 +2230,8 @@ impl Compiler {
             BinaryOperatorInteger(op, lhs, rhs) => self.compile_bin_op_integer(*op, lhs, rhs),
             CharOfLitString(lit_str, index) => self.compile_character_of_literal(lit_str, index),
             CharOfVarString(var_name, index) => self.compile_character_of_variable(var_name, index),
-            FunctionBoolean(_func, _param) => todo!(),
-            FunctionInteger(func, param) => self.compile_function_integer(func, param),
+            FunctionBoolean(func, param) => self.compile_function_boolean(*func, param),
+            FunctionInteger(func, param) => self.compile_function_integer(*func, param),
             LitBoolean(lit_bool) => self.compile_literal_boolean(*lit_bool),
             LitInteger(lit_int) => self.compile_literal_integer(*lit_int),
             LitCharacter(lit_char) => self.compile_literal_character(*lit_char),
@@ -2253,6 +2253,40 @@ impl Compiler {
             | VarString(..)
             | ParamList(_) => unreachable!("BUG"),
         }
+    }
+
+    // (式展開の処理の一部)
+    // 真理値を返す関数の処理
+    fn compile_function_boolean(
+        &mut self,
+        func: tokenizer::Function,
+        param: &parser::Expr,
+    ) -> casl2::Register {
+        use tokenizer::Function::*;
+        match func {
+            CBool => self.call_function_cbool(param),
+
+            CInt | Len | Max | Min | CStr => unreachable!("BUG"),
+        }
+    }
+
+    // CBool(<integer>)
+    fn call_function_cbool(&mut self, param: &parser::Expr) -> casl2::Register {
+        assert!(matches!(param.return_type(), parser::ExprType::Integer));
+
+        let reg = self.compile_int_expr(param);
+        let label = self.get_new_jump_label();
+
+        self.code(format!(
+            r#" AND  {reg},{reg}
+                JZE  {ok}
+                LAD  {reg},#FFFF
+{ok}            NOP"#,
+            reg = reg,
+            ok = label
+        ));
+
+        reg
     }
 
     // (式展開の処理の一部)
@@ -2987,7 +3021,7 @@ impl Compiler {
     // 戻り値が整数の関数 (※引数の型とかは関数による…オーバーロードもあるか？)
     fn compile_function_integer(
         &mut self,
-        func: &tokenizer::Function,
+        func: tokenizer::Function,
         param: &parser::Expr,
     ) -> casl2::Register {
         use tokenizer::Function::*;

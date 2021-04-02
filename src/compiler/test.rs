@@ -42,7 +42,7 @@ fn it_works() {
         int1 = CInt(str1)
         int1 = int1
         int1 = 123
-        ' bool1 = CBool(int1)
+        bool1 = CBool(int1)
         bool1 = 123 < int1
         bool1 = bool1
         bool1 = True
