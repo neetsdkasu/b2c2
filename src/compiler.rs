@@ -2235,7 +2235,7 @@ impl Compiler {
             LitBoolean(lit_bool) => self.compile_literal_boolean(*lit_bool),
             LitInteger(lit_int) => self.compile_literal_integer(*lit_int),
             LitCharacter(lit_char) => self.compile_literal_character(*lit_char),
-            UnaryOperatorInteger(_op, _value) => todo!(),
+            UnaryOperatorInteger(op, value) => self.compile_unary_op_integer(*op, value),
             UnaryOperatorBoolean(op, value) => self.compile_unary_op_boolean(*op, value),
             VarBoolean(var_name) => self.compile_variable_boolean(var_name),
             VarInteger(var_name) => self.compile_variable_integer(var_name),
@@ -2252,6 +2252,41 @@ impl Compiler {
             | LitString(..)
             | VarString(..)
             | ParamList(_) => unreachable!("BUG"),
+        }
+    }
+
+    // (式展開の処理の一部)
+    // 整数を返す単項演算子の処理
+    fn compile_unary_op_integer(
+        &mut self,
+        op: tokenizer::Operator,
+        value: &parser::Expr,
+    ) -> casl2::Register {
+        use tokenizer::Operator::*;
+
+        match op {
+            Not => {
+                assert!(matches!(value.return_type(), parser::ExprType::Integer));
+                let reg = self.compile_int_expr(value);
+                self.code(format!(" XOR {reg},=#FFFF", reg = reg));
+                reg
+            }
+
+            Sub => {
+                assert!(matches!(value.return_type(), parser::ExprType::Integer));
+                let reg = self.compile_int_expr(value);
+                self.code(format!(
+                    r#" XOR {reg},=#FFFF
+                        LAD {reg},1,{reg}"#,
+                    reg = reg
+                ));
+                reg
+            }
+
+            // 真理値を返さないもの、または単項演算子ではないもの
+            And | Xor | Or | NotEqual | LessOrEequal | GreaterOrEqual | Equal | LessThan
+            | GreaterThan | ShiftLeft | ShiftRight | Add | Mul | Div | Mod | AddInto | SubInto
+            | Concat | OpenBracket | CloseBracket | Comma => unreachable!("BUG"),
         }
     }
 

@@ -35,8 +35,8 @@ fn it_works() {
         int1 = (1 * int1) * 2
         int1 = (1 \ int1) \ 2
         int1 = (1 Mod int1) Mod 2
-        ' int1 = - (-int1 + -1)
-        ' int1 = Not (Not int1 + Not 1)
+        int1 = - (-int1 + -1)
+        int1 = Not (Not int1 + Not 1)
         int1 = Len(str1)
         int1 = CInt(bool1)
         int1 = CInt(str1)
