@@ -342,13 +342,6 @@ impl Parser {
             Keyword::For => self.parse_command_for(pos_and_tokens),
             Keyword::If => self.parse_command_if(pos_and_tokens),
             Keyword::Input => self.parse_command_input(pos_and_tokens),
-            Keyword::Let => {
-                if let [(_, Token::Name(name)), rest @ ..] = pos_and_tokens {
-                    self.parse_assign(name, rest)
-                } else {
-                    Err(self.syntax_error("invalid Let statement".into()))
-                }
-            }
             Keyword::Loop => self.parse_command_loop(pos_and_tokens),
             Keyword::Next => self.parse_command_next(pos_and_tokens),
             Keyword::Print => self.parse_command_print(pos_and_tokens),
@@ -1600,8 +1593,8 @@ impl Keyword {
     fn is_command(&self) -> bool {
         use Keyword::*;
         match self {
-            Case | Continue | Else | ElseIf | End | Exit | Dim | Do | For | If | Input | Let
-            | Loop | Next | Print | Select => true,
+            Case | Continue | Else | ElseIf | End | Exit | Dim | Do | For | If | Input | Loop
+            | Next | Print | Select => true,
 
             As | Step | Then | To | Until | While | Rem => false,
         }

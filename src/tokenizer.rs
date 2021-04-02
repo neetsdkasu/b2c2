@@ -316,7 +316,6 @@ enumdef!(
     For,
     If,
     Input,
-    Let,
     Loop,
     Next,
     Print,

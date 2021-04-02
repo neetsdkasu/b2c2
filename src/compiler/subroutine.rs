@@ -10,6 +10,7 @@ pub enum Id {
     FuncMin,
     FuncCStrArgBool,
     FuncCStrArgInt,
+    UtilCompareInt,
     UtilCompareStr,
     UtilConcatStr,
     UtilCopyStr,
@@ -43,6 +44,7 @@ pub fn get_src<T: Gen>(gen: &mut T, id: Id) -> Src {
         Id::FuncMin => get_func_min(gen, id),
         Id::FuncCStrArgBool => get_func_cstr_arg_bool(gen, id),
         Id::FuncCStrArgInt => get_func_cstr_arg_int(gen, id),
+        Id::UtilCompareInt => get_util_compare_int(gen, id),
         Id::UtilCompareStr => get_util_compare_str(gen, id),
         Id::UtilConcatStr => get_util_concat_str(gen, id),
         Id::UtilCopyStr => get_util_copy_str(gen, id),
@@ -52,7 +54,7 @@ pub fn get_src<T: Gen>(gen: &mut T, id: Id) -> Src {
     }
 }
 
-// Abs
+// Func: Abs
 fn get_func_abs<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 .. value1
     // GR0 .. ret = abs(value1)
@@ -79,7 +81,7 @@ fn get_func_abs<T: Gen>(gen: &mut T, id: Id) -> Src {
     }
 }
 
-// Max
+// Func: Max
 fn get_func_max<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 .. value1
     // GR2 .. value2
@@ -107,7 +109,7 @@ fn get_func_max<T: Gen>(gen: &mut T, id: Id) -> Src {
     }
 }
 
-// Min
+// Func: Min
 fn get_func_min<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 .. value1
     // GR2 .. value2
@@ -135,7 +137,7 @@ fn get_func_min<T: Gen>(gen: &mut T, id: Id) -> Src {
     }
 }
 
-// CInt
+// Func: CInt
 fn get_func_cint<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 .. adr of s_buf
     // GR2 .. s_len
@@ -200,7 +202,38 @@ fn get_func_cint<T: Gen>(gen: &mut T, id: Id) -> Src {
     }
 }
 
-// Safe Index
+// Util: Compare Int
+fn get_util_compare_int<T: Gen>(_gen: &mut T, id: Id) -> Src {
+    // GR1 lhs
+    // GR2 rhs
+    // GR0 ... -1 if lhs < rhs , 0 if lhs = rhs, 1 if lhs > rhs
+    Src {
+        dependencies: Vec::new(),
+        statements: casl2::parse(
+            format!(
+                r#"
+                                   ; {comment}
+{prog}  XOR    GR0,GR0
+        CPA    GR1,GR2
+        JMI    {minus}
+        JPL    {plus}
+        RET
+{minus} LAD    GR0,=#FFFF
+{plus}  OR     GR0,=1
+        RET
+"#,
+                comment = format!("{:?}", id),
+                prog = id.label(),
+                minus = Id::FuncMin.label(),
+                plus = Id::FuncMax.label()
+            )
+            .trim_start_matches('\n'),
+        )
+        .unwrap(),
+    }
+}
+
+// Util: Safe Index
 fn get_util_safe_index<T: Gen>(_gen: &mut T, id: Id) -> Src {
     // GR1 index of array
     // GR2 size of array
@@ -233,7 +266,7 @@ fn get_util_safe_index<T: Gen>(_gen: &mut T, id: Id) -> Src {
     }
 }
 
-// Div Mod
+// Util: Div Mod
 fn get_util_div_mod<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR2 割られる数 (分子)
     // GR3 割る数 (分母)
@@ -309,7 +342,7 @@ fn get_util_div_mod<T: Gen>(gen: &mut T, id: Id) -> Src {
     }
 }
 
-// Mul
+// Util: Mul
 fn get_util_mul<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR2 * GR3
     // GR0 積の下位16ビット  (GR2 * GR3) & 0x0000FFFF
@@ -367,7 +400,7 @@ fn get_util_mul<T: Gen>(gen: &mut T, id: Id) -> Src {
     }
 }
 
-// CStr (bool)
+// Func: CStr (bool)
 fn get_func_cstr_arg_bool<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 .. adr of s_buf
     // GR2 .. adr of s_len
@@ -402,22 +435,32 @@ fn get_func_cstr_arg_bool<T: Gen>(gen: &mut T, id: Id) -> Src {
     }
 }
 
-// CStr (int)
+// Func: CStr (int)
 fn get_func_cstr_arg_int<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 .. adr of s_buf
     // GR2 .. adr of s_len
     // GR3 .. value (integer)
     Src {
-        dependencies: vec![Id::UtilDivMod],
+        dependencies: vec![Id::UtilDivMod, Id::UtilCopyStr],
         statements: casl2::parse(
             format!(
                 r#"
                                    ; {comment}
-{prog}   AND   GR3,GR3
+{prog}   CPL   GR3,=#8000
+         JNZ   {zero}
+         PUSH  0,GR3
+         PUSH  0,GR4
+         LAD   GR3,='-32768'
+         LAD   GR4,6
+         CALL  {copystr}
+         POP   GR4
+         POP   GR3
+         RET
+{zero}   AND   GR3,GR3
          JNZ   {init}
          LAD   GR3,1
          ST    GR3,0,GR2
-         LAD   GR3,='0'
+         LD    GR3,='0'
          ST    GR3,0,GR1
          XOR   GR3,GR3
          RET
@@ -427,7 +470,7 @@ fn get_func_cstr_arg_int<T: Gen>(gen: &mut T, id: Id) -> Src {
          PUSH  0,GR4
          PUSH  0,GR5
          JPL   {start}
-         LAD   GR4,='-'
+         LD    GR4,='-'
          ST    GR4,0,GR1
          LAD   GR1,1,GR1
          XOR   GR3,=#FFFF
@@ -465,6 +508,8 @@ fn get_func_cstr_arg_int<T: Gen>(gen: &mut T, id: Id) -> Src {
                 comment = format!("{:?}", id),
                 prog = id.label(),
                 rem = Id::UtilDivMod.label(),
+                copystr = Id::UtilCopyStr.label(),
+                zero = gen.jump_label(),
                 init = gen.jump_label(),
                 start = gen.jump_label(),
                 cycle = gen.jump_label(),
@@ -477,7 +522,7 @@ fn get_func_cstr_arg_int<T: Gen>(gen: &mut T, id: Id) -> Src {
     }
 }
 
-// Util Compare Str
+// Util: Compare Str
 fn get_util_compare_str<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 .. adr of s_buf (lhs)
     // GR2 .. s_len (lhs)
@@ -535,7 +580,7 @@ fn get_util_compare_str<T: Gen>(gen: &mut T, id: Id) -> Src {
     }
 }
 
-// Util Copy Str
+// Util: Copy Str
 fn get_util_copy_str<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 .. adr of s_buf (dst)
     // GR2 .. adr of s_len (dst)
@@ -578,7 +623,7 @@ fn get_util_copy_str<T: Gen>(gen: &mut T, id: Id) -> Src {
     }
 }
 
-// Util Concat Str
+// Util: Concat Str
 fn get_util_concat_str<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 .. adr of s_buf (dst,left)
     // GR2 .. adr of s_len (dst)

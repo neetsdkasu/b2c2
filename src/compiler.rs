@@ -2417,7 +2417,7 @@ impl Compiler {
             Or => "OR",
 
             // lhs,rhsは真理値、整数、文字列のいずれか
-            NotEqual => todo!(),
+            NotEqual => return self.compile_bin_op_boolean_not_equal(lhs, rhs),
             LessOrEequal => return self.compile_bin_op_boolean_less_or_equal(lhs, rhs),
             GreaterOrEqual => return self.compile_bin_op_boolean_greater_or_equal(lhs, rhs),
             Equal => return self.compile_bin_op_boolean_equal(lhs, rhs),
@@ -2449,6 +2449,39 @@ impl Compiler {
     }
 
     // (式展開の処理の一部)
+    // 比較演算子( <> )
+    fn compile_bin_op_boolean_not_equal(
+        &mut self,
+        lhs: &parser::Expr,
+        rhs: &parser::Expr,
+    ) -> casl2::Register {
+        assert_eq!(lhs.return_type(), rhs.return_type());
+
+        match lhs.return_type() {
+            parser::ExprType::Boolean => todo!(),
+            parser::ExprType::Integer => {
+                let lhs_reg = self.compile_int_expr(lhs);
+                let rhs_reg = self.compile_int_expr(rhs);
+                self.restore_register(lhs_reg);
+                self.code(format!(
+                    r#" SUBA  {lhs},{rhs}
+                        LD    {rhs},{lhs}
+                        XOR   {rhs},=#FFFF
+                        LAD   {rhs},1,{rhs}
+                        OR    {lhs},{rhs}
+                        SRA   {lhs},15"#,
+                    lhs = lhs_reg,
+                    rhs = rhs_reg
+                ));
+                self.set_register_idle(rhs_reg);
+                lhs_reg
+            }
+            parser::ExprType::String => todo!(),
+            parser::ExprType::ParamList => unreachable!("BUG"),
+        }
+    }
+
+    // (式展開の処理の一部)
     // 比較演算子( <= )
     fn compile_bin_op_boolean_less_or_equal(
         &mut self,
@@ -2462,13 +2495,16 @@ impl Compiler {
                 let lhs_reg = self.compile_int_expr(lhs);
                 let rhs_reg = self.compile_int_expr(rhs);
                 self.restore_register(lhs_reg);
+                let label = self.get_new_jump_label();
                 self.code(format!(
-                    r#" SUBA  {rhs},{lhs}
-                        SRA   {rhs},15
-                        XOR   {rhs},=#FFFF
-                        LD    {lhs},{rhs}"#,
+                    r#" XOR   GR0,GR0
+                        CPA   {lhs},{rhs}
+                        JPL   {ok}
+                        LAD   GR0,=#FFFF
+{ok}                    LD    {lhs},GR0"#,
                     lhs = lhs_reg,
-                    rhs = rhs_reg
+                    rhs = rhs_reg,
+                    ok = label
                 ));
                 self.set_register_idle(rhs_reg);
                 lhs_reg
@@ -2492,12 +2528,16 @@ impl Compiler {
                 let lhs_reg = self.compile_int_expr(lhs);
                 let rhs_reg = self.compile_int_expr(rhs);
                 self.restore_register(lhs_reg);
+                let label = self.get_new_jump_label();
                 self.code(format!(
-                    r#" SUBA  {lhs},{rhs}
-                        SRA   {lhs},15
-                        XOR   {lhs},=#FFFF"#,
+                    r#" XOR   GR0,GR0
+                        CPA   {lhs},{rhs}
+                        JMI   {ok}
+                        LAD   GR0,=#FFFF
+{ok}                    LD    {lhs},GR0"#,
                     lhs = lhs_reg,
-                    rhs = rhs_reg
+                    rhs = rhs_reg,
+                    ok = label
                 ));
                 self.set_register_idle(rhs_reg);
                 lhs_reg
@@ -2521,12 +2561,16 @@ impl Compiler {
                 let lhs_reg = self.compile_int_expr(lhs);
                 let rhs_reg = self.compile_int_expr(rhs);
                 self.restore_register(lhs_reg);
+                let label = self.get_new_jump_label();
                 self.code(format!(
-                    r#" SUBA  {rhs},{lhs}
-                        SRA   {rhs},15
-                        LD    {lhs},{rhs}"#,
+                    r#" LAD   GR0,=#FFFF
+                        CPA   {lhs},{rhs}
+                        JPL   {ok}
+                        XOR   GR0,GR0
+{ok}                    LD    {lhs},GR0"#,
                     lhs = lhs_reg,
-                    rhs = rhs_reg
+                    rhs = rhs_reg,
+                    ok = label
                 ));
                 self.set_register_idle(rhs_reg);
                 lhs_reg
@@ -2550,11 +2594,16 @@ impl Compiler {
                 let lhs_reg = self.compile_int_expr(lhs);
                 let rhs_reg = self.compile_int_expr(rhs);
                 self.restore_register(lhs_reg);
+                let label = self.get_new_jump_label();
                 self.code(format!(
-                    r#" SUBA  {lhs},{rhs}
-                        SRA   {lhs},15"#,
+                    r#" LAD   GR0,=#FFFF
+                        CPA   {lhs},{rhs}
+                        JMI   {ok}
+                        XOR   GR0,GR0
+{ok}                    LD    {lhs},GR0"#,
                     lhs = lhs_reg,
-                    rhs = rhs_reg
+                    rhs = rhs_reg,
+                    ok = label
                 ));
                 self.set_register_idle(rhs_reg);
                 lhs_reg
@@ -2579,16 +2628,16 @@ impl Compiler {
                 let lhs_reg = self.compile_int_expr(lhs);
                 let rhs_reg = self.compile_int_expr(rhs);
                 self.restore_register(lhs_reg);
+                let label = self.get_new_jump_label();
                 self.code(format!(
-                    r#" SUBA  {lhs},{rhs}
-                            LD    {rhs},{lhs}
-                            XOR   {rhs},=#FFFF
-                            LAD   {rhs},1,{rhs}
-                            OR    {lhs},{rhs}
-                            SRA   {lhs},15
-                            XOR   {lhs},=#FFFF"#,
+                    r#" XOR  GR0,GR0
+                        CPL  {lhs},{rhs}
+                        JNZ  {ok}
+                        LAD  GR0,=#FFFF
+{ok}                    LD   {lhs},GR0"#,
                     lhs = lhs_reg,
-                    rhs = rhs_reg
+                    rhs = rhs_reg,
+                    ok = label
                 ));
                 self.set_register_idle(rhs_reg);
                 lhs_reg

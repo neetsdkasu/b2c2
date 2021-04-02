@@ -25,37 +25,37 @@ fn it_works() {
         Print 1 + 2 + 3 + int1
         Print (123 < 10)
         Print CStr(123 < 999)
-        Let int1 = (1 + int1) + 2
-        Let int1 = (1 - int1) - 2
-        Let int1 = (1 << int1) << 2
-        Let int1 = (1 >> int1) >> 2
-        Let int1 = (1 And int1) And 2
-        Let int1 = (1 Or int1) Or 2
-        Let int1 = (1 Xor int1) Xor 2
-        Let int1 = (1 * int1) * 2
-        Let int1 = (1 \ int1) \ 2
-        Let int1 = (1 Mod int1) Mod 2
-        ' Let int1 = - (-int1 + -1)
-        ' Let int1 = Not (Not int1 + Not 1)
-        Let int1 = Len(str1)
-        Let int1 = CInt(bool1)
-        Let int1 = CInt(str1)
-        Let int1 = int1
-        Let int1 = 123
-        ' Let bool1 = CBool(int1)
-        Let bool1 = 123 < int1
-        Let bool1 = bool1
-        Let bool1 = True
-        Let str1 = CStr(bool1)
-        Let str1 = CStr(int1)
-        Let str1 = str1
-        Let str1 = "XYZ ABC"
-        Let str1 = "prefix" & (str1 & "suffix")
-        Let intArr1(1 * 2) = 123 * int1
-        Let boolArr1(5 - 3) = True
-        Let str1(3 * 0) = "A"c
-        Let int1 = intArr1(0 + 1) * str1(3 + 1)
-        Let bool1 = boolArr1(5 * 1) And Not bool1 Or False Xor True
+        int1 = (1 + int1) + 2
+        int1 = (1 - int1) - 2
+        int1 = (1 << int1) << 2
+        int1 = (1 >> int1) >> 2
+        int1 = (1 And int1) And 2
+        int1 = (1 Or int1) Or 2
+        int1 = (1 Xor int1) Xor 2
+        int1 = (1 * int1) * 2
+        int1 = (1 \ int1) \ 2
+        int1 = (1 Mod int1) Mod 2
+        ' int1 = - (-int1 + -1)
+        ' int1 = Not (Not int1 + Not 1)
+        int1 = Len(str1)
+        int1 = CInt(bool1)
+        int1 = CInt(str1)
+        int1 = int1
+        int1 = 123
+        ' bool1 = CBool(int1)
+        bool1 = 123 < int1
+        bool1 = bool1
+        bool1 = True
+        str1 = CStr(bool1)
+        str1 = CStr(int1)
+        str1 = str1
+        str1 = "XYZ ABC"
+        str1 = "prefix" & (str1 & "suffix")
+        intArr1(1 * 2) = 123 * int1
+        boolArr1(5 - 3) = True
+        str1(3 * 0) = "A"c
+        int1 = intArr1(0 + 1) * str1(3 + 1)
+        bool1 = boolArr1(5 * 1) And Not bool1 Or False Xor True
         int1 += 123 * 5
         intArr1(5 + 1) += 123 - 4
         int1 -= 123 \ 3
@@ -1006,6 +1006,63 @@ Print s
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
     let statements = compile("SWAPCASE", &code[..]).unwrap();
+
+    statements.iter().for_each(|line| {
+        eprintln!("{}", line);
+    });
+
+    assert!(!statements.is_empty()); // dummy assert
+}
+
+#[test]
+fn factors_works() {
+    let src = r#"
+' *** FACTORS ***
+Dim factor(20) As Integer
+Dim count As Integer
+Dim i As Integer
+Dim n As Integer
+Dim s As String
+Print "Number?"
+Input n
+Print "Number is " & CStr(n)
+If n < 2 Then
+    Print "Invalid Number"
+Else
+    count = 0
+    i = 2
+    Do
+        Do Until n Mod i <> 0
+            factor(count) = i
+            count += 1
+            n = n \ i
+        Loop
+        i += 1
+    Loop While i * i <= n
+    If n > 1 Then
+        factor(count) = n
+        count += 1
+    End If
+    Print "FACTORS: " & CStr(count)
+    s = ""
+    For i = 0 To count - 1
+        s = s & CStr(factor(i)) & ", "
+        If Len(s) > 60 Then
+            Print s
+            s = ""
+        End If
+    Next i
+    If Len(s) > 0 Then
+        Print s
+    End If
+End If
+"#;
+
+    let mut cursor = std::io::Cursor::new(src);
+
+    let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+    let statements = compile("FACTORS", &code[..]).unwrap();
 
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
