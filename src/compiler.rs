@@ -1735,6 +1735,7 @@ impl Compiler {
     // Input ステートメント
     // 整数変数へのコンソール入力
     fn compile_input_integer(&mut self, var_name: &str) {
+        let max_label = self.load_subroutine(subroutine::Id::FuncMax);
         let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
         let s_labels = self.get_temp_str_var_label();
         let var_label = self.int_var_labels.get(var_name).cloned().expect("BUG");
@@ -1748,11 +1749,15 @@ impl Compiler {
         self.code(saves);
         self.code(format!(
             r#" IN    {pos},{len}
-                LAD   GR1,{pos}
+                XOR   GR1,GR1
                 LD    GR2,{len}
+                CALL  {max}
+                LD    GR2,GR0
+                LAD   GR1,{pos}
                 CALL  {cint}"#,
             pos = s_labels.buf,
             len = s_labels.len,
+            max = max_label,
             cint = cint_label
         ));
         self.code(recovers);
@@ -1765,12 +1770,20 @@ impl Compiler {
     // 文字列変数へのコンソール入力
     fn compile_input_string(&mut self, var_name: &str) {
         let StrLabels { len, buf, .. } = self.str_var_labels.get(var_name).cloned().expect("BUG");
+        let label = self.get_new_jump_label();
         self.comment(format!("Input {}", var_name));
         // IN {var_pos},{var_len}
-        self.code(casl2::Command::In {
-            pos: buf.into(),
-            len: len.into(),
-        });
+        self.code(format!(
+            r#" IN   {pos},{len}
+                LD   GR0,{len}
+                JPL  {ok}
+                XOR  GR0,GR0
+                ST   GR0,{len}
+{ok}            NOP"#,
+            pos = buf,
+            len = len,
+            ok = label
+        ));
     }
 
     // Print ステートメント
@@ -4264,10 +4277,25 @@ SB3    DS     256
 TEST   START
                                    ; Input strVar3
        IN     SB3,SL3
+       LD     GR0,SL3
+       JPL    J1
+       XOR    GR0,GR0
+       ST     GR0,SL3
+J1     NOP
                                    ; Input strVar2
        IN     SB2,SL2
+       LD     GR0,SL2
+       JPL    J2
+       XOR    GR0,GR0
+       ST     GR0,SL2
+J2     NOP
                                    ; Input strVar1
        IN     SB1,SL1
+       LD     GR0,SL1
+       JPL    J3
+       XOR    GR0,GR0
+       ST     GR0,SL1
+J3     NOP
        RET
                                    ; Dim strVar1 As String
 SL1    DS     1
@@ -4294,7 +4322,7 @@ SB3    DS     256
 
         compiler.compile_input_integer("intVar1");
 
-        assert_eq!(compiler.subroutine_codes.len(), 1);
+        assert_eq!(compiler.subroutine_codes.len(), 2);
         assert_eq!(compiler.temp_str_var_labels.len(), 1);
 
         struct T {
@@ -4310,9 +4338,10 @@ SB3    DS     256
             }
         }
 
-        let id = subroutine::Id::FuncCInt;
+        let max = subroutine::Id::FuncMax;
+        let cint = subroutine::Id::FuncCInt;
         let mut t = T {
-            v: vec!["J3", "J2", "J1"],
+            v: vec!["J4", "J3", "J2", "J1"],
         };
 
         let mut statements = casl2::parse(
@@ -4321,13 +4350,17 @@ SB3    DS     256
 TEST   START
                                    ; Input intVar1
        IN     TB1,TL1
-       LAD    GR1,TB1
+       XOR    GR1,GR1
        LD     GR2,TL1
-       CALL   {}
+       CALL   {max}
+       LD     GR2,GR0
+       LAD    GR1,TB1
+       CALL   {cint}
        ST     GR0,I1
        RET
             "#,
-                id.label()
+                max = max.label(),
+                cint = cint.label()
             )
             .trim(),
         )
@@ -4347,7 +4380,11 @@ TB1    DS     256
             .unwrap(),
         );
 
-        statements.extend(subroutine::get_src(&mut t, id).statements);
+        let max_src = subroutine::get_src(&mut t, max).statements;
+        let cint_src = subroutine::get_src(&mut t, cint).statements;
+
+        statements.extend(cint_src);
+        statements.extend(max_src);
 
         statements.push(casl2::Statement::code(casl2::Command::End));
 
