@@ -2014,7 +2014,7 @@ impl Function {
         use Function::*;
         match self {
             CBool => ExprType::Boolean,
-            CInt | Len | Max | Min => ExprType::Integer,
+            Abs | CInt | Len | Max | Min => ExprType::Integer,
             CStr => ExprType::String,
         }
     }
@@ -2022,9 +2022,16 @@ impl Function {
     fn check_param(&self, param: &Expr) -> bool {
         use Function::*;
         match self {
-            CBool => matches!(param.return_type(), ExprType::Integer),
+            // 引数は整数1個
+            Abs | CBool => matches!(param.return_type(), ExprType::Integer),
+
+            // 引数は真理値1個あるいは整数1個
             CInt => matches!(param.return_type(), ExprType::Boolean | ExprType::String),
+
+            // 引数は真理値1個あるいは文字列1個
             CStr => matches!(param.return_type(), ExprType::Boolean | ExprType::Integer),
+
+            // 引数は整数2個
             Max | Min => {
                 if let Expr::ParamList(list) = param {
                     list.len() == 2
@@ -2035,6 +2042,8 @@ impl Function {
                     false
                 }
             }
+
+            // 引数は文字列1個
             Len => matches!(param.return_type(), ExprType::String),
         }
     }

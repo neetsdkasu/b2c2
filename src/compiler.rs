@@ -2179,7 +2179,9 @@ impl Compiler {
         use tokenizer::Function::*;
         match func {
             CStr => self.call_function_cstr(param),
-            CInt | Len | Max | Min | CBool => unreachable!("BUG"),
+
+            // 戻り値が文字列ではないもの
+            Abs | CInt | Len | Max | Min | CBool => unreachable!("BUG"),
         }
     }
 
@@ -2301,7 +2303,8 @@ impl Compiler {
         match func {
             CBool => self.call_function_cbool(param),
 
-            CInt | Len | Max | Min | CStr => unreachable!("BUG"),
+            // 戻り値が真理値ではないもの
+            Abs | CInt | Len | Max | Min | CStr => unreachable!("BUG"),
         }
     }
 
@@ -3250,12 +3253,37 @@ impl Compiler {
     ) -> casl2::Register {
         use tokenizer::Function::*;
         match func {
+            Abs => self.call_function_abs(param),
             CInt => self.call_function_cint(param),
             Len => self.call_function_len(param),
             Max => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMax),
             Min => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMin),
             CBool | CStr => unreachable!("BUG"),
         }
+    }
+
+    // (式展開の処理の一部)
+    // Abs<integer>) の処理
+    fn call_function_abs(&mut self, param: &parser::Expr) -> casl2::Register {
+        assert!(matches!(param.return_type(), parser::ExprType::Integer));
+
+        let abs = self.load_subroutine(subroutine::Id::FuncAbs);
+
+        let reg = self.compile_int_expr(param);
+
+        let (saves, recovers) = self.get_save_registers_src(&[casl2::Register::Gr1]);
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD    GR1,{reg}
+                CALL  {abs}"#,
+            reg = reg,
+            abs = abs
+        ));
+        self.code(recovers);
+        self.code(format!(" LD {reg},GR0", reg = reg));
+
+        reg
     }
 
     // (式展開の処理の一部)

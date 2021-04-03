@@ -60,6 +60,7 @@ fn it_works() {
         intArr1(5 + 1) += 123 - 4
         int1 -= 123 \ 3
         intArr1(4 - 3) -= 123 Mod 2
+        int1 = Abs(-123) + Abs(int1)
         For i = 1 To 10
             Print "X"
         Next i
