@@ -218,7 +218,7 @@ fn get_util_compare_int<T: Gen>(_gen: &mut T, id: Id) -> Src {
         JMI    {minus}
         JPL    {plus}
         RET
-{minus} LAD    GR0,=#FFFF
+{minus} LAD    GR0,#FFFF
 {plus}  OR     GR0,=1
         RET
 "#,
