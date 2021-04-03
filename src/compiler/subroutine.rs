@@ -203,7 +203,7 @@ fn get_func_cint<T: Gen>(gen: &mut T, id: Id) -> Src {
 }
 
 // Util: Compare Int
-fn get_util_compare_int<T: Gen>(_gen: &mut T, id: Id) -> Src {
+fn get_util_compare_int<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 lhs
     // GR2 rhs
     // GR0 ... -1 if lhs < rhs , 0 if lhs = rhs, 1 if lhs > rhs
@@ -224,8 +224,8 @@ fn get_util_compare_int<T: Gen>(_gen: &mut T, id: Id) -> Src {
 "#,
                 comment = format!("{:?}", id),
                 prog = id.label(),
-                minus = Id::FuncMin.label(),
-                plus = Id::FuncMax.label()
+                minus = gen.jump_label(),
+                plus = gen.jump_label()
             )
             .trim_start_matches('\n'),
         )
