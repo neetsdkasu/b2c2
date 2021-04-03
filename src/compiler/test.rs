@@ -146,7 +146,7 @@ fn it_works() {
             Print "X"
         ElseIf str1 <= "xyz" Then
             Print "X"
-        ' ElseIf str1 > "xyz" Then
+        ElseIf str1 > "xyz" Then
             Print "X"
         ElseIf str1 >= "xyz" Then
             Print "X"
