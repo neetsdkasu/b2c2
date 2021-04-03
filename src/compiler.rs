@@ -117,8 +117,8 @@ enum StrLabelType {
 // 文字列のラベル
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
 struct StrLabels {
+    pos: String,
     len: String,
-    buf: String,
     label_type: StrLabelType,
 }
 
@@ -257,7 +257,7 @@ impl Compiler {
         self.temp_str_var_id += 1;
         StrLabels {
             len: format!("TL{}", self.temp_str_var_id),
-            buf: format!("TB{}", self.temp_str_var_id),
+            pos: format!("TB{}", self.temp_str_var_id),
             label_type: StrLabelType::Temp,
         }
     }
@@ -277,7 +277,7 @@ impl Compiler {
         self.lit_id += 1;
         let labels = StrLabels {
             len: format!("LL{}", self.lit_id),
-            buf: format!("LB{}", self.lit_id),
+            pos: format!("LB{}", self.lit_id),
             label_type: StrLabelType::Const,
         };
         self.lit_str_labels.insert(literal.into(), labels.clone());
@@ -292,13 +292,13 @@ impl Compiler {
         if literal.is_empty() {
             StrLabels {
                 len: "=0".to_string(),
-                buf: "=0".to_string(),
+                pos: "=0".to_string(),
                 label_type: StrLabelType::Lit(literal.to_string()),
             }
         } else {
             StrLabels {
                 len: format!("={}", literal.chars().count()),
-                buf: format!("='{}'", literal.replace('\'', "''")),
+                pos: format!("='{}'", literal.replace('\'', "''")),
                 label_type: StrLabelType::Lit(literal.to_string()),
             }
         }
@@ -382,10 +382,10 @@ impl Compiler {
             if first_var_label.is_none() {
                 first_var_label = Some(labels.len.clone());
             }
-            let StrLabels { buf, len, .. } = labels;
+            let StrLabels { pos, len, .. } = labels;
             statements.comment(format!("Dim {} As String", var_name));
             statements.labeled(len, casl2::Command::Ds { size: 1 });
-            statements.labeled(buf, casl2::Command::Ds { size: 256 });
+            statements.labeled(pos, casl2::Command::Ds { size: 256 });
         }
 
         // 真理値配列(固定長) BA**
@@ -462,9 +462,9 @@ impl Compiler {
 
         // 式展開等で使う一時変数(文字列) TL** TB**
         for labels in temp_str_var_labels.into_iter().collect::<BTreeSet<_>>() {
-            let StrLabels { buf, len, .. } = labels;
+            let StrLabels { pos, len, .. } = labels;
             statements.labeled(len, casl2::Command::Ds { size: 1 });
-            statements.labeled(buf, casl2::Command::Ds { size: 256 });
+            statements.labeled(pos, casl2::Command::Ds { size: 256 });
         }
 
         // IN/OUTで使用する文字列定数 LL** LB**
@@ -473,7 +473,7 @@ impl Compiler {
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
-            let StrLabels { buf, len, .. } = labels;
+            let StrLabels { pos, len, .. } = labels;
             statements.labeled(
                 len,
                 casl2::Command::Dc {
@@ -481,10 +481,10 @@ impl Compiler {
                 },
             );
             if literal.is_empty() {
-                statements.labeled(buf, casl2::Command::Ds { size: 0 });
+                statements.labeled(pos, casl2::Command::Ds { size: 0 });
             } else {
                 statements.labeled(
-                    buf,
+                    pos,
                     casl2::Command::Dc {
                         constants: vec![casl2::Constant::Str(literal.clone())],
                     },
@@ -648,7 +648,7 @@ impl Compiler {
         self.code(format!(
             r#" LAD  GR1,{pos}
                 LD   GR2,{len}"#,
-            pos = value_labels.buf,
+            pos = value_labels.pos,
             len = value_labels.len
         ));
 
@@ -667,7 +667,7 @@ impl Compiler {
                                 CALL  {cmp}
                                 AND   GR0,GR0
                                 JZE   {label}"#,
-                            pos = lit_labels.buf,
+                            pos = lit_labels.pos,
                             len = lit.chars().count(),
                             cmp = cmpstr,
                             label = label
@@ -1312,7 +1312,7 @@ impl Compiler {
         self.code(format!(
             r#" ST {value},{arr},{index}"#,
             value = value_reg,
-            arr = str_labels.buf,
+            arr = str_labels.pos,
             index = casl2::IndexRegister::try_from(index_reg).expect("BUG")
         ));
 
@@ -1352,7 +1352,7 @@ impl Compiler {
         let var_label = self.str_var_labels.get(var_name).expect("BUG");
 
         let src = if let StrLabels {
-            buf,
+            pos,
             label_type: StrLabelType::Lit(s),
             ..
         } = &value_label
@@ -1363,9 +1363,9 @@ impl Compiler {
                     LAD   GR3,{srcpos}
                     LAD   GR4,{srclen}
                     CALL  {copystr}"#,
-                dstpos = var_label.buf,
+                dstpos = var_label.pos,
                 dstlen = var_label.len,
-                srcpos = buf,
+                srcpos = pos,
                 srclen = s.chars().count(),
                 copystr = copystr
             )
@@ -1376,9 +1376,9 @@ impl Compiler {
                     LAD   GR3,{srcpos}
                     LD    GR4,{srclen}
                     CALL  {copystr}"#,
-                dstpos = var_label.buf,
+                dstpos = var_label.pos,
                 dstlen = var_label.len,
-                srcpos = value_label.buf,
+                srcpos = value_label.pos,
                 srclen = value_label.len,
                 copystr = copystr
             )
@@ -1781,10 +1781,10 @@ impl Compiler {
             }
             VarType::String => {
                 let len_label = format!("SL{}", self.var_id);
-                let buf_label = format!("SB{}", self.var_id);
+                let pos_label = format!("SB{}", self.var_id);
                 let labels = StrLabels {
                     len: len_label,
-                    buf: buf_label,
+                    pos: pos_label,
                     label_type: StrLabelType::Var,
                 };
                 self.str_var_labels.insert(var_name.into(), labels);
@@ -1869,7 +1869,7 @@ impl Compiler {
             index = index_reg,
             size = arr_size,
             fit = safe_index,
-            pos = s_labels.buf,
+            pos = s_labels.pos,
             len = s_labels.len,
             ok = label,
             cint = cint_label,
@@ -1908,7 +1908,7 @@ impl Compiler {
 {ok}            LAD   GR1,{pos}
                 CALL  {cint}
                 ST    GR0,{var}"#,
-            pos = s_labels.buf,
+            pos = s_labels.pos,
             len = s_labels.len,
             ok = label,
             cint = cint_label,
@@ -1922,7 +1922,7 @@ impl Compiler {
     // Input ステートメント
     // 文字列変数へのコンソール入力
     fn compile_input_string(&mut self, var_name: &str) {
-        let StrLabels { len, buf, .. } = self.str_var_labels.get(var_name).cloned().expect("BUG");
+        let StrLabels { len, pos, .. } = self.str_var_labels.get(var_name).cloned().expect("BUG");
         let label = self.get_new_jump_label();
         self.has_eof = true;
         self.comment(format!("Input {}", var_name));
@@ -1936,7 +1936,7 @@ impl Compiler {
                 XOR  GR0,GR0
                 ST   GR0,{len}
 {ok}            NOP"#,
-            pos = buf,
+            pos = pos,
             len = len,
             ok = label
         ));
@@ -1946,11 +1946,11 @@ impl Compiler {
     // 真理値リテラルの画面出力
     fn compile_print_lit_boolean(&mut self, value: bool) {
         let s = if value { "True" } else { "False" };
-        let StrLabels { len, buf, .. } = self.get_lit_str_labels(s);
+        let StrLabels { len, pos, .. } = self.get_lit_str_labels(s);
         self.comment(format!("Print {}", s));
         // OUT {lit_pos},{lit_len}
         self.code(casl2::Command::Out {
-            pos: buf.into(),
+            pos: pos.into(),
             len: len.into(),
         });
     }
@@ -1958,10 +1958,10 @@ impl Compiler {
     // Print ステートメント
     // 数字リテラルの画面出力
     fn compile_print_lit_integer(&mut self, value: i32) {
-        let StrLabels { len, buf, .. } = self.get_lit_str_labels(&value.to_string());
+        let StrLabels { len, pos, .. } = self.get_lit_str_labels(&value.to_string());
         self.comment(format!("Print {}", value));
         self.code(casl2::Command::Out {
-            pos: buf.into(),
+            pos: pos.into(),
             len: len.into(),
         });
     }
@@ -1969,10 +1969,10 @@ impl Compiler {
     // Print ステートメント
     // 文字列リテラルの画面出力
     fn compile_print_lit_string(&mut self, value: &str) {
-        let StrLabels { len, buf, .. } = self.get_lit_str_labels(value);
+        let StrLabels { len, pos, .. } = self.get_lit_str_labels(value);
         self.comment(format!(r#"Print "{}""#, value.replace('"', r#""""#)));
         self.code(casl2::Command::Out {
-            pos: buf.into(),
+            pos: pos.into(),
             len: len.into(),
         });
     }
@@ -1980,10 +1980,10 @@ impl Compiler {
     // Print ステートメント
     // 文字列変数の画面出力
     fn compile_print_var_string(&mut self, var_name: &str) {
-        let StrLabels { len, buf, .. } = self.str_var_labels.get(var_name).cloned().expect("BUG");
+        let StrLabels { len, pos, .. } = self.str_var_labels.get(var_name).cloned().expect("BUG");
         self.comment(format!("Print {}", var_name));
         self.code(casl2::Command::Out {
-            pos: buf.into(),
+            pos: pos.into(),
             len: len.into(),
         });
     }
@@ -2012,7 +2012,7 @@ impl Compiler {
                 CALL  {cstr}
                 OUT   {pos},{len}"#,
             reg = reg,
-            pos = labels.buf,
+            pos = labels.pos,
             len = labels.len,
             cstr = cstr
         ));
@@ -2043,7 +2043,7 @@ impl Compiler {
 
         self.code(format!(
             r#" OUT  {pos},{len}"#,
-            pos = labels.buf,
+            pos = labels.pos,
             len = labels.len
         ));
 
@@ -2068,12 +2068,12 @@ impl Compiler {
 
         self.code(format!(
             r#" LD    GR3,{value}
-                LAD   GR1,{buf}
+                LAD   GR1,{pos}
                 LAD   GR2,{len}
                 CALL  {cstr}
-                OUT   {buf},{len}"#,
+                OUT   {pos},{len}"#,
             value = value_reg,
-            buf = &str_labels.buf,
+            pos = &str_labels.pos,
             len = &str_labels.len,
             cstr = call_label
         ));
@@ -2226,9 +2226,9 @@ impl Compiler {
                     LAD   GR3,{srcpos}
                     LD    GR4,{srclen}
                     CALL  {copy}"#,
-                tmppos = temp_labels.buf,
+                tmppos = temp_labels.pos,
                 tmplen = temp_labels.len,
-                srcpos = lhs_labels.buf,
+                srcpos = lhs_labels.pos,
                 srclen = lhs_labels.len,
                 copy = copy
             ));
@@ -2244,9 +2244,9 @@ impl Compiler {
                 LAD   GR3,{rhspos}
                 LD    GR4,{rhslen}
                 CALL  {concat}"#,
-            lhspos = lhs_labels.buf,
+            lhspos = lhs_labels.pos,
             lhslen = lhs_labels.len,
-            rhspos = rhs_labels.buf,
+            rhspos = rhs_labels.pos,
             rhslen = rhs_labels.len,
             concat = concat
         ));
@@ -2295,7 +2295,7 @@ impl Compiler {
                 LAD  GR2,{len}
                 CALL {space}"#,
             size = size_reg,
-            pos = labels.buf,
+            pos = labels.pos,
             len = labels.len,
             space = space
         ));
@@ -2329,12 +2329,12 @@ impl Compiler {
 
         self.code(format!(
             r#" LD    GR3,{value}
-                LAD   GR1,{buf}
+                LAD   GR1,{pos}
                 LAD   GR2,{len}
                 CALL  {call}"#,
             value = value_reg,
             len = t_labels.len,
-            buf = t_labels.buf,
+            pos = t_labels.pos,
             call = call_label
         ));
 
@@ -2530,7 +2530,7 @@ impl Compiler {
             r#" LD    {index},GR0
                 LD    {index},{lit},{index}"#,
             index = index_reg,
-            lit = str_labels.buf
+            lit = str_labels.pos
         ));
 
         index_reg
@@ -2570,7 +2570,7 @@ impl Compiler {
             r#" LD    {index},GR0
                 LD    {index},{var},{index}"#,
             index = index_reg,
-            var = str_labels.buf
+            var = str_labels.pos
         ));
 
         index_reg
@@ -2756,9 +2756,9 @@ impl Compiler {
                         LAD   GR3,{rhspos}
                         LD    GR4,{rhslen}
                         CALL  {cmpstr}"#,
-                    lhspos = lhs_labels.buf,
+                    lhspos = lhs_labels.pos,
                     lhslen = lhs_labels.len,
-                    rhspos = rhs_labels.buf,
+                    rhspos = rhs_labels.pos,
                     rhslen = rhs_labels.len,
                     cmpstr = cmpstr
                 ));
@@ -2823,9 +2823,9 @@ impl Compiler {
                         LAD   GR1,{rhspos}
                         LD    GR2,{rhslen}
                         CALL  {cmpstr}"#,
-                    lhspos = lhs_labels.buf,
+                    lhspos = lhs_labels.pos,
                     lhslen = lhs_labels.len,
-                    rhspos = rhs_labels.buf,
+                    rhspos = rhs_labels.pos,
                     rhslen = rhs_labels.len,
                     cmpstr = cmpstr
                 ));
@@ -2890,9 +2890,9 @@ impl Compiler {
                         LAD   GR3,{rhspos}
                         LD    GR4,{rhslen}
                         CALL  {cmpstr}"#,
-                    lhspos = lhs_labels.buf,
+                    lhspos = lhs_labels.pos,
                     lhslen = lhs_labels.len,
-                    rhspos = rhs_labels.buf,
+                    rhspos = rhs_labels.pos,
                     rhslen = rhs_labels.len,
                     cmpstr = cmpstr
                 ));
@@ -2957,9 +2957,9 @@ impl Compiler {
                         LAD   GR1,{rhspos}
                         LD    GR2,{rhslen}
                         CALL  {cmpstr}"#,
-                    lhspos = lhs_labels.buf,
+                    lhspos = lhs_labels.pos,
                     lhslen = lhs_labels.len,
-                    rhspos = rhs_labels.buf,
+                    rhspos = rhs_labels.pos,
                     rhslen = rhs_labels.len,
                     cmpstr = cmpstr
                 ));
@@ -3023,9 +3023,9 @@ impl Compiler {
                         LAD   GR3,{rhspos}
                         LD    GR4,{rhslen}
                         CALL  {cmpstr}"#,
-                    lhspos = lhs_labels.buf,
+                    lhspos = lhs_labels.pos,
                     lhslen = lhs_labels.len,
-                    rhspos = rhs_labels.buf,
+                    rhspos = rhs_labels.pos,
                     rhslen = rhs_labels.len,
                     cmpstr = cmpstr
                 ));
@@ -3101,9 +3101,9 @@ impl Compiler {
                         LAD   GR3,{rhspos}
                         LD    GR4,{rhslen}
                         CALL  {cmpstr}"#,
-                    lhspos = lhs_str.buf,
+                    lhspos = lhs_str.pos,
                     lhslen = lhs_str.len,
-                    rhspos = rhs_str.buf,
+                    rhspos = rhs_str.pos,
                     rhslen = rhs_str.len,
                     cmpstr = cmpstr
                 ));
@@ -3455,7 +3455,7 @@ impl Compiler {
                     r#" LAD   GR1,{strpos}
                         LD    GR2,{strlen}
                         CALL  {cint}"#,
-                    strpos = arg_str.buf,
+                    strpos = arg_str.pos,
                     strlen = arg_str.len,
                     cint = cint
                 ));

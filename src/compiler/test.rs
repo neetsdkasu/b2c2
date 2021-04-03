@@ -217,7 +217,7 @@ fn compiler_get_lit_str_labels_works() {
         compiler.get_lit_str_labels("-123"),
         StrLabels {
             len: "LL1".into(),
-            buf: "LB1".into(),
+            pos: "LB1".into(),
             label_type: StrLabelType::Const
         }
     );
@@ -225,7 +225,7 @@ fn compiler_get_lit_str_labels_works() {
         compiler.get_lit_str_labels("A b c"),
         StrLabels {
             len: "LL2".into(),
-            buf: "LB2".into(),
+            pos: "LB2".into(),
             label_type: StrLabelType::Const
         }
     );
@@ -233,7 +233,7 @@ fn compiler_get_lit_str_labels_works() {
         compiler.get_lit_str_labels("XYZ"),
         StrLabels {
             len: "LL3".into(),
-            buf: "LB3".into(),
+            pos: "LB3".into(),
             label_type: StrLabelType::Const
         }
     );
@@ -241,7 +241,7 @@ fn compiler_get_lit_str_labels_works() {
         compiler.get_lit_str_labels("Test@1234"),
         StrLabels {
             len: "LL4".into(),
-            buf: "LB4".into(),
+            pos: "LB4".into(),
             label_type: StrLabelType::Const
         }
     );
@@ -249,7 +249,7 @@ fn compiler_get_lit_str_labels_works() {
         compiler.get_lit_str_labels("A b c"),
         StrLabels {
             len: "LL2".into(),
-            buf: "LB2".into(),
+            pos: "LB2".into(),
             label_type: StrLabelType::Const
         }
     );
@@ -257,7 +257,7 @@ fn compiler_get_lit_str_labels_works() {
         compiler.get_lit_str_labels("XYZ"),
         StrLabels {
             len: "LL3".into(),
-            buf: "LB3".into(),
+            pos: "LB3".into(),
             label_type: StrLabelType::Const
         }
     );
