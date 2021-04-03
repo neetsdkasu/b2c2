@@ -150,7 +150,7 @@ fn it_works() {
             Print "X"
         ElseIf str1 >= "xyz" Then
             Print "X"
-        ' ElseIf Not bool1 = False Then
+        ElseIf Not bool1 = False Then
             Print "X"
         ElseIf bool1 <> Not False Then
             Print "X"

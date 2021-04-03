@@ -2920,7 +2920,19 @@ impl Compiler {
         assert_eq!(lhs.return_type(), rhs.return_type());
 
         match lhs.return_type() {
-            parser::ExprType::Boolean => todo!(),
+            parser::ExprType::Boolean => {
+                let lhs_reg = self.compile_int_expr(lhs);
+                let rhs_reg = self.compile_int_expr(rhs);
+                self.restore_register(lhs_reg);
+                self.code(format!(
+                    r#" XOR {lhs},{rhs}
+                        XOR {lhs},=#FFFF"#,
+                    lhs = lhs_reg,
+                    rhs = rhs_reg
+                ));
+                self.set_register_idle(rhs_reg);
+                lhs_reg
+            }
             parser::ExprType::Integer => {
                 let lhs_reg = self.compile_int_expr(lhs);
                 let rhs_reg = self.compile_int_expr(rhs);
