@@ -97,6 +97,12 @@ struct Compiler {
 
     // 生成するCASL2コード本体
     statements: Vec<casl2::Statement>,
+
+    // Input命令またはEOF関数があるときに設定される領域を持つかどうか
+    has_eof: bool,
+
+    // 変数領域の総サイズ
+    var_total_size: usize,
 }
 
 // 文字列ラベルのタイプ判定に使う
@@ -130,6 +136,8 @@ impl Compiler {
     // プログラム名のラベルとしての正当性チェック
     fn is_valid_program_name(program_name: &str) -> bool {
         casl2::Label::from(program_name).is_valid()
+
+        && !matches!(program_name, "EOF")
 
         // 自動生成のラベルとの重複を避けるチェックが必要
         // B** 真理値変数
@@ -188,6 +196,8 @@ impl Compiler {
                 program_name,
                 casl2::Command::Start { entry_point: None },
             )],
+            has_eof: false,
+            var_total_size: 0,
         })
     }
 
@@ -312,7 +322,10 @@ impl Compiler {
     }
 
     // コンパイル最終工程
-    fn finish(self) -> Vec<casl2::Statement> {
+    fn finish(mut self) -> Vec<casl2::Statement> {
+        if self.var_total_size > 1 || (self.var_total_size == 1 && self.has_eof) {
+            self.load_subroutine(subroutine::Id::UtilFill);
+        }
         let Self {
             bool_var_labels,
             int_var_labels,
@@ -324,11 +337,15 @@ impl Compiler {
             temp_str_var_labels,
             subroutine_codes,
             mut statements,
+            has_eof,
+            mut var_total_size,
             ..
         } = self;
 
         // RET ステートメント
         statements.code(casl2::Command::Ret);
+
+        let mut first_var_label: Option<String> = None;
 
         // 真理値変数 B**
         for (label, var_name) in bool_var_labels
@@ -336,6 +353,9 @@ impl Compiler {
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
+            if first_var_label.is_none() {
+                first_var_label = Some(label.clone());
+            }
             statements.comment(format!("Dim {} As Boolean", var_name));
             statements.labeled(label, casl2::Command::Ds { size: 1 });
         }
@@ -346,6 +366,9 @@ impl Compiler {
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
+            if first_var_label.is_none() {
+                first_var_label = Some(label.clone());
+            }
             statements.comment(format!("Dim {} As Integer", var_name));
             statements.labeled(label, casl2::Command::Ds { size: 1 });
         }
@@ -356,6 +379,9 @@ impl Compiler {
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
+            if first_var_label.is_none() {
+                first_var_label = Some(labels.len.clone());
+            }
             let StrLabels { buf, len, .. } = labels;
             statements.comment(format!("Dim {} As String", var_name));
             statements.labeled(len, casl2::Command::Ds { size: 1 });
@@ -368,6 +394,9 @@ impl Compiler {
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
+            if first_var_label.is_none() {
+                first_var_label = Some(label.clone());
+            }
             statements.comment(format!("Dim {}({}) As Boolean", var_name, size - 1));
             statements.labeled(label, casl2::Command::Ds { size: size as u16 });
         }
@@ -378,8 +407,52 @@ impl Compiler {
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
+            if first_var_label.is_none() {
+                first_var_label = Some(label.clone());
+            }
             statements.comment(format!("Dim {}({}) As Integer", var_name, size - 1));
             statements.labeled(label, casl2::Command::Ds { size: size as u16 });
+        }
+
+        // EOFを扱う場合
+        if has_eof {
+            var_total_size += 1;
+            if first_var_label.is_none() {
+                first_var_label = Some("EOF".to_string());
+            }
+            statements.labeled("EOF", casl2::Command::Ds { size: 1 });
+        }
+
+        match first_var_label {
+            Some(label) if var_total_size == 1 => {
+                let mut src = casl2::parse(&format!(
+                    r#" XOR   GR0,GR0
+                        ST    GR0,{label}"#,
+                    label = label
+                ))
+                .unwrap();
+                src.reverse();
+                for stmt in src {
+                    statements.insert(1, stmt);
+                }
+            }
+            Some(label) => {
+                let mut src = casl2::parse(&format!(
+                    r#" LAD   GR1,{start}
+                        XOR   GR2,GR2
+                        LAD   GR3,{size}
+                        CALL  {fill}"#,
+                    start = label,
+                    size = var_total_size,
+                    fill = subroutine::Id::UtilFill.label()
+                ))
+                .unwrap();
+                src.reverse();
+                for stmt in src {
+                    statements.insert(1, stmt);
+                }
+            }
+            _ => {}
         }
 
         // 式展開等で使う一時変数(整数/真理値で共有) T**
@@ -1699,10 +1772,12 @@ impl Compiler {
             VarType::Boolean => {
                 let label = format!("B{}", self.var_id);
                 self.bool_var_labels.insert(var_name.into(), label);
+                self.var_total_size += 1;
             }
             VarType::Integer => {
                 let label = format!("I{}", self.var_id);
                 self.int_var_labels.insert(var_name.into(), label);
+                self.var_total_size += 1;
             }
             VarType::String => {
                 let len_label = format!("SL{}", self.var_id);
@@ -1713,14 +1788,17 @@ impl Compiler {
                     label_type: StrLabelType::Var,
                 };
                 self.str_var_labels.insert(var_name.into(), labels);
+                self.var_total_size += 257;
             }
             VarType::ArrayOfBoolean(size) => {
                 let label = format!("BA{}", self.var_id);
                 self.bool_arr_labels.insert(var_name.into(), (label, *size));
+                self.var_total_size += size;
             }
             VarType::ArrayOfInteger(size) => {
                 let label = format!("IA{}", self.var_id);
                 self.int_arr_labels.insert(var_name.into(), (label, *size));
+                self.var_total_size += size;
             }
         }
     }
@@ -1758,13 +1836,15 @@ impl Compiler {
             index = index
         ));
 
+        self.has_eof = true;
+
         let index_reg = self.compile_int_expr(index);
 
         let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
-        let max_label = self.load_subroutine(subroutine::Id::FuncMax);
         let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
         let s_labels = self.get_temp_str_var_label();
         let (arr_label, arr_size) = self.int_arr_labels.get(var_name).cloned().expect("BUG");
+        let label = self.get_new_jump_label();
 
         let (saves, recovers) = {
             use casl2::Register::*;
@@ -1778,11 +1858,12 @@ impl Compiler {
                 CALL  {fit}
                 LD    GR3,GR0
                 IN    {pos},{len}
-                XOR   GR1,GR1
                 LD    GR2,{len}
-                CALL  {max}
-                LD    GR2,GR0
-                LAD   GR1,{pos}
+                JPL   {ok}
+                JZE   {ok}
+                ST    GR2,EOF
+                XOR   GR2,GR2
+{ok}            LAD   GR1,{pos}
                 CALL  {cint}
                 ST    GR0,{arr},GR3"#,
             index = index_reg,
@@ -1790,7 +1871,7 @@ impl Compiler {
             fit = safe_index,
             pos = s_labels.buf,
             len = s_labels.len,
-            max = max_label,
+            ok = label,
             cint = cint_label,
             arr = arr_label
         ));
@@ -1803,10 +1884,12 @@ impl Compiler {
     // Input ステートメント
     // 整数変数へのコンソール入力
     fn compile_input_integer(&mut self, var_name: &str) {
-        let max_label = self.load_subroutine(subroutine::Id::FuncMax);
         let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
         let s_labels = self.get_temp_str_var_label();
         let var_label = self.int_var_labels.get(var_name).cloned().expect("BUG");
+        let label = self.get_new_jump_label();
+
+        self.has_eof = true;
 
         let (saves, recovers) = {
             use casl2::Register::*;
@@ -1817,16 +1900,17 @@ impl Compiler {
         self.code(saves);
         self.code(format!(
             r#" IN    {pos},{len}
-                XOR   GR1,GR1
                 LD    GR2,{len}
-                CALL  {max}
-                LD    GR2,GR0
-                LAD   GR1,{pos}
+                JPL   {ok}
+                JZE   {ok}
+                ST    GR2,EOF
+                XOR   GR2,GR2
+{ok}            LAD   GR1,{pos}
                 CALL  {cint}
                 ST    GR0,{var}"#,
             pos = s_labels.buf,
             len = s_labels.len,
-            max = max_label,
+            ok = label,
             cint = cint_label,
             var = var_label
         ));
@@ -1840,12 +1924,15 @@ impl Compiler {
     fn compile_input_string(&mut self, var_name: &str) {
         let StrLabels { len, buf, .. } = self.str_var_labels.get(var_name).cloned().expect("BUG");
         let label = self.get_new_jump_label();
+        self.has_eof = true;
         self.comment(format!("Input {}", var_name));
         // IN {var_pos},{var_len}
         self.code(format!(
             r#" IN   {pos},{len}
                 LD   GR0,{len}
                 JPL  {ok}
+                JZE  {ok}
+                ST   GR0,EOF
                 XOR  GR0,GR0
                 ST   GR0,{len}
 {ok}            NOP"#,
@@ -2182,7 +2269,7 @@ impl Compiler {
             Space => self.call_function_space(param),
 
             // 戻り値が文字列ではないもの
-            Abs | CInt | Len | Max | Min | CBool => unreachable!("BUG"),
+            Abs | CInt | Eof | Len | Max | Min | CBool => unreachable!("BUG"),
         }
     }
 
@@ -2336,10 +2423,20 @@ impl Compiler {
         use tokenizer::Function::*;
         match func {
             CBool => self.call_function_cbool(param),
+            Eof => self.call_function_eof(param),
 
             // 戻り値が真理値ではないもの
             Abs | CInt | Len | Max | Min | CStr | Space => unreachable!("BUG"),
         }
+    }
+
+    // EOF()
+    fn call_function_eof(&mut self, param: &parser::Expr) -> casl2::Register {
+        assert!(matches!(param, parser::Expr::LitInteger(0)));
+        self.has_eof = true;
+        let reg = self.get_idle_register();
+        self.code(format!(" LD {reg},EOF", reg = reg));
+        reg
     }
 
     // CBool(<integer>)
@@ -3292,7 +3389,7 @@ impl Compiler {
             Len => self.call_function_len(param),
             Max => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMax),
             Min => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMin),
-            CBool | CStr | Space => unreachable!("BUG"),
+            CBool | CStr | Eof | Space => unreachable!("BUG"),
         }
     }
 

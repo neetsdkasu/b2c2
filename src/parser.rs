@@ -1553,8 +1553,15 @@ impl Parser {
             }
 
             // 関数 ( )  ※引数なし関数
-            [(_, Token::Function(_function)), (pos, Token::Operator(Operator::OpenBracket)), (_, Token::Operator(Operator::CloseBracket))] => {
-                Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+            [(_, Token::Function(function)), (pos, Token::Operator(Operator::OpenBracket)), (_, Token::Operator(Operator::CloseBracket))] => {
+                if matches!(function, Function::Eof) {
+                    Ok(Expr::FunctionBoolean(
+                        *function,
+                        Box::new(Expr::LitInteger(0)),
+                    ))
+                } else {
+                    Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+                }
             }
 
             // 関数 ( 引数 )
@@ -2013,7 +2020,7 @@ impl Function {
     fn return_type(&self) -> ExprType {
         use Function::*;
         match self {
-            CBool => ExprType::Boolean,
+            CBool | Eof => ExprType::Boolean,
             Abs | CInt | Len | Max | Min => ExprType::Integer,
             CStr | Space => ExprType::String,
         }
@@ -2022,6 +2029,9 @@ impl Function {
     fn check_param(&self, param: &Expr) -> bool {
         use Function::*;
         match self {
+            // 引数なし
+            Eof => false,
+
             // 引数は整数1個
             Abs | CBool | Space => matches!(param.return_type(), ExprType::Integer),
 

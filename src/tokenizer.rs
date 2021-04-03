@@ -335,6 +335,7 @@ enumdef!(
     CBool,
     CInt,
     CStr,
+    Eof,
     Len,
     Max,
     Min,

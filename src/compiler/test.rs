@@ -2,6 +2,20 @@
 
 use super::*;
 
+struct Gen {
+    jump: Vec<&'static str>,
+    var: Vec<&'static str>,
+}
+
+impl subroutine::Gen for Gen {
+    fn jump_label(&mut self) -> String {
+        self.jump.pop().unwrap().to_string()
+    }
+    fn var_label(&mut self) -> String {
+        self.var.pop().unwrap().to_string()
+    }
+}
+
 #[test]
 fn it_works() {
     let src = r#"
@@ -62,6 +76,7 @@ fn it_works() {
         intArr1(4 - 3) -= 123 Mod 2
         int1 = Abs(-123) + Abs(int1)
         str1 = Space(120)
+        bool1 = EOF()
         For i = 1 To 10
             Print "X"
         Next i
@@ -282,11 +297,16 @@ fn compiler_compile_dim_works() {
     compiler.compile_dim("intArr1", &parser::VarType::ArrayOfInteger(155));
     compiler.compile_dim("intVar1", &parser::VarType::Integer);
 
-    assert_eq!(
-        compiler.finish(),
-        casl2::parse(
+    let fill = subroutine::Id::UtilFill;
+
+    let mut statements = casl2::parse(
+        format!(
             r#"
 TEST   START
+       LAD    GR1,B2
+       XOR    GR2,GR2
+       LAD    GR3,705
+       CALL   {fill}
        RET
                                    ; Dim boolVar1 As Boolean
 B2     DS     1
@@ -306,12 +326,22 @@ SB6    DS     256
 BA4    DS     32
                                    ; Dim intArr1(154) As Integer
 IA7    DS     155
-       END
-            "#
-            .trim()
+            "#,
+            fill = fill.label()
         )
-        .unwrap()
-    );
+        .trim(),
+    )
+    .unwrap();
+
+    let mut gen = Gen {
+        jump: vec!["J2", "J1"],
+        var: vec![],
+    };
+
+    statements.extend(subroutine::get_src(&mut gen, fill).statements);
+    statements.push(casl2::Statement::code(casl2::Command::End));
+
+    assert_eq!(compiler.finish(), statements);
 }
 
 #[test]
@@ -434,11 +464,16 @@ fn compiler_compile_print_var_string_works() {
     compiler.compile_print_var_string("strVar2");
     compiler.compile_print_var_string("strVar1");
 
-    assert_eq!(
-        compiler.finish(),
-        casl2::parse(
+    let fill = subroutine::Id::UtilFill;
+
+    let mut statements = casl2::parse(
+        format!(
             r#"
 TEST   START
+       LAD    GR1,SL1
+       XOR    GR2,GR2
+       LAD    GR3,771
+       CALL   {fill}
                                    ; Print strVar3
        OUT    SB3,SL3
                                    ; Print strVar2
@@ -455,12 +490,22 @@ SB2    DS     256
                                    ; Dim strVar3 As String
 SL3    DS     1
 SB3    DS     256
-       END
-            "#
-            .trim()
+            "#,
+            fill = fill.label()
         )
-        .unwrap()
-    );
+        .trim(),
+    )
+    .unwrap();
+
+    let mut gen = Gen {
+        jump: vec!["J2", "J1"],
+        var: vec![],
+    };
+
+    statements.extend(subroutine::get_src(&mut gen, fill).statements);
+    statements.push(casl2::Statement::code(casl2::Command::End));
+
+    assert_eq!(compiler.finish(), statements);
 }
 
 #[test]
@@ -474,15 +519,22 @@ fn compiler_compile_input_string_works() {
     compiler.compile_input_string("strVar2");
     compiler.compile_input_string("strVar1");
 
-    assert_eq!(
-        compiler.finish(),
-        casl2::parse(
+    let fill = subroutine::Id::UtilFill;
+
+    let mut statements = casl2::parse(
+        format!(
             r#"
 TEST   START
+       LAD    GR1,SL1
+       XOR    GR2,GR2
+       LAD    GR3,772
+       CALL   {fill}
                                    ; Input strVar3
        IN     SB3,SL3
        LD     GR0,SL3
        JPL    J1
+       JZE    J1
+       ST     GR0,EOF
        XOR    GR0,GR0
        ST     GR0,SL3
 J1     NOP
@@ -490,6 +542,8 @@ J1     NOP
        IN     SB2,SL2
        LD     GR0,SL2
        JPL    J2
+       JZE    J2
+       ST     GR0,EOF
        XOR    GR0,GR0
        ST     GR0,SL2
 J2     NOP
@@ -497,6 +551,8 @@ J2     NOP
        IN     SB1,SL1
        LD     GR0,SL1
        JPL    J3
+       JZE    J3
+       ST     GR0,EOF
        XOR    GR0,GR0
        ST     GR0,SL1
 J3     NOP
@@ -510,12 +566,23 @@ SB2    DS     256
                                    ; Dim strVar3 As String
 SL3    DS     1
 SB3    DS     256
-       END
-            "#
-            .trim()
+EOF    DS     1
+            "#,
+            fill = fill.label()
         )
-        .unwrap()
-    );
+        .trim(),
+    )
+    .unwrap();
+
+    let mut gen = Gen {
+        jump: vec!["J5", "J4"],
+        var: vec![],
+    };
+
+    statements.extend(subroutine::get_src(&mut gen, fill).statements);
+    statements.push(casl2::Statement::code(casl2::Command::End));
+
+    assert_eq!(compiler.finish(), statements);
 }
 
 #[test]
@@ -526,69 +593,54 @@ fn compiler_compile_input_integer_works() {
 
     compiler.compile_input_integer("intVar1");
 
-    assert_eq!(compiler.subroutine_codes.len(), 2);
+    assert_eq!(compiler.subroutine_codes.len(), 1);
     assert_eq!(compiler.temp_str_var_labels.len(), 1);
 
-    struct T {
-        v: Vec<&'static str>,
-    }
-
-    impl subroutine::Gen for T {
-        fn jump_label(&mut self) -> String {
-            self.v.pop().unwrap().to_string()
-        }
-        fn var_label(&mut self) -> String {
-            unreachable!()
-        }
-    }
-
-    let max = subroutine::Id::FuncMax;
+    let fill = subroutine::Id::UtilFill;
     let cint = subroutine::Id::FuncCInt;
-    let mut t = T {
-        v: vec!["J4", "J3", "J2", "J1"],
-    };
 
     let mut statements = casl2::parse(
         format!(
             r#"
 TEST   START
+       LAD    GR1,I1
+       XOR    GR2,GR2
+       LAD    GR3,2
+       CALL   {fill}
                                    ; Input intVar1
        IN     TB1,TL1
-       XOR    GR1,GR1
        LD     GR2,TL1
-       CALL   {max}
-       LD     GR2,GR0
-       LAD    GR1,TB1
+       JPL    J4
+       JZE    J4
+       ST     GR2,EOF
+       XOR    GR2,GR2
+J4     LAD    GR1,TB1
        CALL   {cint}
        ST     GR0,I1
        RET
+                                   ; Dim intVar1 As Integer
+I1     DS     1
+EOF    DS     1
+TL1    DS     1
+TB1    DS     256
             "#,
-            max = max.label(),
+            fill = fill.label(),
             cint = cint.label()
         )
         .trim(),
     )
     .unwrap();
 
-    statements.extend(
-        casl2::parse(
-            r#"
-                                   ; Dim intVar1 As Integer
-I1     DS     1
-TL1    DS     1
-TB1    DS     256
-            "#
-            .trim_start_matches('\n')
-            .trim_end(),
-        )
-        .unwrap(),
-    );
+    let mut gen = Gen {
+        jump: vec!["J6", "J5", "J3", "J2", "J1"],
+        var: vec![],
+    };
 
-    let max_src = subroutine::get_src(&mut t, max).statements;
-    let cint_src = subroutine::get_src(&mut t, cint).statements;
+    let cint_src = subroutine::get_src(&mut gen, cint).statements;
+    let fill_src = subroutine::get_src(&mut gen, fill).statements;
 
     statements.extend(cint_src);
-    statements.extend(max_src);
+    statements.extend(fill_src);
 
     statements.push(casl2::Statement::code(casl2::Command::End));
 
@@ -613,6 +665,8 @@ fn for_statement_without_step_works() {
         statements,
         casl2::parse(
             r#"TEST  START
+                     XOR    GR0,GR0
+                     ST     GR0,I1
                                    ; For i = 1 To 10 Step 1
                      LAD    GR7,10
                      ST     GR7,T1
@@ -658,6 +712,8 @@ fn for_statement_positive_step_works() {
         statements,
         casl2::parse(
             r#"TEST  START
+                     XOR    GR0,GR0
+                     ST     GR0,I1
                                    ; For i = 1 To 10 Step 1
                      LAD    GR7,10
                      ST     GR7,T1
@@ -703,6 +759,8 @@ fn for_statement_negative_step_works() {
         statements,
         casl2::parse(
             r#"TEST  START
+                     XOR    GR0,GR0
+                     ST     GR0,I1
                                    ; For i = 24 To 8 Step -2
                      LAD    GR7,8
                      ST     GR7,T1
@@ -745,10 +803,15 @@ fn for_statement_expr_step_works() {
 
     let statements = compile("TEST", &code[..]).unwrap();
 
-    assert_eq!(
-        statements,
-        casl2::parse(
+    let fill = subroutine::Id::UtilFill;
+
+    let mut right_statements = casl2::parse(
+        format!(
             r#"TEST  START
+                     LAD    GR1,I1
+                     XOR    GR2,GR2
+                     LAD    GR3,2
+                     CALL   {fill}
                                    ; For I = 1 To 10 Step S
                      LD     GR7,I1
                      ST     GR7,T1
@@ -780,11 +843,22 @@ I1                   DS 1
 I2                   DS 1
 T1                   DS 1
 T2                   DS 1
-                     END
-"#
+"#,
+            fill = fill.label()
         )
-        .unwrap()
-    );
+        .trim(),
+    )
+    .unwrap();
+
+    let mut gen = Gen {
+        jump: vec!["J7", "J6"],
+        var: vec![],
+    };
+
+    right_statements.extend(subroutine::get_src(&mut gen, fill).statements);
+    right_statements.push(casl2::Statement::code(casl2::Command::End));
+
+    assert_eq!(statements, right_statements);
 }
 
 #[test]
@@ -804,6 +878,8 @@ fn expr_add_literal_int_rhs_works() {
         statements,
         casl2::parse(
             r#"TEST  START
+                     XOR    GR0,GR0
+                     ST     GR0,I1
                                    ; x = (11 + 22)
                      LAD    GR7,11
                      LAD    GR7,22,GR7
@@ -832,10 +908,15 @@ fn expr_add_variable_rhs_works() {
 
     let statements = compile("TEST", &code[..]).unwrap();
 
-    assert_eq!(
-        statements,
-        casl2::parse(
+    let fill = subroutine::Id::UtilFill;
+
+    let mut right_statements = casl2::parse(
+        format!(
             r#"TEST  START
+                     LAD    GR1,I1
+                     XOR    GR2,GR2
+                     LAD    GR3,2
+                     CALL   {fill}
                                    ; x = (11 + y)
                      LAD    GR7,11
                      LD     GR6,I2
@@ -846,11 +927,22 @@ fn expr_add_variable_rhs_works() {
 I1                   DS 1
                                    ; Dim y As Integer
 I2                   DS 1
-                     END
-"#
+"#,
+            fill = fill.label()
         )
-        .unwrap()
-    );
+        .trim(),
+    )
+    .unwrap();
+
+    let mut gen = Gen {
+        jump: vec!["J2", "J1"],
+        var: vec![],
+    };
+
+    right_statements.extend(subroutine::get_src(&mut gen, fill).statements);
+    right_statements.push(casl2::Statement::code(casl2::Command::End));
+
+    assert_eq!(statements, right_statements);
 }
 
 #[test]
@@ -958,9 +1050,9 @@ Print "PRIMES: " & CStr(count)
 s = ""
 For i = 0 To count - 1
     If prime(i) < 10 Then
-        s = s & "  "
+        s = s & Space(2)
     ElseIf prime(i) < 100 Then
-        s = s & " "
+        s = s & Space(1)
     End If
     s = s & CStr(prime(i)) & ","
     If i Mod 10 = 9 Then
