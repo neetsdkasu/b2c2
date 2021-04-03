@@ -790,7 +790,7 @@ fn for_statement_expr_step_works() {
     let fill = subroutine::Id::UtilFill;
 
     let mut right_statements = casl2::parse(&format!(
-        r#"TEST  START
+        r#"TEST      START
                      LAD    GR1,I1
                      XOR    GR2,GR2
                      LAD    GR3,2
@@ -892,7 +892,7 @@ fn expr_add_variable_rhs_works() {
     let fill = subroutine::Id::UtilFill;
 
     let mut right_statements = casl2::parse(&format!(
-        r#"TEST  START
+        r#"TEST      START
                      LAD    GR1,I1
                      XOR    GR2,GR2
                      LAD    GR3,2
