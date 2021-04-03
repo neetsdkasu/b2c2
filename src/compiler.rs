@@ -2585,15 +2585,15 @@ impl Compiler {
                 let lhs_reg = self.compile_int_expr(lhs);
                 let rhs_reg = self.compile_int_expr(rhs);
                 self.restore_register(lhs_reg);
+                let label = self.get_new_jump_label();
                 self.code(format!(
                     r#" SUBA  {lhs},{rhs}
-                        LD    {rhs},{lhs}
-                        XOR   {rhs},=#FFFF
-                        LAD   {rhs},1,{rhs}
-                        OR    {lhs},{rhs}
-                        SRA   {lhs},15"#,
+                        JZE   {ok}
+                        LAD   {lhs},#FFFF
+{ok}                    NOP"#,
                     lhs = lhs_reg,
-                    rhs = rhs_reg
+                    rhs = rhs_reg,
+                    ok = label
                 ));
                 self.set_register_idle(rhs_reg);
                 lhs_reg
@@ -2622,7 +2622,7 @@ impl Compiler {
                     r#" XOR   GR0,GR0
                         CPA   {lhs},{rhs}
                         JPL   {ok}
-                        LAD   GR0,=#FFFF
+                        LAD   GR0,#FFFF
 {ok}                    LD    {lhs},GR0"#,
                     lhs = lhs_reg,
                     rhs = rhs_reg,
@@ -2655,7 +2655,7 @@ impl Compiler {
                     r#" XOR   GR0,GR0
                         CPA   {lhs},{rhs}
                         JMI   {ok}
-                        LAD   GR0,=#FFFF
+                        LAD   GR0,#FFFF
 {ok}                    LD    {lhs},GR0"#,
                     lhs = lhs_reg,
                     rhs = rhs_reg,
@@ -2685,7 +2685,7 @@ impl Compiler {
                 self.restore_register(lhs_reg);
                 let label = self.get_new_jump_label();
                 self.code(format!(
-                    r#" LAD   GR0,=#FFFF
+                    r#" LAD   GR0,#FFFF
                         CPA   {lhs},{rhs}
                         JPL   {ok}
                         XOR   GR0,GR0
@@ -2718,7 +2718,7 @@ impl Compiler {
                 self.restore_register(lhs_reg);
                 let label = self.get_new_jump_label();
                 self.code(format!(
-                    r#" LAD   GR0,=#FFFF
+                    r#" LAD   GR0,#FFFF
                         CPA   {lhs},{rhs}
                         JMI   {ok}
                         XOR   GR0,GR0
@@ -2752,11 +2752,10 @@ impl Compiler {
                 self.restore_register(lhs_reg);
                 let label = self.get_new_jump_label();
                 self.code(format!(
-                    r#" XOR  GR0,GR0
-                        CPL  {lhs},{rhs}
-                        JNZ  {ok}
-                        LAD  GR0,=#FFFF
-{ok}                    LD   {lhs},GR0"#,
+                    r#" SUBA  {lhs},{rhs}
+                        JZE   {ok}
+                        LAD   {lhs},#FFFF
+{ok}                    XOR   {lhs},=#FFFF"#,
                     lhs = lhs_reg,
                     rhs = rhs_reg,
                     ok = label
