@@ -2580,7 +2580,14 @@ impl Compiler {
         assert_eq!(lhs.return_type(), rhs.return_type());
 
         match lhs.return_type() {
-            parser::ExprType::Boolean => todo!(),
+            parser::ExprType::Boolean => {
+                let lhs_reg = self.compile_int_expr(lhs);
+                let rhs_reg = self.compile_int_expr(rhs);
+                self.restore_register(lhs_reg);
+                self.code(format!(r#" XOR {lhs},{rhs}"#, lhs = lhs_reg, rhs = rhs_reg));
+                self.set_register_idle(rhs_reg);
+                lhs_reg
+            }
             parser::ExprType::Integer => {
                 let lhs_reg = self.compile_int_expr(lhs);
                 let rhs_reg = self.compile_int_expr(rhs);
@@ -2598,7 +2605,41 @@ impl Compiler {
                 self.set_register_idle(rhs_reg);
                 lhs_reg
             }
-            parser::ExprType::String => todo!(),
+            parser::ExprType::String => {
+                let reg = self.get_idle_register();
+                self.set_register_idle(reg);
+                let lhs_labels = self.compile_str_expr(lhs);
+                let rhs_labels = self.compile_str_expr(rhs);
+                let cmpstr = self.load_subroutine(subroutine::Id::UtilCompareStr);
+                let (saves, recovers) = {
+                    use casl2::Register::*;
+                    self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+                };
+                self.code(saves);
+                self.code(format!(
+                    r#" LAD   GR1,{lhspos}
+                        LD    GR2,{lhslen}
+                        LAD   GR3,{rhspos}
+                        LD    GR4,{rhslen}
+                        CALL  {cmpstr}"#,
+                    lhspos = lhs_labels.buf,
+                    lhslen = lhs_labels.len,
+                    rhspos = rhs_labels.buf,
+                    rhslen = rhs_labels.len,
+                    cmpstr = cmpstr
+                ));
+                self.code(recovers);
+                self.code(format!(
+                    r#" SLL   GR0,15
+                        SRA   GR0,15
+                        LD    {reg},GR0"#,
+                    reg = reg
+                ));
+                self.return_temp_str_var_label(lhs_labels);
+                self.return_temp_str_var_label(rhs_labels);
+                self.set_register_used(reg);
+                reg
+            }
             parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
@@ -2779,10 +2820,7 @@ impl Compiler {
                         LD    GR2,{lhslen}
                         LAD   GR3,{rhspos}
                         LD    GR4,{rhslen}
-                        CALL  {cmpstr}
-                        SLL   GR0,15
-                        SRA   GR0,15
-                        XOR   GR0,=#FFFF"#,
+                        CALL  {cmpstr}"#,
                     lhspos = lhs_str.buf,
                     lhslen = lhs_str.len,
                     rhspos = rhs_str.buf,
@@ -2790,7 +2828,13 @@ impl Compiler {
                     cmpstr = cmpstr
                 ));
                 self.code(recovers);
-                self.code(format!(" LD {reg},GR0", reg = ret_reg));
+                self.code(format!(
+                    r#" SLL   GR0,15
+                        SRA   GR0,15
+                        XOR   GR0,=#FFFF
+                        LD    {reg},GR0"#,
+                    reg = ret_reg
+                ));
                 self.return_temp_str_var_label(lhs_str);
                 self.return_temp_str_var_label(rhs_str);
                 self.set_register_used(ret_reg);
