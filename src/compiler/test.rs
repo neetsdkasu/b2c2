@@ -956,6 +956,8 @@ Next i
         eprintln!("{}", line);
     });
 
+    eprintln!("{}", crate::stat::analyze(&statements));
+
     assert!(!statements.is_empty()); // dummy assert
 }
 
@@ -997,6 +999,8 @@ Loop
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
     });
+
+    eprintln!("{}", crate::stat::analyze(&statements));
 
     assert!(!statements.is_empty()); // dummy assert
 }
@@ -1054,6 +1058,8 @@ End If
         eprintln!("{}", line);
     });
 
+    eprintln!("{}", crate::stat::analyze(&statements));
+
     assert!(!statements.is_empty()); // dummy assert
 }
 
@@ -1084,6 +1090,8 @@ Print s
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
     });
+
+    eprintln!("{}", crate::stat::analyze(&statements));
 
     assert!(!statements.is_empty()); // dummy assert
 }
@@ -1141,6 +1149,8 @@ End If
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
     });
+
+    eprintln!("{}", crate::stat::analyze(&statements));
 
     assert!(!statements.is_empty()); // dummy assert
 }

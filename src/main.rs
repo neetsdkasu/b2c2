@@ -1,17 +1,15 @@
 #[allow(dead_code)]
 mod casl2;
-
-#[allow(dead_code)]
-mod jis_x_201;
-
-#[allow(dead_code)]
-mod tokenizer;
-
-#[allow(dead_code)]
-mod parser;
-
 #[allow(dead_code)]
 mod compiler;
+#[allow(dead_code)]
+mod jis_x_201;
+#[allow(dead_code)]
+mod parser;
+#[allow(dead_code)]
+mod stat;
+#[allow(dead_code)]
+mod tokenizer;
 
 #[derive(Debug)]
 pub struct SyntaxError {
