@@ -64,9 +64,8 @@ fn get_func_abs<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR0 .. ret = abs(value1)
     Src {
         dependencies: Vec::new(),
-        statements: casl2::parse(
-            format!(
-                r#"
+        statements: casl2::parse(&format!(
+            r#"
                                    ; {comment}
 {prog} LD    GR0,GR1
        JMI   {mi}
@@ -75,12 +74,10 @@ fn get_func_abs<T: Gen>(gen: &mut T, id: Id) -> Src {
        SUBA  GR0,GR1
        RET
 "#,
-                comment = format!("{:?}", id),
-                prog = id.label(),
-                mi = gen.jump_label()
-            )
-            .trim_start_matches('\n'),
-        )
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            mi = gen.jump_label()
+        ))
         .unwrap(),
     }
 }
@@ -92,9 +89,8 @@ fn get_func_max<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR0 .. ret = max(value1, value2)
     Src {
         dependencies: Vec::new(),
-        statements: casl2::parse(
-            format!(
-                r#"
+        statements: casl2::parse(&format!(
+            r#"
                                    ; {comment}
 {prog} CPA   GR1,GR2
        JMI   {mi}
@@ -103,12 +99,10 @@ fn get_func_max<T: Gen>(gen: &mut T, id: Id) -> Src {
 {mi}   LD    GR0,GR2
        RET
 "#,
-                comment = format!("{:?}", id),
-                prog = id.label(),
-                mi = gen.jump_label()
-            )
-            .trim_start_matches('\n'),
-        )
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            mi = gen.jump_label()
+        ))
         .unwrap(),
     }
 }
@@ -120,9 +114,8 @@ fn get_func_min<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR0 .. ret = min(value1, value2)
     Src {
         dependencies: Vec::new(),
-        statements: casl2::parse(
-            format!(
-                r#"
+        statements: casl2::parse(&format!(
+            r#"
                                    ; {comment}
 {prog} CPA   GR1,GR2
        JMI   {mi}
@@ -131,12 +124,10 @@ fn get_func_min<T: Gen>(gen: &mut T, id: Id) -> Src {
 {mi}   LD    GR0,GR1
        RET
 "#,
-                comment = format!("{:?}", id),
-                prog = id.label(),
-                mi = gen.jump_label()
-            )
-            .trim_start_matches('\n'),
-        )
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            mi = gen.jump_label()
+        ))
         .unwrap(),
     }
 }
@@ -148,9 +139,8 @@ fn get_func_cint<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR0 .. ret
     Src {
         dependencies: Vec::new(),
-        statements: casl2::parse(
-            format!(
-                r#"
+        statements: casl2::parse(&format!(
+            r#"
                                    ; {comment}
 {prog} PUSH  0,GR1
        PUSH  0,GR2
@@ -194,14 +184,12 @@ fn get_func_cint<T: Gen>(gen: &mut T, id: Id) -> Src {
        POP   GR1
        RET
 "#,
-                comment = format!("{:?}", id),
-                prog = id.label(),
-                ret = gen.jump_label(),
-                read = gen.jump_label(),
-                mi = gen.jump_label()
-            )
-            .trim_start_matches('\n'),
-        )
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            ret = gen.jump_label(),
+            read = gen.jump_label(),
+            mi = gen.jump_label()
+        ))
         .unwrap(),
     }
 }
@@ -213,9 +201,8 @@ fn get_util_compare_int<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR0 ... -1 if lhs < rhs , 0 if lhs = rhs, 1 if lhs > rhs
     Src {
         dependencies: Vec::new(),
-        statements: casl2::parse(
-            format!(
-                r#"
+        statements: casl2::parse(&format!(
+            r#"
                                    ; {comment}
 {prog}  XOR    GR0,GR0
         CPA    GR1,GR2
@@ -226,13 +213,11 @@ fn get_util_compare_int<T: Gen>(gen: &mut T, id: Id) -> Src {
 {plus}  OR     GR0,=1
         RET
 "#,
-                comment = format!("{:?}", id),
-                prog = id.label(),
-                minus = gen.jump_label(),
-                plus = gen.jump_label()
-            )
-            .trim_start_matches('\n'),
-        )
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            minus = gen.jump_label(),
+            plus = gen.jump_label()
+        ))
         .unwrap(),
     }
 }
@@ -244,9 +229,8 @@ fn get_util_safe_index<T: Gen>(_gen: &mut T, id: Id) -> Src {
     // GR0 = Max(0, Min(GR1, GR2 - 1))
     Src {
         dependencies: vec![Id::FuncMax, Id::FuncMin],
-        statements: casl2::parse(
-            format!(
-                r#"
+        statements: casl2::parse(&format!(
+            r#"
                                    ; {comment}
 {prog}  PUSH   0,GR1
         PUSH   0,GR2
@@ -259,13 +243,11 @@ fn get_util_safe_index<T: Gen>(_gen: &mut T, id: Id) -> Src {
         POP    GR1
         RET
 "#,
-                comment = format!("{:?}", id),
-                prog = id.label(),
-                min = Id::FuncMin.label(),
-                max = Id::FuncMax.label()
-            )
-            .trim_start_matches('\n'),
-        )
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            min = Id::FuncMin.label(),
+            max = Id::FuncMax.label()
+        ))
         .unwrap(),
     }
 }
@@ -278,9 +260,8 @@ fn get_util_div_mod<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 余り   = GR2 Mod GR3
     Src {
         dependencies: vec![Id::FuncAbs, Id::UtilMul],
-        statements: casl2::parse(
-            format!(
-                r#"
+        statements: casl2::parse(&format!(
+            r#"
                                    ; {comment}
 {prog}  AND   GR3,GR3
         JNZ   {ok}
@@ -329,19 +310,17 @@ fn get_util_div_mod<T: Gen>(gen: &mut T, id: Id) -> Src {
         POP   GR2
         RET
 "#,
-                comment = format!("{:?}", id),
-                prog = id.label(),
-                abs = Id::FuncAbs.label(),
-                mul = Id::UtilMul.label(),
-                ok = gen.jump_label(),
-                shift = gen.jump_label(),
-                pre = gen.jump_label(),
-                cycle = gen.jump_label(),
-                next = gen.jump_label(),
-                ret = gen.jump_label()
-            )
-            .trim_start_matches('\n'),
-        )
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            abs = Id::FuncAbs.label(),
+            mul = Id::UtilMul.label(),
+            ok = gen.jump_label(),
+            shift = gen.jump_label(),
+            pre = gen.jump_label(),
+            cycle = gen.jump_label(),
+            next = gen.jump_label(),
+            ret = gen.jump_label()
+        ))
         .unwrap(),
     }
 }
@@ -353,9 +332,8 @@ fn get_util_mul<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 積の上位16ビット ((GR2 * GR3) & 0xFFFF0000) >> 16
     Src {
         dependencies: vec![Id::FuncAbs, Id::UtilMul],
-        statements: casl2::parse(
-            format!(
-                r#"
+        statements: casl2::parse(&format!(
+            r#"
                                    ; {comment}
 {prog}   PUSH  0,GR2
          PUSH  0,GR3
@@ -388,18 +366,16 @@ fn get_util_mul<T: Gen>(gen: &mut T, id: Id) -> Src {
          POP   GR2
          RET
 "#,
-                comment = format!("{:?}", id),
-                prog = id.label(),
-                cycle1 = gen.jump_label(),
-                add1 = gen.jump_label(),
-                raise1 = gen.jump_label(),
-                next1 = gen.jump_label(),
-                cycle2 = gen.jump_label(),
-                add2 = gen.jump_label(),
-                ret = gen.jump_label()
-            )
-            .trim_start_matches('\n'),
-        )
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            cycle1 = gen.jump_label(),
+            add1 = gen.jump_label(),
+            raise1 = gen.jump_label(),
+            next1 = gen.jump_label(),
+            cycle2 = gen.jump_label(),
+            add2 = gen.jump_label(),
+            ret = gen.jump_label()
+        ))
         .unwrap(),
     }
 }
@@ -411,9 +387,8 @@ fn get_func_cstr_arg_bool<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR3 .. value (boolean)
     Src {
         dependencies: vec![Id::UtilCopyStr],
-        statements: casl2::parse(
-            format!(
-                r#"
+        statements: casl2::parse(&format!(
+            r#"
                                    ; {comment}
 {prog}   PUSH  0,GR3
          PUSH  0,GR4
@@ -428,13 +403,11 @@ fn get_func_cstr_arg_bool<T: Gen>(gen: &mut T, id: Id) -> Src {
          POP   GR3
          RET
 "#,
-                comment = format!("{:?}", id),
-                prog = id.label(),
-                copy = Id::UtilCopyStr.label(),
-                ret = gen.jump_label()
-            )
-            .trim_start_matches('\n'),
-        )
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            copy = Id::UtilCopyStr.label(),
+            ret = gen.jump_label()
+        ))
         .unwrap(),
     }
 }
@@ -446,9 +419,8 @@ fn get_func_cstr_arg_int<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR3 .. value (integer)
     Src {
         dependencies: vec![Id::UtilDivMod, Id::UtilCopyStr],
-        statements: casl2::parse(
-            format!(
-                r#"
+        statements: casl2::parse(&format!(
+            r#"
                                    ; {comment}
 {prog}   CPL   GR3,=#8000
          JNZ   {zero}
@@ -509,19 +481,17 @@ fn get_func_cstr_arg_int<T: Gen>(gen: &mut T, id: Id) -> Src {
          RET
 {temp}   DS    6
 "#,
-                comment = format!("{:?}", id),
-                prog = id.label(),
-                rem = Id::UtilDivMod.label(),
-                copystr = Id::UtilCopyStr.label(),
-                zero = gen.jump_label(),
-                init = gen.jump_label(),
-                start = gen.jump_label(),
-                cycle = gen.jump_label(),
-                copy = gen.jump_label(),
-                temp = gen.var_label()
-            )
-            .trim_start_matches('\n'),
-        )
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            rem = Id::UtilDivMod.label(),
+            copystr = Id::UtilCopyStr.label(),
+            zero = gen.jump_label(),
+            init = gen.jump_label(),
+            start = gen.jump_label(),
+            cycle = gen.jump_label(),
+            copy = gen.jump_label(),
+            temp = gen.var_label()
+        ))
         .unwrap(),
     }
 }
@@ -535,9 +505,8 @@ fn get_util_compare_str<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR0 .. -1 if lhs < rhs, 0 if lhs == rhs, 1 if lhs > rhs
     Src {
         dependencies: Vec::new(),
-        statements: casl2::parse(
-            format!(
-                r#"
+        statements: casl2::parse(&format!(
+            r#"
                                    ; {comment}
 {prog}   PUSH  0,GR1
          PUSH  0,GR2
@@ -570,16 +539,14 @@ fn get_util_compare_str<T: Gen>(gen: &mut T, id: Id) -> Src {
          POP   GR1
          RET
 "#,
-                comment = format!("{:?}", id),
-                prog = id.label(),
-                cycle = gen.jump_label(),
-                next = gen.jump_label(),
-                less = gen.jump_label(),
-                great = gen.jump_label(),
-                ret = gen.jump_label()
-            )
-            .trim_start_matches('\n'),
-        )
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            cycle = gen.jump_label(),
+            next = gen.jump_label(),
+            less = gen.jump_label(),
+            great = gen.jump_label(),
+            ret = gen.jump_label()
+        ))
         .unwrap(),
     }
 }
@@ -593,9 +560,8 @@ fn get_util_copy_str<T: Gen>(gen: &mut T, id: Id) -> Src {
     //  copy from (GR3,GR4) to (GR1,GR2)
     Src {
         dependencies: Vec::new(),
-        statements: casl2::parse(
-            format!(
-                r#"
+        statements: casl2::parse(&format!(
+            r#"
                                    ; {comment}
 {prog}   PUSH  0,GR1
          PUSH  0,GR2
@@ -616,13 +582,11 @@ fn get_util_copy_str<T: Gen>(gen: &mut T, id: Id) -> Src {
          POP   GR1
          RET
 "#,
-                comment = format!("{:?}", id),
-                prog = id.label(),
-                cycle = gen.jump_label(),
-                ret = gen.jump_label()
-            )
-            .trim_start_matches('\n'),
-        )
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            cycle = gen.jump_label(),
+            ret = gen.jump_label()
+        ))
         .unwrap(),
     }
 }
@@ -637,9 +601,8 @@ fn get_util_concat_str<T: Gen>(gen: &mut T, id: Id) -> Src {
     //   GR2 = Min(GR2 + GR4, 256)
     Src {
         dependencies: Vec::new(),
-        statements: casl2::parse(
-            format!(
-                r#"
+        statements: casl2::parse(&format!(
+            r#"
                                    ; {comment}
 {prog}   PUSH  0,GR1
          PUSH  0,GR2
@@ -668,13 +631,11 @@ fn get_util_concat_str<T: Gen>(gen: &mut T, id: Id) -> Src {
          ST    GR0,0,GR2
          RET
 "#,
-                comment = format!("{:?}", id),
-                prog = id.label(),
-                cycle = gen.jump_label(),
-                ret = gen.jump_label()
-            )
-            .trim_start_matches('\n'),
-        )
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            cycle = gen.jump_label(),
+            ret = gen.jump_label()
+        ))
         .unwrap(),
     }
 }
@@ -686,9 +647,8 @@ fn get_util_fill<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR3 .. fill len
     Src {
         dependencies: Vec::new(),
-        statements: casl2::parse(
-            format!(
-                r#"
+        statements: casl2::parse(&format!(
+            r#"
                                    ; {comment}
 {prog} PUSH  0,GR1
        PUSH  0,GR2
@@ -704,13 +664,11 @@ fn get_util_fill<T: Gen>(gen: &mut T, id: Id) -> Src {
        POP   GR1
        RET
 "#,
-                comment = format!("{:?}", id),
-                prog = id.label(),
-                next = gen.jump_label(),
-                ret = gen.jump_label()
-            )
-            .trim_start_matches('\n'),
-        )
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            next = gen.jump_label(),
+            ret = gen.jump_label()
+        ))
         .unwrap(),
     }
 }
@@ -722,9 +680,8 @@ fn get_func_space<T: Gen>(_gen: &mut T, id: Id) -> Src {
     // GR3 .. space len
     Src {
         dependencies: vec![Id::UtilFill, Id::UtilSafeIndex],
-        statements: casl2::parse(
-            format!(
-                r#"
+        statements: casl2::parse(&format!(
+            r#"
                                    ; {comment}
 {prog} PUSH  0,GR1
        PUSH  0,GR2
@@ -745,13 +702,11 @@ fn get_func_space<T: Gen>(_gen: &mut T, id: Id) -> Src {
        ST    GR0,0,GR2
        RET
 "#,
-                comment = format!("{:?}", id),
-                prog = id.label(),
-                fit = Id::UtilSafeIndex.label(),
-                fill = Id::UtilFill.label()
-            )
-            .trim_start_matches('\n'),
-        )
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            fit = Id::UtilSafeIndex.label(),
+            fill = Id::UtilFill.label()
+        ))
         .unwrap(),
     }
 }

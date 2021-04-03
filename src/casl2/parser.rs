@@ -8,6 +8,9 @@ type TokenError = String;
 pub fn parse(src: &str) -> Result<Vec<Statement>, SyntaxError> {
     let mut ret = vec![];
     for (i, line) in src.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
         let stmt = Statement::parse(line).ok_or_else(|| {
             SyntaxError::new(i + 1, 0, format!("invalid CASL2 statement: {{{}}}", line))
         })?;

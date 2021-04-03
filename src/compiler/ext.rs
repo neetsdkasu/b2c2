@@ -46,19 +46,19 @@ where
 
 impl AddCode<&str> for Vec<casl2::Statement> {
     fn code(&mut self, src: &str) {
-        self.extend(casl2::parse(src.trim_start_matches('\n').trim_end()).unwrap());
+        self.extend(casl2::parse(src).unwrap());
     }
 }
 
 impl AddCode<String> for Vec<casl2::Statement> {
     fn code(&mut self, src: String) {
-        self.extend(casl2::parse(src.trim_start_matches('\n').trim_end()).unwrap());
+        self.extend(casl2::parse(&src).unwrap());
     }
 }
 
 impl AddCode<&String> for Vec<casl2::Statement> {
     fn code(&mut self, src: &String) {
-        self.extend(casl2::parse(src.trim_start_matches('\n').trim_end()).unwrap());
+        self.extend(casl2::parse(&src).unwrap());
     }
 }
 

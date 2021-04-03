@@ -277,8 +277,7 @@ LB3    DC     'XYZ'
 LL4    DC     9
 LB4    DC     'Test@1234'
        END
-            "#
-            .trim()
+"#
         )
         .unwrap()
     );
@@ -299,9 +298,8 @@ fn compiler_compile_dim_works() {
 
     let fill = subroutine::Id::UtilFill;
 
-    let mut statements = casl2::parse(
-        format!(
-            r#"
+    let mut statements = casl2::parse(&format!(
+        r#"
 TEST   START
        LAD    GR1,B2
        XOR    GR2,GR2
@@ -327,10 +325,8 @@ BA4    DS     32
                                    ; Dim intArr1(154) As Integer
 IA7    DS     155
             "#,
-            fill = fill.label()
-        )
-        .trim(),
-    )
+        fill = fill.label()
+    ))
     .unwrap();
 
     let mut gen = Gen {
@@ -372,8 +368,7 @@ LB1    DC     'True'
 LL2    DC     5
 LB2    DC     'False'
        END
-            "#
-            .trim()
+"#
         )
         .unwrap()
     );
@@ -409,8 +404,7 @@ LB2    DC     '999'
 LL3    DC     4
 LB3    DC     '-100'
        END
-            "#
-            .trim()
+"#
         )
         .unwrap()
     );
@@ -446,8 +440,7 @@ LB2    DC     'hey you!'
 LL3    DC     0
 LB3    DS     0
        END
-            "#
-            .trim()
+"#
         )
         .unwrap()
     );
@@ -466,9 +459,8 @@ fn compiler_compile_print_var_string_works() {
 
     let fill = subroutine::Id::UtilFill;
 
-    let mut statements = casl2::parse(
-        format!(
-            r#"
+    let mut statements = casl2::parse(&format!(
+        r#"
 TEST   START
        LAD    GR1,SL1
        XOR    GR2,GR2
@@ -490,11 +482,9 @@ SB2    DS     256
                                    ; Dim strVar3 As String
 SL3    DS     1
 SB3    DS     256
-            "#,
-            fill = fill.label()
-        )
-        .trim(),
-    )
+"#,
+        fill = fill.label()
+    ))
     .unwrap();
 
     let mut gen = Gen {
@@ -521,9 +511,8 @@ fn compiler_compile_input_string_works() {
 
     let fill = subroutine::Id::UtilFill;
 
-    let mut statements = casl2::parse(
-        format!(
-            r#"
+    let mut statements = casl2::parse(&format!(
+        r#"
 TEST   START
        LAD    GR1,SL1
        XOR    GR2,GR2
@@ -567,11 +556,9 @@ SB2    DS     256
 SL3    DS     1
 SB3    DS     256
 EOF    DS     1
-            "#,
-            fill = fill.label()
-        )
-        .trim(),
-    )
+"#,
+        fill = fill.label()
+    ))
     .unwrap();
 
     let mut gen = Gen {
@@ -599,9 +586,8 @@ fn compiler_compile_input_integer_works() {
     let fill = subroutine::Id::UtilFill;
     let cint = subroutine::Id::FuncCInt;
 
-    let mut statements = casl2::parse(
-        format!(
-            r#"
+    let mut statements = casl2::parse(&format!(
+        r#"
 TEST   START
        LAD    GR1,I1
        XOR    GR2,GR2
@@ -623,12 +609,10 @@ I1     DS     1
 EOF    DS     1
 TL1    DS     1
 TB1    DS     256
-            "#,
-            fill = fill.label(),
-            cint = cint.label()
-        )
-        .trim(),
-    )
+"#,
+        fill = fill.label(),
+        cint = cint.label()
+    ))
     .unwrap();
 
     let mut gen = Gen {
@@ -805,9 +789,8 @@ fn for_statement_expr_step_works() {
 
     let fill = subroutine::Id::UtilFill;
 
-    let mut right_statements = casl2::parse(
-        format!(
-            r#"TEST  START
+    let mut right_statements = casl2::parse(&format!(
+        r#"TEST  START
                      LAD    GR1,I1
                      XOR    GR2,GR2
                      LAD    GR3,2
@@ -844,10 +827,8 @@ I2                   DS 1
 T1                   DS 1
 T2                   DS 1
 "#,
-            fill = fill.label()
-        )
-        .trim(),
-    )
+        fill = fill.label()
+    ))
     .unwrap();
 
     let mut gen = Gen {
@@ -910,9 +891,8 @@ fn expr_add_variable_rhs_works() {
 
     let fill = subroutine::Id::UtilFill;
 
-    let mut right_statements = casl2::parse(
-        format!(
-            r#"TEST  START
+    let mut right_statements = casl2::parse(&format!(
+        r#"TEST  START
                      LAD    GR1,I1
                      XOR    GR2,GR2
                      LAD    GR3,2
@@ -928,10 +908,8 @@ I1                   DS 1
                                    ; Dim y As Integer
 I2                   DS 1
 "#,
-            fill = fill.label()
-        )
-        .trim(),
-    )
+        fill = fill.label()
+    ))
     .unwrap();
 
     let mut gen = Gen {
