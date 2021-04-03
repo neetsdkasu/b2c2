@@ -10,11 +10,13 @@ pub enum Id {
     FuncMin,
     FuncCStrArgBool,
     FuncCStrArgInt,
+    FuncSpace,
     UtilCompareInt,
     UtilCompareStr,
     UtilConcatStr,
     UtilCopyStr,
     UtilDivMod,
+    UtilFill,
     UtilMul,
     UtilSafeIndex,
 }
@@ -44,11 +46,13 @@ pub fn get_src<T: Gen>(gen: &mut T, id: Id) -> Src {
         Id::FuncMin => get_func_min(gen, id),
         Id::FuncCStrArgBool => get_func_cstr_arg_bool(gen, id),
         Id::FuncCStrArgInt => get_func_cstr_arg_int(gen, id),
+        Id::FuncSpace => get_func_space(gen, id),
         Id::UtilCompareInt => get_util_compare_int(gen, id),
         Id::UtilCompareStr => get_util_compare_str(gen, id),
         Id::UtilConcatStr => get_util_concat_str(gen, id),
         Id::UtilCopyStr => get_util_copy_str(gen, id),
         Id::UtilDivMod => get_util_div_mod(gen, id),
+        Id::UtilFill => get_util_fill(gen, id),
         Id::UtilMul => get_util_mul(gen, id),
         Id::UtilSafeIndex => get_util_safe_index(gen, id),
     }
@@ -668,6 +672,83 @@ fn get_util_concat_str<T: Gen>(gen: &mut T, id: Id) -> Src {
                 prog = id.label(),
                 cycle = gen.jump_label(),
                 ret = gen.jump_label()
+            )
+            .trim_start_matches('\n'),
+        )
+        .unwrap(),
+    }
+}
+
+// Util: Fill
+fn get_util_fill<T: Gen>(gen: &mut T, id: Id) -> Src {
+    // GR1 .. adr of start point of s_buf or array
+    // GR2 .. fill value
+    // GR3 .. fill len
+    Src {
+        dependencies: Vec::new(),
+        statements: casl2::parse(
+            format!(
+                r#"
+                                   ; {comment}
+{prog} PUSH  0,GR1
+       PUSH  0,GR2
+       PUSH  0,GR3
+       ADDL  GR3,GR1
+{next} CPL   GR1,GR3
+       JZE   {ret}
+       ST    GR2,0,GR1
+       LAD   GR1,1,GR1
+       JUMP  {next}
+{ret}  POP   GR3
+       POP   GR2
+       POP   GR1
+       RET
+"#,
+                comment = format!("{:?}", id),
+                prog = id.label(),
+                next = gen.jump_label(),
+                ret = gen.jump_label()
+            )
+            .trim_start_matches('\n'),
+        )
+        .unwrap(),
+    }
+}
+
+// Func Space
+fn get_func_space<T: Gen>(_gen: &mut T, id: Id) -> Src {
+    // GR1 .. adr of s_buf
+    // GR2 .. adr of s_len
+    // GR3 .. space len
+    Src {
+        dependencies: vec![Id::UtilFill, Id::UtilSafeIndex],
+        statements: casl2::parse(
+            format!(
+                r#"
+                                   ; {comment}
+{prog} PUSH  0,GR1
+       PUSH  0,GR2
+       PUSH  0,GR3
+       XOR   GR1,GR3
+       XOR   GR3,GR1
+       XOR   GR1,GR3
+       LAD   GR2,256
+       CALL  {fit}
+       LD    GR1,GR3
+       LD    GR3,GR0
+       LD    GR2,=' '
+       CALL  {fill}
+       LD    GR0,GR3
+       POP   GR3
+       POP   GR2
+       POP   GR1
+       ST    GR0,0,GR2
+       RET
+"#,
+                comment = format!("{:?}", id),
+                prog = id.label(),
+                fit = Id::UtilSafeIndex.label(),
+                fill = Id::UtilFill.label()
             )
             .trim_start_matches('\n'),
         )

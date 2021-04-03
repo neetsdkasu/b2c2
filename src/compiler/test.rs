@@ -61,6 +61,7 @@ fn it_works() {
         int1 -= 123 \ 3
         intArr1(4 - 3) -= 123 Mod 2
         int1 = Abs(-123) + Abs(int1)
+        str1 = Space(120)
         For i = 1 To 10
             Print "X"
         Next i

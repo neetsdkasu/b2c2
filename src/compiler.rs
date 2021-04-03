@@ -2179,10 +2179,44 @@ impl Compiler {
         use tokenizer::Function::*;
         match func {
             CStr => self.call_function_cstr(param),
+            Space => self.call_function_space(param),
 
             // 戻り値が文字列ではないもの
             Abs | CInt | Len | Max | Min | CBool => unreachable!("BUG"),
         }
+    }
+
+    // Space(<integer>)
+    fn call_function_space(&mut self, param: &parser::Expr) -> StrLabels {
+        assert!(matches!(param.return_type(), parser::ExprType::Integer));
+
+        let space = self.load_subroutine(subroutine::Id::FuncSpace);
+
+        let size_reg = self.compile_int_expr(param);
+
+        let labels = self.get_temp_str_var_label();
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD   GR3,{size}
+                LAD  GR1,{pos}
+                LAD  GR2,{len}
+                CALL {space}"#,
+            size = size_reg,
+            pos = labels.buf,
+            len = labels.len,
+            space = space
+        ));
+        self.code(recovers);
+
+        self.set_register_idle(size_reg);
+
+        labels
     }
 
     // CStr(<boolean>/<integer>) 関数
@@ -2304,7 +2338,7 @@ impl Compiler {
             CBool => self.call_function_cbool(param),
 
             // 戻り値が真理値ではないもの
-            Abs | CInt | Len | Max | Min | CStr => unreachable!("BUG"),
+            Abs | CInt | Len | Max | Min | CStr | Space => unreachable!("BUG"),
         }
     }
 
@@ -3258,7 +3292,7 @@ impl Compiler {
             Len => self.call_function_len(param),
             Max => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMax),
             Min => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMin),
-            CBool | CStr => unreachable!("BUG"),
+            CBool | CStr | Space => unreachable!("BUG"),
         }
     }
 

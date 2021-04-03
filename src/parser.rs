@@ -2015,7 +2015,7 @@ impl Function {
         match self {
             CBool => ExprType::Boolean,
             Abs | CInt | Len | Max | Min => ExprType::Integer,
-            CStr => ExprType::String,
+            CStr | Space => ExprType::String,
         }
     }
 
@@ -2023,7 +2023,7 @@ impl Function {
         use Function::*;
         match self {
             // 引数は整数1個
-            Abs | CBool => matches!(param.return_type(), ExprType::Integer),
+            Abs | CBool | Space => matches!(param.return_type(), ExprType::Integer),
 
             // 引数は真理値1個あるいは整数1個
             CInt => matches!(param.return_type(), ExprType::Boolean | ExprType::String),

@@ -338,6 +338,7 @@ enumdef!(
     Len,
     Max,
     Min,
+    Space,
 );
 
 enumdef!(
