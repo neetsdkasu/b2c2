@@ -150,6 +150,38 @@ fn parser_parse_expr_works() {
             ),
             "(123 + 456)",
         ),
+        // 1 + 1 + 1 + 1 + 1
+        (
+            vec![
+                (1, Token::Integer(1)),
+                (2, Token::Operator(Operator::Add)),
+                (3, Token::Integer(1)),
+                (4, Token::Operator(Operator::Add)),
+                (5, Token::Integer(1)),
+                (6, Token::Operator(Operator::Add)),
+                (7, Token::Integer(1)),
+                (8, Token::Operator(Operator::Add)),
+                (9, Token::Integer(1)),
+            ],
+            Expr::BinaryOperatorInteger(
+                Operator::Add,
+                Box::new(Expr::BinaryOperatorInteger(
+                    Operator::Add,
+                    Box::new(Expr::BinaryOperatorInteger(
+                        Operator::Add,
+                        Box::new(Expr::BinaryOperatorInteger(
+                            Operator::Add,
+                            Box::new(Expr::LitInteger(1)),
+                            Box::new(Expr::LitInteger(1)),
+                        )),
+                        Box::new(Expr::LitInteger(1)),
+                    )),
+                    Box::new(Expr::LitInteger(1)),
+                )),
+                Box::new(Expr::LitInteger(1)),
+            ),
+            "((((1 + 1) + 1) + 1) + 1)",
+        ),
         // -123 + -456
         (
             vec![

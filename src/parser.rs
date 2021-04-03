@@ -1413,9 +1413,9 @@ impl Parser {
             _ => {}
         }
 
-        // 外側の演算子のうち一番左のを抽出する (括弧のネストに気をつける)
+        // 外側の演算子のうち一番右のを抽出する (括弧のネストに気をつける)
         //    項 op1 項 op2 項 op1 ... op2 項
-        //   -> (項 op1 項) op2 (項 op1 ... op2 項)
+        //   -> (項 op1 項 op2 項 op1 ...) op2 (項)
         //   分割して再帰的に処理していく
 
         // 分割点となる演算子の抜き出し
@@ -1449,7 +1449,7 @@ impl Parser {
                         return Err(self.syntax_error_pos(*pos, "invalid Expression".into()));
                     }
                 } else if op.can_be_binary() {
-                    if target_op.filter(|(_, cur_op)| cur_op >= op).is_none() {
+                    if target_op.filter(|(_, cur_op)| cur_op > op).is_none() {
                         target_op = Some((i, *op));
                     }
                     next_unary = true;
