@@ -2739,7 +2739,41 @@ impl Compiler {
                 self.set_register_idle(rhs_reg);
                 lhs_reg
             }
-            parser::ExprType::String => todo!(),
+            parser::ExprType::String => {
+                let reg = self.get_idle_register();
+                self.set_register_idle(reg);
+                let lhs_labels = self.compile_str_expr(lhs);
+                let rhs_labels = self.compile_str_expr(rhs);
+                let cmpstr = self.load_subroutine(subroutine::Id::UtilCompareStr);
+                let (saves, recovers) = {
+                    use casl2::Register::*;
+                    self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+                };
+                self.code(saves);
+                self.code(format!(
+                    r#" LAD   GR1,{lhspos}
+                        LD    GR2,{lhslen}
+                        LAD   GR3,{rhspos}
+                        LD    GR4,{rhslen}
+                        CALL  {cmpstr}"#,
+                    lhspos = lhs_labels.buf,
+                    lhslen = lhs_labels.len,
+                    rhspos = rhs_labels.buf,
+                    rhslen = rhs_labels.len,
+                    cmpstr = cmpstr
+                ));
+                self.code(recovers);
+                self.code(format!(
+                    r#" SRA   GR0,15
+                        XOR   GR0,=#FFFF
+                        LD    {reg},GR0"#,
+                    reg = reg
+                ));
+                self.return_temp_str_var_label(lhs_labels);
+                self.return_temp_str_var_label(rhs_labels);
+                self.set_register_used(reg);
+                reg
+            }
             parser::ExprType::Boolean | parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
