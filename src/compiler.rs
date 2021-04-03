@@ -94,6 +94,8 @@ struct Compiler {
     //  先頭：　現在の式展開中の箇所から"遠い"箇所で使用してるレジスタ
     //  後尾: 現在の式展開中の箇所から"近い"箇所で使用してるレジスタ
     registers_deque: VecDeque<casl2::Register>,
+    unused_register: Vec<casl2::Register>,
+    stacked_registers: Vec<casl2::Register>,
 
     // 生成するCASL2コード本体
     statements: Vec<casl2::Statement>,
@@ -192,6 +194,11 @@ impl Compiler {
             exit_labels: HashMap::new(),
             registers_used: 0,
             registers_deque: VecDeque::with_capacity(7),
+            unused_register: {
+                use casl2::Register::*;
+                vec![Gr1, Gr2, Gr3, Gr4, Gr5, Gr6, Gr7]
+            },
+            stacked_registers: Vec::new(),
             statements: vec![casl2::Statement::labeled(
                 program_name,
                 casl2::Command::Start { entry_point: None },
@@ -2091,21 +2098,20 @@ impl Compiler {
 
     // アイドル中のレジスタを取得
     fn get_idle_register(&mut self) -> casl2::Register {
-        use casl2::Register::{self, *};
-        const REG: [Register; 7] = [Gr7, Gr6, Gr5, Gr4, Gr3, Gr2, Gr1];
-        for &reg in REG.iter() {
+        if let Some(reg) = self.unused_register.pop() {
             if self.is_idle_register(reg) {
                 self.set_register_used(reg);
                 return reg;
             }
         }
-        self.registers_deque.rotate_left(1);
-        let reg = *self.registers_deque.back().expect("BUG");
+        let reg = self.registers_deque.pop_front().expect("BUG");
+        self.registers_deque.push_back(reg);
         self.code(casl2::Command::P {
             code: casl2::P::Push,
             adr: casl2::Adr::Dec(0),
             x: Some(TryFrom::try_from(reg).expect("BUG")),
         });
+        self.stacked_registers.push(reg);
         reg
     }
 
@@ -2116,6 +2122,9 @@ impl Compiler {
         }
         self.set_register_used(reg);
         self.code(casl2::Command::Pop { r: reg });
+        if let Some(r) = self.stacked_registers.pop() {
+            assert_eq!(r, reg);
+        }
     }
 
     // アイドル中のレスジスタを使用中に変更
@@ -2123,14 +2132,15 @@ impl Compiler {
         assert!(self.is_idle_register(reg));
         self.registers_used |= 1 << reg as isize;
         self.registers_deque.push_back(reg);
+        self.unused_register.retain(|&r| r != reg);
     }
 
     // 使用中のレジスタをアイドル扱いにする
     fn set_register_idle(&mut self, reg: casl2::Register) {
         assert!(!self.is_idle_register(reg));
         self.registers_used ^= 1 << reg as isize;
-        let _popped = self.registers_deque.pop_back().expect("BUG");
-        assert_eq!(_popped, reg);
+        self.registers_deque.retain(|&r| r != reg);
+        self.unused_register.push(reg);
     }
 
     // subrutine引数のレジスタなどの一時利用のとき
