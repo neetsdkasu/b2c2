@@ -158,6 +158,7 @@ fn it_works() {
         Else
             Print "X"
         End If
+        int1 = Max((((123,45)))) ' これも合法ｗｗ、パラメータリスト・タプルのような感じになってるおｗｗ
         "#;
 
     let mut cursor = std::io::Cursor::new(src);
