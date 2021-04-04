@@ -2275,12 +2275,35 @@ impl Compiler {
     ) -> StrLabels {
         use tokenizer::Function::*;
         match func {
+            Chr => self.call_function_chr(param),
             CStr => self.call_function_cstr(param),
             Space => self.call_function_space(param),
 
             // 戻り値が文字列ではないもの
-            Abs | CInt | Eof | Len | Max | Min | CBool => unreachable!("BUG"),
+            Abs | Asc | CInt | Eof | Len | Max | Min | CBool => unreachable!("BUG"),
         }
+    }
+
+    // Chr(<integer>)
+    fn call_function_chr(&mut self, param: &parser::Expr) -> StrLabels {
+        assert!(matches!(param.return_type(), parser::ExprType::Integer));
+
+        let reg = self.compile_int_expr(param);
+
+        let labels = self.get_temp_str_var_label();
+
+        self.code(format!(
+            r#" ST   {reg},{pos}
+                LAD  {reg},1
+                ST   {reg},{len}"#,
+            reg = reg,
+            pos = labels.pos,
+            len = labels.len
+        ));
+
+        self.set_register_idle(reg);
+
+        labels
     }
 
     // Space(<integer>)
@@ -2436,7 +2459,7 @@ impl Compiler {
             Eof => self.call_function_eof(param),
 
             // 戻り値が真理値ではないもの
-            Abs | CInt | Len | Max | Min | CStr | Space => unreachable!("BUG"),
+            Abs | Asc | Chr | CInt | Len | Max | Min | CStr | Space => unreachable!("BUG"),
         }
     }
 
@@ -3395,12 +3418,42 @@ impl Compiler {
         use tokenizer::Function::*;
         match func {
             Abs => self.call_function_abs(param),
+            Asc => self.call_function_asc(param),
             CInt => self.call_function_cint(param),
             Len => self.call_function_len(param),
             Max => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMax),
             Min => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMin),
-            CBool | CStr | Eof | Space => unreachable!("BUG"),
+            CBool | Chr | CStr | Eof | Space => unreachable!("BUG"),
         }
+    }
+
+    // (式展開の処理の一部)
+    // Asc<string>) の処理
+    fn call_function_asc(&mut self, param: &parser::Expr) -> casl2::Register {
+        assert!(matches!(param.return_type(), parser::ExprType::String));
+
+        let reg = self.get_idle_register();
+        self.set_register_idle(reg);
+
+        let labels = self.compile_str_expr(param);
+
+        let ok = self.get_new_jump_label();
+
+        self.set_register_used(reg);
+
+        self.code(format!(
+            r#" LD   {reg},{len}
+                JZE  {ok}
+                LD   {reg},{pos}
+{ok}            NOP"#,
+            reg = reg,
+            len = labels.len,
+            pos = labels.pos,
+            ok = ok
+        ));
+
+        self.return_temp_str_var_label(labels);
+        reg
     }
 
     // (式展開の処理の一部)

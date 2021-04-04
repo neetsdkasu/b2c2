@@ -332,7 +332,9 @@ enumdef!(
     Function;
     FUNCTIONS;
     Abs,
+    Asc,
     CBool,
+    Chr,
     CInt,
     CStr,
     Eof,

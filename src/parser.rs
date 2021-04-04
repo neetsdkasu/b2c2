@@ -2021,8 +2021,8 @@ impl Function {
         use Function::*;
         match self {
             CBool | Eof => ExprType::Boolean,
-            Abs | CInt | Len | Max | Min => ExprType::Integer,
-            CStr | Space => ExprType::String,
+            Abs | Asc | CInt | Len | Max | Min => ExprType::Integer,
+            Chr | CStr | Space => ExprType::String,
         }
     }
 
@@ -2033,7 +2033,7 @@ impl Function {
             Eof => false,
 
             // 引数は整数1個
-            Abs | CBool | Space => matches!(param.return_type(), ExprType::Integer),
+            Abs | CBool | Chr | Space => matches!(param.return_type(), ExprType::Integer),
 
             // 引数は真理値1個あるいは整数1個
             CInt => matches!(param.return_type(), ExprType::Boolean | ExprType::String),
@@ -2054,7 +2054,7 @@ impl Function {
             }
 
             // 引数は文字列1個
-            Len => matches!(param.return_type(), ExprType::String),
+            Asc | Len => matches!(param.return_type(), ExprType::String),
         }
     }
 }
