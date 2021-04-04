@@ -547,6 +547,12 @@ impl Compiler {
             ContinueDo { exit_id } => self.compile_continue_loop(*exit_id, "Do"),
             ContinueFor { exit_id } => self.compile_continue_loop(*exit_id, "For"),
             Dim { var_name, var_type } => self.compile_dim(var_name, var_type),
+            Mid {
+                var_name,
+                offset,
+                length,
+                value,
+            } => self.compile_mid(var_name, offset, length, value),
             DoLoop { exit_id, block } => self.compile_do_loop(*exit_id, block),
             DoLoopUntil {
                 exit_id,
@@ -624,6 +630,19 @@ impl Compiler {
             | ProvisionalCaseString { .. }
             | ProvisionalCaseElse => unreachable!("BUG"),
         }
+    }
+
+    // Midステートメント
+    // Mid(<var_str>,<offset>) = <str_expr>
+    // Mid(<var_str>,<offset>,<length>) = <str_expr>
+    fn compile_mid(
+        &mut self,
+        var_name: &str,
+        offset: &parser::Expr,
+        length: &Option<parser::Expr>,
+        value: &parser::Expr,
+    ) {
+        todo!();
     }
 
     // Select Case <string> ステートメント
@@ -2277,11 +2296,18 @@ impl Compiler {
         match func {
             Chr => self.call_function_chr(param),
             CStr => self.call_function_cstr(param),
+            Mid => self.call_function_mid(param),
             Space => self.call_function_space(param),
 
             // 戻り値が文字列ではないもの
             Abs | Asc | CInt | Eof | Len | Max | Min | CBool => unreachable!("BUG"),
         }
+    }
+
+    // Mid(<string>,<integer>)
+    // Mid(<string>,<integer>,<integer>)
+    fn call_function_mid(&mut self, param: &parser::Expr) -> StrLabels {
+        todo!();
     }
 
     // Chr(<integer>)
@@ -2459,7 +2485,7 @@ impl Compiler {
             Eof => self.call_function_eof(param),
 
             // 戻り値が真理値ではないもの
-            Abs | Asc | Chr | CInt | Len | Max | Min | CStr | Space => unreachable!("BUG"),
+            Abs | Asc | Chr | CInt | Len | Max | Mid | Min | CStr | Space => unreachable!("BUG"),
         }
     }
 
@@ -3423,7 +3449,7 @@ impl Compiler {
             Len => self.call_function_len(param),
             Max => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMax),
             Min => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMin),
-            CBool | Chr | CStr | Eof | Space => unreachable!("BUG"),
+            CBool | Chr | CStr | Eof | Mid | Space => unreachable!("BUG"),
         }
     }
 

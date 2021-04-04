@@ -305,10 +305,17 @@ fn take_token_works() {
         assert_eq!(take_token(keyword.to_str()), Some(((*keyword).into(), "")));
     }
     for function in &FUNCTIONS {
-        assert_eq!(
-            take_token(function.to_str()),
-            Some(((*function).into(), ""))
-        );
+        if matches!(function, Function::Mid) {
+            assert_eq!(
+                take_token(function.to_str()),
+                Some((Keyword::Mid.into(), ""))
+            );
+        } else {
+            assert_eq!(
+                take_token(function.to_str()),
+                Some(((*function).into(), ""))
+            );
+        }
     }
     for type_name in &TYPE_NAMES {
         assert_eq!(

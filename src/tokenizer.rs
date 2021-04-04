@@ -42,6 +42,10 @@ impl<R> Tokenizer<R> {
         while !line.is_empty() && !is_comment(line, ret.is_empty()) {
             let pos = src.len() - line.len() + 1;
             match take_token(line) {
+                Some((Token::Keyword(Keyword::Mid), rest)) if !ret.is_empty() => {
+                    ret.push((pos, Token::Function(Function::Mid)));
+                    line = rest.trim_start();
+                }
                 Some((token, rest)) => {
                     ret.push((pos, token));
                     line = rest.trim_start();
@@ -317,6 +321,7 @@ enumdef!(
     If,
     Input,
     Loop,
+    Mid,
     Next,
     Print,
     Rem,
@@ -340,6 +345,7 @@ enumdef!(
     Eof,
     Len,
     Max,
+    Mid,
     Min,
     Space,
 );

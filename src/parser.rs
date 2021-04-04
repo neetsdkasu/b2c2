@@ -343,12 +343,89 @@ impl Parser {
             Keyword::If => self.parse_command_if(pos_and_tokens),
             Keyword::Input => self.parse_command_input(pos_and_tokens),
             Keyword::Loop => self.parse_command_loop(pos_and_tokens),
+            Keyword::Mid => self.parse_command_mid(pos_and_tokens),
             Keyword::Next => self.parse_command_next(pos_and_tokens),
             Keyword::Print => self.parse_command_print(pos_and_tokens),
             Keyword::Select => self.parse_command_select(pos_and_tokens),
             _ if command.is_command() => unreachable!("BUG"),
             _ => Err(self.syntax_error("invalid Code statement".into())),
         }
+    }
+
+    // Mid(<var_str>,<offset>) = <str_value>
+    // Mid(<var_str>,<offset>,<length>) = <str_value>
+    fn parse_command_mid(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
+        // Midパラメータの括弧
+        let mut close_pos: Option<usize> = None;
+        let mut bracket_count = 1;
+        for (i, (_, token)) in pos_and_tokens.iter().enumerate().skip(1) {
+            match token {
+                Token::Operator(Operator::OpenBracket) => bracket_count += 1,
+                Token::Operator(Operator::CloseBracket) => bracket_count -= 1,
+                _ => {}
+            }
+            if bracket_count == 0 {
+                close_pos = Some(i);
+                break;
+            }
+        }
+        let close_pos = close_pos
+            .take()
+            .ok_or_else(|| self.syntax_error("invalid Mid statement".into()))?;
+
+        let (param, value) = pos_and_tokens.split_at(close_pos + 1);
+
+        let param = if let [_, inner @ .., _] = param {
+            self.parse_expr(inner)?
+        } else {
+            return Err(self.syntax_error("invalid Mid statement".into()));
+        };
+
+        let mut list = if let Expr::ParamList(list) = param {
+            list
+        } else {
+            return Err(self.syntax_error("invalid Mid statement".into()));
+        };
+
+        list.reverse();
+
+        let var_name = if let Some(Expr::VarString(var_name)) = list.pop() {
+            var_name
+        } else {
+            return Err(self.syntax_error("invalid Mid statement".into()));
+        };
+
+        let offset = match list.pop() {
+            Some(offset) if matches!(offset.return_type(), ExprType::Integer) => offset,
+            _ => return Err(self.syntax_error("invalid Mid statement".into())),
+        };
+
+        let length = match list.pop() {
+            None => None,
+            Some(expr) if matches!(expr.return_type(), ExprType::Integer) && list.is_empty() => {
+                Some(expr)
+            }
+            Some(_) => return Err(self.syntax_error("invalid Mid statement".into())),
+        };
+
+        // 要素への代入
+        if let [(_, Token::Operator(Operator::Equal)), rest @ ..] = value {
+            let value = self.parse_expr(rest)?;
+            if matches!(value.return_type(), ExprType::String) {
+                self.add_statement(Statement::Mid {
+                    var_name,
+                    offset,
+                    length,
+                    value,
+                });
+            } else {
+                return Err(self.syntax_error("invalid Mid statement".into()));
+            }
+        } else {
+            return Err(self.syntax_error("invalid Mid statement".into()));
+        }
+
+        Ok(())
     }
 
     // End { If / Select }
@@ -1601,7 +1678,7 @@ impl Keyword {
         use Keyword::*;
         match self {
             Case | Continue | Else | ElseIf | End | Exit | Dim | Do | For | If | Input | Loop
-            | Next | Print | Select => true,
+            | Mid | Next | Print | Select => true,
 
             As | Step | Then | To | Until | While | Rem => false,
         }
@@ -1718,6 +1795,12 @@ pub enum Statement {
     Dim {
         var_name: String,
         var_type: VarType,
+    },
+    Mid {
+        var_name: String,
+        offset: Expr,
+        length: Option<Expr>,
+        value: Expr,
     },
     DoLoop {
         exit_id: usize,
@@ -2022,7 +2105,7 @@ impl Function {
         match self {
             CBool | Eof => ExprType::Boolean,
             Abs | Asc | CInt | Len | Max | Min => ExprType::Integer,
-            Chr | CStr | Space => ExprType::String,
+            Chr | CStr | Mid | Space => ExprType::String,
         }
     }
 
@@ -2048,6 +2131,20 @@ impl Function {
                         && list
                             .iter()
                             .all(|expr| matches!(expr.return_type(), ExprType::Integer))
+                } else {
+                    false
+                }
+            }
+
+            // 引数は文字列1個と整数1個あるいは文字列1個と整数2個
+            Mid => {
+                if let Expr::ParamList(list) = param {
+                    let list: Vec<_> = list.iter().map(|e| e.return_type()).collect();
+                    matches!(
+                        list.as_slice(),
+                        [ExprType::String, ExprType::Integer]
+                            | [ExprType::String, ExprType::Integer, ExprType::Integer]
+                    )
                 } else {
                     false
                 }
