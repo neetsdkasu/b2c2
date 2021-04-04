@@ -660,7 +660,7 @@ impl Compiler {
             let length_reg = self.compile_int_expr(length);
             self.restore_register(offset_reg);
 
-            let partialcopy = self.load_subroutine(subroutine::Id::UtilPartialCopyStr);
+            let partialcopy = self.load_subroutine(subroutine::Id::UtilCopyToOffsetStr);
 
             let (saves, recovers) = {
                 use casl2::Register::*;
@@ -701,7 +701,7 @@ impl Compiler {
             let value_labels = self.compile_str_expr(value);
             let offset_reg = self.compile_int_expr(offset);
 
-            let partialcopy = self.load_subroutine(subroutine::Id::UtilPartialCopyStr);
+            let partialcopy = self.load_subroutine(subroutine::Id::UtilCopyToOffsetStr);
 
             let (saves, recovers) = {
                 use casl2::Register::*;
@@ -2390,6 +2390,7 @@ impl Compiler {
         }
     }
 
+    // Mid関数
     // Mid(<string>,<integer>)
     // Mid(<string>,<integer>,<integer>)
     fn call_function_mid(&mut self, param: &parser::Expr) -> StrLabels {
@@ -2413,7 +2414,7 @@ impl Compiler {
             !matches!(length, Some(expr) if !matches!(expr.return_type(), parser::ExprType::Integer))
         );
 
-        let partialcopy = self.load_subroutine(subroutine::Id::UtilPartialCopyStr);
+        let partialcopy = self.load_subroutine(subroutine::Id::UtilCopyFromOffsetStr);
 
         let dst_labels = self.get_temp_str_var_label();
         let src_labels = self.compile_str_expr(src);

@@ -14,11 +14,12 @@ pub enum Id {
     UtilCompareInt,
     UtilCompareStr,
     UtilConcatStr,
+    UtilCopyFromOffsetStr,
     UtilCopyStr,
+    UtilCopyToOffsetStr,
     UtilDivMod,
     UtilFill,
     UtilMul,
-    UtilPartialCopyStr,
     UtilSafeIndex,
 }
 
@@ -51,11 +52,12 @@ pub fn get_src<T: Gen>(gen: &mut T, id: Id) -> Src {
         Id::UtilCompareInt => get_util_compare_int(gen, id),
         Id::UtilCompareStr => get_util_compare_str(gen, id),
         Id::UtilConcatStr => get_util_concat_str(gen, id),
+        Id::UtilCopyFromOffsetStr => get_util_copy_from_offset_str(gen, id),
         Id::UtilCopyStr => get_util_copy_str(gen, id),
+        Id::UtilCopyToOffsetStr => get_util_copy_to_offset_str(gen, id),
         Id::UtilDivMod => get_util_div_mod(gen, id),
         Id::UtilFill => get_util_fill(gen, id),
         Id::UtilMul => get_util_mul(gen, id),
-        Id::UtilPartialCopyStr => get_util_partial_copy_str(gen, id),
         Id::UtilSafeIndex => get_util_safe_index(gen, id),
     }
 }
@@ -713,8 +715,8 @@ fn get_func_space<T: Gen>(_gen: &mut T, id: Id) -> Src {
     }
 }
 
-// Util: Partial Copy Str
-fn get_util_partial_copy_str<T: Gen>(gen: &mut T, id: Id) -> Src {
+// Util: Copy To Offset Str
+fn get_util_copy_to_offset_str<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 .. adr of s_buf (dst)
     // GR2 .. s_len (dst)
     // GR3 .. adr of s_buf (src)
@@ -733,42 +735,32 @@ fn get_util_partial_copy_str<T: Gen>(gen: &mut T, id: Id) -> Src {
        PUSH  0,GR4
        PUSH  0,GR5
        PUSH  0,GR6
-
-       ; 中身どうするか
-
-       ; offsetをSafeIndexして
-       ; lengthをSafeIndexして
-       ; offset+lengthをSafeIndexして安全なlengthを計算…
-       ; SafeIndexはGR1,GR2を使用
-       ; GR2はSafeIndexを使いたいdst_lenなのでそのまま使える
-       ; GR1の退避をどうするか・・
-       ; コピーはMin(src_len,copy_valid_len)で行われる
-       ; ダミー変数をadr of dst_len代わりにGR2におけばUtil Copy Strを使えそう
-       ; Copy Str使っちゃだめ、後ろからコピーする予定だったのだった
-       ; 長さGR4をMin(src_len,copy_valid_len)すればよさそう
        LD    GR0,GR1
-       LD    GR1,GR5 ; GR1->offset
-       LD    GR5,GR0 ; GR5->adr of s_buf
+       LD    GR1,GR5
+       LD    GR5,GR0
        CALL  {fit}
-       LD    GR1,GR6 ; GR1->length
-       LD    GR6,GR0 ; GR6->valid offset
-       CALL  {fit}
-       LD    GR1,GR0 ; GR1->cared length
-       ADDL  GR1,GR6 ; GR1->offset+length
-       CALL  {fit}
-       SUBL  GR0,GR6 ; GR0->valid length
-       LD    GR1,GR0 ; GR1->valid length
-       LD    GR2,GR4 ; GR2->src length
+       LD    GR1,GR6
+       LD    GR6,GR0
        CALL  {min}
-       ;  GR0 -> valid src length (and copy length)
-       ;  GR1,GR2,GR4 -> idle
-       ;  GR3 -> adr of src_buf
-       ;  GR5 -> adr of dst_buf
-       ;  GR6 -> valid offset
-       ; コピー処理を考える
-       ; 後ろからコピー
-
-       POP   GR6
+       LD    GR1,GR0
+       ADDL  GR1,GR6
+       CALL  {min}
+       SUBL  GR0,GR6
+       LD    GR1,GR0
+       LD    GR2,GR4
+       CALL  {min}
+       ADDL  GR5,GR6
+       LD    GR6,GR5
+       ADDL  GR5,GR0
+       ADDL  GR3,GR0
+{next} CPL   GR5,GR6
+       JZE   {ret}
+       LAD   GR3,-1,GR3
+       LAD   GR5,-1,GR5
+       LD    GR1,0,GR3
+       ST    GR1,0,GR5
+       JUMP  {next}
+{ret}  POP   GR6
        POP   GR5
        POP   GR4
        POP   GR3
@@ -779,7 +771,75 @@ fn get_util_partial_copy_str<T: Gen>(gen: &mut T, id: Id) -> Src {
             comment = format!("{:?}", id),
             prog = id.label(),
             fit = Id::UtilSafeIndex.label(),
-            min = Id::FuncMin.label()
+            min = Id::FuncMin.label(),
+            next = gen.jump_label(),
+            ret = gen.jump_label()
+        ))
+        .unwrap(),
+    }
+}
+
+// Util: Copy From Offset Str
+fn get_util_copy_from_offset_str<T: Gen>(gen: &mut T, id: Id) -> Src {
+    // GR1 .. adr of s_buf (dst)
+    // GR2 .. s_len (dst)
+    // GR3 .. adr of s_buf (src)
+    // GR4 .. s_len (src)
+    // GR5 .. src offset
+    // GR6 .. copy length
+    // GR0 .. copied length
+    Src {
+        dependencies: vec![Id::UtilSafeIndex, Id::FuncMin],
+        statements: casl2::parse(&format!(
+            r#"
+                                   ; {comment}
+{prog} PUSH  0,GR1
+       PUSH  0,GR2
+       PUSH  0,GR3
+       PUSH  0,GR4
+       PUSH  0,GR5
+       PUSH  0,GR6
+       LD    GR0,GR2
+       LD    GR2,GR4
+       LD    GR4,GR0
+       LD    GR0,GR1
+       LD    GR1,GR5
+       LD    GR5,GR0
+       CALL  {fit}
+       LD    GR1,GR6
+       LD    GR6,GR0
+       CALL  {min}
+       LD    GR1,GR0
+       ADDL  GR1,GR6
+       CALL  {min}
+       SUBL  GR0,GR6
+       LD    GR1,GR0
+       LD    GR2,GR4
+       CALL  {min}
+       ADDL  GR3,GR6
+       LD    GR6,GR5
+       ADDL  GR6,GR0
+{next} CPL   GR5,GR6
+       JZE   {ret}
+       LD    GR1,0,GR3
+       ST    GR1,0,GR5
+       LAD   GR3,1,GR3
+       LAD   GR5,1,GR5
+       JUMP  {next}
+{ret}  POP   GR6
+       POP   GR5
+       POP   GR4
+       POP   GR3
+       POP   GR2
+       POP   GR1
+       RET
+"#,
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            fit = Id::UtilSafeIndex.label(),
+            min = Id::FuncMin.label(),
+            next = gen.jump_label(),
+            ret = gen.jump_label()
         ))
         .unwrap(),
     }
