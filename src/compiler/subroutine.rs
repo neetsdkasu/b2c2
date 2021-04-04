@@ -714,7 +714,7 @@ fn get_func_space<T: Gen>(_gen: &mut T, id: Id) -> Src {
 }
 
 // Util: Partial Copy Str
-fn get_util_partial_copy_str<T: Gen>(_gen: &mut T, id: Id) -> Src {
+fn get_util_partial_copy_str<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 .. adr of s_buf (dst)
     // GR2 .. s_len (dst)
     // GR3 .. adr of s_buf (src)
@@ -723,7 +723,7 @@ fn get_util_partial_copy_str<T: Gen>(_gen: &mut T, id: Id) -> Src {
     // GR6 .. copy length
     // GR0 .. copied length
     Src {
-        dependencies: vec![Id::UtilSafeIndex],
+        dependencies: vec![Id::UtilSafeIndex, Id::FuncMin],
         statements: casl2::parse(&format!(
             r#"
                                    ; {comment}
@@ -733,6 +733,41 @@ fn get_util_partial_copy_str<T: Gen>(_gen: &mut T, id: Id) -> Src {
        PUSH  0,GR4
        PUSH  0,GR5
        PUSH  0,GR6
+
+       ; 中身どうするか
+
+       ; offsetをSafeIndexして
+       ; lengthをSafeIndexして
+       ; offset+lengthをSafeIndexして安全なlengthを計算…
+       ; SafeIndexはGR1,GR2を使用
+       ; GR2はSafeIndexを使いたいdst_lenなのでそのまま使える
+       ; GR1の退避をどうするか・・
+       ; コピーはMin(src_len,copy_valid_len)で行われる
+       ; ダミー変数をadr of dst_len代わりにGR2におけばUtil Copy Strを使えそう
+       ; Copy Str使っちゃだめ、後ろからコピーする予定だったのだった
+       ; 長さGR4をMin(src_len,copy_valid_len)すればよさそう
+       LD    GR0,GR1
+       LD    GR1,GR5 ; GR1->offset
+       LD    GR5,GR0 ; GR5->adr of s_buf
+       CALL  {fit}
+       LD    GR1,GR6 ; GR1->length
+       LD    GR6,GR0 ; GR6->valid offset
+       CALL  {fit}
+       LD    GR1,GR0 ; GR1->cared length
+       ADDL  GR1,GR6 ; GR1->offset+length
+       CALL  {fit}
+       SUBL  GR0,GR6 ; GR0->valid length
+       LD    GR1,GR0 ; GR1->valid length
+       LD    GR2,GR4 ; GR2->src length
+       CALL  {min}
+       ;  GR0 -> valid src length (and copy length)
+       ;  GR1,GR2,GR4 -> idle
+       ;  GR3 -> adr of src_buf
+       ;  GR5 -> adr of dst_buf
+       ;  GR6 -> valid offset
+       ; コピー処理を考える
+       ; 後ろからコピー
+
        POP   GR6
        POP   GR5
        POP   GR4
@@ -742,7 +777,9 @@ fn get_util_partial_copy_str<T: Gen>(_gen: &mut T, id: Id) -> Src {
        RET
 "#,
             comment = format!("{:?}", id),
-            prog = id.label()
+            prog = id.label(),
+            fit = Id::UtilSafeIndex.label(),
+            min = Id::FuncMin.label()
         ))
         .unwrap(),
     }
