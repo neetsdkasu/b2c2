@@ -642,7 +642,93 @@ impl Compiler {
         length: &Option<parser::Expr>,
         value: &parser::Expr,
     ) {
-        todo!();
+        assert!(matches!(offset.return_type(), parser::ExprType::Integer));
+        assert!(matches!(value.return_type(), parser::ExprType::String));
+
+        if let Some(length) = length {
+            assert!(matches!(length.return_type(), parser::ExprType::Integer));
+            self.comment(format!(
+                "Mid( {name}, {offset}, {length} ) = {value}",
+                name = var_name,
+                offset = offset,
+                length = length,
+                value = value
+            ));
+            let var_labels = self.str_var_labels.get(var_name).cloned().expect("BUG");
+            let value_labels = self.compile_str_expr(value);
+            let offset_reg = self.compile_int_expr(offset);
+            let length_reg = self.compile_int_expr(length);
+            self.restore_register(offset_reg);
+
+            let partialcopy = self.load_subroutine(subroutine::Id::UtilPartialCopyStr);
+
+            let (saves, recovers) = {
+                use casl2::Register::*;
+                self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4, Gr5, Gr6])
+            };
+
+            self.code(saves);
+            self.code(format!(
+                r#" PUSH  0,{length}
+                    LD    GR5,{offset}
+                    POP   GR6
+                    LAD   GR1,{dstpos}
+                    LD    GR2,{dstlen}
+                    LAD   GR3,{srcpos}
+                    LD    GR4,{srclen}
+                    CALL  {copy}"#,
+                length = length_reg,
+                offset = offset_reg,
+                dstpos = var_labels.pos,
+                dstlen = var_labels.len,
+                srcpos = value_labels.pos,
+                srclen = value_labels.len,
+                copy = partialcopy
+            ));
+            self.code(recovers);
+
+            self.set_register_idle(length_reg);
+            self.set_register_idle(offset_reg);
+            self.return_temp_str_var_label(value_labels);
+        } else {
+            self.comment(format!(
+                "Mid( {name}, {offset} ) = {value}",
+                name = var_name,
+                offset = offset,
+                value = value
+            ));
+            let var_labels = self.str_var_labels.get(var_name).cloned().expect("BUG");
+            let value_labels = self.compile_str_expr(value);
+            let offset_reg = self.compile_int_expr(offset);
+
+            let partialcopy = self.load_subroutine(subroutine::Id::UtilPartialCopyStr);
+
+            let (saves, recovers) = {
+                use casl2::Register::*;
+                self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4, Gr5, Gr6])
+            };
+
+            self.code(saves);
+            self.code(format!(
+                r#" LD    GR5,{offset}
+                    LAD   GR1,{dstpos}
+                    LD    GR2,{dstlen}
+                    LAD   GR3,{srcpos}
+                    LD    GR4,{srclen}
+                    LD    GR6,GR2
+                    CALL  {copy}"#,
+                offset = offset_reg,
+                dstpos = var_labels.pos,
+                dstlen = var_labels.len,
+                srcpos = value_labels.pos,
+                srclen = value_labels.len,
+                copy = partialcopy
+            ));
+            self.code(recovers);
+
+            self.set_register_idle(offset_reg);
+            self.return_temp_str_var_label(value_labels);
+        }
     }
 
     // Select Case <string> ステートメント
@@ -2307,7 +2393,90 @@ impl Compiler {
     // Mid(<string>,<integer>)
     // Mid(<string>,<integer>,<integer>)
     fn call_function_mid(&mut self, param: &parser::Expr) -> StrLabels {
-        todo!();
+        let param = if let parser::Expr::ParamList(list) = param {
+            list
+        } else {
+            unreachable!("BUG");
+        };
+
+        assert!((2..=3).contains(&param.len()));
+
+        let src = param.get(0).expect("BUG");
+        assert!(matches!(src.return_type(), parser::ExprType::String));
+
+        let offset = param.get(1).expect("BUG");
+        assert!(matches!(offset.return_type(), parser::ExprType::Integer));
+
+        let length = param.get(2);
+
+        assert!(
+            !matches!(length, Some(expr) if !matches!(expr.return_type(), parser::ExprType::Integer))
+        );
+
+        let partialcopy = self.load_subroutine(subroutine::Id::UtilPartialCopyStr);
+
+        let dst_labels = self.get_temp_str_var_label();
+        let src_labels = self.compile_str_expr(src);
+        let offset_reg = self.compile_int_expr(offset);
+
+        if let Some(length) = length {
+            let length_reg = self.compile_int_expr(length);
+            self.restore_register(offset_reg);
+
+            let (saves, recovers) = {
+                use casl2::Register::*;
+                self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4, Gr5, Gr6])
+            };
+            self.code(saves);
+            self.code(format!(
+                r#" PUSH  0,{length}
+                    LD    GR5,{offset}
+                    POP   GR6
+                    LAD   GR1,{dstpos}
+                    LAD   GR3,{srcpos}
+                    LD    GR4,{srclen}
+                    LD    GR2,GR4
+                    CALL  {copy}
+                    ST    GR0,{dstlen}"#,
+                length = length_reg,
+                offset = offset_reg,
+                dstpos = dst_labels.pos,
+                dstlen = dst_labels.len,
+                srcpos = src_labels.pos,
+                srclen = src_labels.len,
+                copy = partialcopy
+            ));
+            self.code(recovers);
+
+            self.set_register_idle(length_reg);
+        } else {
+            let (saves, recovers) = {
+                use casl2::Register::*;
+                self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4, Gr5, Gr6])
+            };
+            self.code(saves);
+            self.code(format!(
+                r#" LD    GR5,{offset}
+                    LAD   GR1,{dstpos}
+                    LAD   GR3,{srcpos}
+                    LD    GR4,{srclen}
+                    LD    GR2,GR4
+                    LD    GR6,GR4
+                    CALL  {copy}
+                    ST    GR0,{dstlen}"#,
+                offset = offset_reg,
+                dstpos = dst_labels.pos,
+                dstlen = dst_labels.len,
+                srcpos = src_labels.pos,
+                srclen = src_labels.len,
+                copy = partialcopy
+            ));
+            self.code(recovers);
+        }
+
+        self.set_register_idle(offset_reg);
+        self.return_temp_str_var_label(src_labels);
+        dst_labels
     }
 
     // Chr(<integer>)

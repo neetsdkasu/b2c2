@@ -6,10 +6,10 @@ use crate::casl2;
 pub enum Id {
     FuncAbs,
     FuncCInt,
-    FuncMax,
-    FuncMin,
     FuncCStrArgBool,
     FuncCStrArgInt,
+    FuncMax,
+    FuncMin,
     FuncSpace,
     UtilCompareInt,
     UtilCompareStr,
@@ -18,6 +18,7 @@ pub enum Id {
     UtilDivMod,
     UtilFill,
     UtilMul,
+    UtilPartialCopyStr,
     UtilSafeIndex,
 }
 
@@ -54,6 +55,7 @@ pub fn get_src<T: Gen>(gen: &mut T, id: Id) -> Src {
         Id::UtilDivMod => get_util_div_mod(gen, id),
         Id::UtilFill => get_util_fill(gen, id),
         Id::UtilMul => get_util_mul(gen, id),
+        Id::UtilPartialCopyStr => get_util_partial_copy_str(gen, id),
         Id::UtilSafeIndex => get_util_safe_index(gen, id),
     }
 }
@@ -706,6 +708,41 @@ fn get_func_space<T: Gen>(_gen: &mut T, id: Id) -> Src {
             prog = id.label(),
             fit = Id::UtilSafeIndex.label(),
             fill = Id::UtilFill.label()
+        ))
+        .unwrap(),
+    }
+}
+
+// Util: Partial Copy Str
+fn get_util_partial_copy_str<T: Gen>(_gen: &mut T, id: Id) -> Src {
+    // GR1 .. adr of s_buf (dst)
+    // GR2 .. s_len (dst)
+    // GR3 .. adr of s_buf (src)
+    // GR4 .. s_len (src)
+    // GR5 .. dst offset
+    // GR6 .. copy length
+    // GR0 .. copied length
+    Src {
+        dependencies: vec![Id::UtilSafeIndex],
+        statements: casl2::parse(&format!(
+            r#"
+                                   ; {comment}
+{prog} PUSH  0,GR1
+       PUSH  0,GR2
+       PUSH  0,GR3
+       PUSH  0,GR4
+       PUSH  0,GR5
+       PUSH  0,GR6
+       POP   GR6
+       POP   GR5
+       POP   GR4
+       POP   GR3
+       POP   GR2
+       POP   GR1
+       RET
+"#,
+            comment = format!("{:?}", id),
+            prog = id.label()
         ))
         .unwrap(),
     }
