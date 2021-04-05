@@ -7,6 +7,8 @@ pub fn analyze(statements: &[Statement]) -> String {
     let mut labels = HashMap::<String, usize>::new();
     let mut commands = HashMap::<String, usize>::new();
     let mut total_ds_size: usize = 0;
+    let mut total_dc_size: usize = 0;
+    let mut total_dc_item_count: usize = 0;
     let mut registers = vec![0_usize; 8];
     let mut index_registers = vec![0_usize; 8];
     let mut literals = HashMap::<String, usize>::new();
@@ -49,10 +51,19 @@ pub fn analyze(statements: &[Statement]) -> String {
                         *commands.entry("DS".to_string()).or_insert(0) += 1;
                     }
                     Command::Dc { constants } => {
-                        for cnst in constants {
-                            if let Constant::Label(label) = cnst {
-                                let key = label.as_str().to_string();
-                                *labels.entry(key).or_insert(0) += 1;
+                        total_dc_item_count += constants.len();
+                        total_dc_size += constants.len();
+                        for cnst in constants.iter() {
+                            match cnst {
+                                Constant::Label(label) => {
+                                    let key = label.as_str().to_string();
+                                    *labels.entry(key).or_insert(0) += 1;
+                                }
+                                Constant::Str(s) => {
+                                    total_dc_size += s.chars().count();
+                                    total_dc_size -= 1;
+                                }
+                                _ => {}
                             }
                         }
                         *commands.entry("DC".to_string()).or_insert(0) += 1;
@@ -172,6 +183,9 @@ lines: {lines}
 
 total_ds_size: {total_ds_size}
 
+total_dc_item_count: {total_dc_item_count}
+total_dc_size: {total_dc_size}
+
 labels:
     total: {total_label}
     unused: {unused_label}
@@ -208,6 +222,8 @@ commands(A):
         commands = format!("{:?}", commands.iter().collect::<BTreeMap<_, _>>()),
         p_codes = format!("{:?}", p_codes.iter().collect::<BTreeMap<_, _>>()),
         total_ds_size = total_ds_size,
+        total_dc_item_count = total_dc_item_count,
+        total_dc_size = total_dc_size,
         registers = format!("{:?}", registers),
         index_registers = format!("{:?}", index_registers),
         literals = format!("{:?}", literals.iter().collect::<BTreeMap<_, _>>()),
