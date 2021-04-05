@@ -1126,7 +1126,7 @@ Else
             n = n \ i
         Loop
         i += 1
-    Loop While i * i <= n
+    Loop While i * i <= n  ' i=181のときi*i=32761(ギリギリ32768未満),i=182以上は無限ループ(32761～32678に素数がないので無限ループはしない)
     If n > 1 Then
         factor(count) = n
         count += 1
