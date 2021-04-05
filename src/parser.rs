@@ -428,9 +428,14 @@ impl Parser {
         Ok(())
     }
 
+    // End
     // End { If / Select }
     fn parse_command_end(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         match pos_and_tokens {
+            [] => {
+                self.add_statement(Statement::End);
+                Ok(())
+            }
             [(_, Token::Keyword(Keyword::If))] => self.compose_command_if(),
             [(_, Token::Keyword(Keyword::Select))] => self.compose_command_select(),
             _ => Err(self.syntax_error("invalid End statement".into())),
@@ -1741,6 +1746,7 @@ impl PartialOrd for Operator {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum Statement {
+    End,
     AssignAddInto {
         var_name: String,
         value: Expr,

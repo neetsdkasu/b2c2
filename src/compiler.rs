@@ -178,6 +178,8 @@ impl Compiler {
     fn is_valid_program_name(program_name: &str) -> bool {
         casl2::Label::from(program_name).is_valid()
 
+        // 予約済みラベル
+        // EOF Inputステートメント、EOF()関数で使用
         && !matches!(program_name, "EOF")
 
         // 自動生成のラベルとの重複を避けるチェックが必要
@@ -553,6 +555,7 @@ impl Compiler {
     fn compile(&mut self, stmt: &parser::Statement) {
         use parser::Statement::*;
         match stmt {
+            End => self.compile_end(),
             AssignAddInto { var_name, value } => self.compile_assign_add_into(var_name, value),
             AssignAddIntoElement {
                 var_name,
@@ -669,6 +672,16 @@ impl Compiler {
             | ProvisionalCaseString { .. }
             | ProvisionalCaseElse => unreachable!("BUG"),
         }
+    }
+
+    // End ステートメント
+    fn compile_end(&mut self) {
+        assert!(self.stacked_registers.is_empty());
+        // たぶん、コールスタックは初期状態のはず…
+        //  (ブロック(If/For/Do/Select)でPUSH/POP汚染はやってないはず…)
+        // RET でプログラム終了できるはずだが
+        self.comment("End");
+        self.code(casl2::Command::Ret);
     }
 
     // Midステートメント
