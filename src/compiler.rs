@@ -2,7 +2,7 @@ use self::ext::*;
 use crate::casl2;
 use crate::parser;
 use crate::tokenizer;
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryFrom;
 use std::fmt::Write;
 
@@ -132,8 +132,7 @@ struct Compiler {
     //     このレジスタの内容はコールスタックに積んでおき、必要のタイミングでスタックから取り出す
     //  先頭：　現在の式展開中の箇所から"遠い"箇所で使用してるレジスタ
     //  後尾: 現在の式展開中の箇所から"近い"箇所で使用してるレジスタ
-    registers_deque: VecDeque<casl2::Register>,
-    unused_register: Vec<casl2::Register>,
+    used_registers_order: Vec<casl2::Register>,
     stacked_registers: Vec<casl2::Register>,
 
     // 生成するCASL2コード本体
@@ -234,10 +233,9 @@ impl Compiler {
             loop_labels: HashMap::new(),
             exit_labels: HashMap::new(),
             registers_used: 0,
-            registers_deque: VecDeque::with_capacity(7),
-            unused_register: {
+            used_registers_order: {
                 use casl2::Register::*;
-                vec![Gr1, Gr2, Gr3, Gr4, Gr5, Gr6, Gr7]
+                vec![Gr7, Gr6, Gr5, Gr4, Gr3, Gr2, Gr1]
             },
             stacked_registers: Vec::new(),
             statements: vec![casl2::Statement::labeled(
@@ -367,6 +365,70 @@ impl Compiler {
             self.subroutine_codes.insert(id, statements);
         }
         req_id.label()
+    }
+
+    // レジスタのアイドル状態を取得
+    fn is_idle_register(&self, reg: casl2::Register) -> bool {
+        (self.registers_used & (1 << reg as isize)) == 0
+    }
+
+    // アイドル中のレジスタを取得
+    fn get_idle_register(&mut self) -> casl2::Register {
+        let len = self.used_registers_order.len();
+        let reg = self.used_registers_order[len - 7];
+        if !self.is_idle_register(reg) {
+            self.stacked_registers.push(reg);
+            self.code(casl2::Command::P {
+                code: casl2::P::Push,
+                adr: casl2::Adr::Dec(0),
+                x: Some(TryFrom::try_from(reg).expect("BUG")),
+            });
+        }
+        self.registers_used |= 1 << reg as isize;
+        self.used_registers_order.push(reg);
+        reg
+    }
+
+    // アイドル化している場合にコールスタックに積まれてる値を戻す
+    fn restore_register(&mut self, reg: casl2::Register) {
+        if !self.is_idle_register(reg) {
+            return;
+        }
+        self.registers_used |= 1 << reg as isize;
+        self.code(casl2::Command::Pop { r: reg });
+        let poped = self.stacked_registers.pop();
+        assert_eq!(poped, Some(reg));
+    }
+
+    // アイドル中のレスジスタを使用中に変更
+    fn set_register_used(&mut self, reg: casl2::Register) {
+        assert!(self.is_idle_register(reg));
+        self.registers_used |= 1 << reg as isize;
+        self.used_registers_order.push(reg);
+    }
+
+    // 使用中のレジスタをアイドル扱いにする
+    fn set_register_idle(&mut self, reg: casl2::Register) {
+        assert!(!self.is_idle_register(reg));
+        self.registers_used ^= 1 << reg as isize;
+        let poped = self.used_registers_order.pop();
+        assert_eq!(poped, Some(reg));
+    }
+
+    // subrutine引数のレジスタなどの一時利用のとき
+    // 一時退避するためのソースコードと復帰するためのソースコードを生成
+    fn get_save_registers_src(&mut self, regs: &[casl2::Register]) -> (String, String) {
+        let mut saves = String::new();
+        let mut recovers = String::new();
+
+        for reg in regs.iter() {
+            if !self.is_idle_register(*reg) {
+                writeln!(&mut saves, " PUSH 0,{}", reg).unwrap();
+                writeln!(&mut recovers, " POP {}", reg).unwrap();
+            }
+        }
+
+        (saves, recovers)
     }
 
     // コンパイル最終工程
@@ -2246,74 +2308,6 @@ impl Compiler {
 
         self.set_register_idle(value_reg);
         self.return_temp_str_var_label(str_labels);
-    }
-
-    // レジスタのアイドル状態を取得
-    fn is_idle_register(&self, reg: casl2::Register) -> bool {
-        (self.registers_used & (1 << reg as isize)) == 0
-    }
-
-    // アイドル中のレジスタを取得
-    fn get_idle_register(&mut self) -> casl2::Register {
-        if let Some(reg) = self.unused_register.pop() {
-            if self.is_idle_register(reg) {
-                self.set_register_used(reg);
-                return reg;
-            }
-        }
-        let reg = self.registers_deque.pop_front().expect("BUG");
-        self.registers_deque.push_back(reg);
-        self.code(casl2::Command::P {
-            code: casl2::P::Push,
-            adr: casl2::Adr::Dec(0),
-            x: Some(TryFrom::try_from(reg).expect("BUG")),
-        });
-        self.stacked_registers.push(reg);
-        reg
-    }
-
-    // アイドル化している場合にコールスタックに積まれてる値を戻す
-    fn restore_register(&mut self, reg: casl2::Register) {
-        if !self.is_idle_register(reg) {
-            return;
-        }
-        self.set_register_used(reg);
-        self.code(casl2::Command::Pop { r: reg });
-        if let Some(r) = self.stacked_registers.pop() {
-            assert_eq!(r, reg);
-        }
-    }
-
-    // アイドル中のレスジスタを使用中に変更
-    fn set_register_used(&mut self, reg: casl2::Register) {
-        assert!(self.is_idle_register(reg));
-        self.registers_used |= 1 << reg as isize;
-        self.registers_deque.push_back(reg);
-        self.unused_register.retain(|&r| r != reg);
-    }
-
-    // 使用中のレジスタをアイドル扱いにする
-    fn set_register_idle(&mut self, reg: casl2::Register) {
-        assert!(!self.is_idle_register(reg));
-        self.registers_used ^= 1 << reg as isize;
-        self.registers_deque.retain(|&r| r != reg);
-        self.unused_register.push(reg);
-    }
-
-    // subrutine引数のレジスタなどの一時利用のとき
-    // 一時退避するためのソースコードと復帰するためのソースコードを生成
-    fn get_save_registers_src(&mut self, regs: &[casl2::Register]) -> (String, String) {
-        let mut saves = String::new();
-        let mut recovers = String::new();
-
-        for reg in regs.iter() {
-            if !self.is_idle_register(*reg) {
-                writeln!(&mut saves, " PUSH 0,{}", reg).unwrap();
-                writeln!(&mut recovers, " POP {}", reg).unwrap();
-            }
-        }
-
-        (saves, recovers)
     }
 
     // 式の展開 (戻り値が文字列)
