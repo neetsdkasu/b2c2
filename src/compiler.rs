@@ -778,21 +778,51 @@ impl Compiler {
 
             let (saves, recovers) = {
                 use casl2::Register::*;
-                self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4, Gr5, Gr6])
+                let mut regs = vec![Gr1, Gr2, Gr3, Gr4];
+                if !matches!(offset_reg, Gr5) {
+                    regs.push(Gr5);
+                }
+                if !matches!(length_reg, Gr6) {
+                    regs.push(Gr6);
+                }
+                self.get_save_registers_src(&regs)
+            };
+
+            let (length_line1, length_line2) = if matches!(length_reg, casl2::Register::Gr5) {
+                (
+                    format!(" LD GR0,{length}", length = length_reg),
+                    " LD GR6,GR0".to_string(),
+                )
+            } else {
+                (
+                    "".to_string(),
+                    if matches!(length_reg, casl2::Register::Gr6) {
+                        "".to_string()
+                    } else {
+                        format!(" LD GR6,{length}", length = length_reg)
+                    },
+                )
+            };
+
+            let offset_line = if matches!(offset_reg, casl2::Register::Gr5) {
+                "".to_string()
+            } else {
+                format!(" LD GR5,{offset}", offset = offset_reg)
             };
 
             self.code(saves);
             self.code(format!(
-                r#" PUSH  0,{length}
-                    LD    GR5,{offset}
-                    POP   GR6
+                r#" {length_line1}
+                    {offset_line}
+                    {length_line2}
                     LAD   GR1,{dstpos}
                     LD    GR2,{dstlen}
                     LAD   GR3,{srcpos}
                     LD    GR4,{srclen}
                     CALL  {copy}"#,
-                length = length_reg,
-                offset = offset_reg,
+                length_line1 = length_line1,
+                offset_line = offset_line,
+                length_line2 = length_line2,
                 dstpos = var_labels.pos,
                 dstlen = var_labels.len,
                 srcpos = value_labels.pos,
@@ -819,19 +849,29 @@ impl Compiler {
 
             let (saves, recovers) = {
                 use casl2::Register::*;
-                self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4, Gr5, Gr6])
+                let mut regs = vec![Gr1, Gr2, Gr3, Gr4, Gr5, Gr6];
+                if matches!(offset_reg, Gr5) {
+                    regs.retain(|r| !matches!(r, Gr5));
+                }
+                self.get_save_registers_src(&regs)
+            };
+
+            let offset_line = if matches!(offset_reg, casl2::Register::Gr5) {
+                "".to_string()
+            } else {
+                format!(" LD GR5,{offset}", offset = offset_reg)
             };
 
             self.code(saves);
             self.code(format!(
-                r#" LD    GR5,{offset}
+                r#" {offset_line}
                     LAD   GR1,{dstpos}
                     LD    GR2,{dstlen}
                     LAD   GR3,{srcpos}
                     LD    GR4,{srclen}
                     LD    GR6,GR2
                     CALL  {copy}"#,
-                offset = offset_reg,
+                offset_line = offset_line,
                 dstpos = var_labels.pos,
                 dstlen = var_labels.len,
                 srcpos = value_labels.pos,
@@ -2472,21 +2512,52 @@ impl Compiler {
 
             let (saves, recovers) = {
                 use casl2::Register::*;
-                self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4, Gr5, Gr6])
+                let mut regs = vec![Gr1, Gr2, Gr3, Gr4];
+                if !matches!(offset_reg, Gr5) {
+                    regs.push(Gr5);
+                }
+                if !matches!(length_reg, Gr6) {
+                    regs.push(Gr6);
+                }
+                self.get_save_registers_src(&regs)
             };
+
+            let (length_line1, length_line2) = if matches!(length_reg, casl2::Register::Gr5) {
+                (
+                    format!(" LD GR0,{length}", length = length_reg),
+                    " LD GR6,GR0".to_string(),
+                )
+            } else {
+                (
+                    "".to_string(),
+                    if matches!(length_reg, casl2::Register::Gr6) {
+                        "".to_string()
+                    } else {
+                        format!(" LD GR6,{length}", length = length_reg)
+                    },
+                )
+            };
+
+            let offset_line = if matches!(offset_reg, casl2::Register::Gr5) {
+                "".to_string()
+            } else {
+                format!(" LD GR5,{offset}", offset = offset_reg)
+            };
+
             self.code(saves);
             self.code(format!(
-                r#" PUSH  0,{length}
-                    LD    GR5,{offset}
-                    POP   GR6
+                r#" {length_line1}
+                    {offset_line}
+                    {length_line2}
                     LAD   GR1,{dstpos}
                     LAD   GR3,{srcpos}
                     LD    GR4,{srclen}
                     LD    GR2,GR4
                     CALL  {copy}
                     ST    GR0,{dstlen}"#,
-                length = length_reg,
-                offset = offset_reg,
+                length_line1 = length_line1,
+                offset_line = offset_line,
+                length_line2 = length_line2,
                 dstpos = dst_labels.pos,
                 dstlen = dst_labels.len,
                 srcpos = src_labels.pos,
@@ -2499,11 +2570,20 @@ impl Compiler {
         } else {
             let (saves, recovers) = {
                 use casl2::Register::*;
-                self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4, Gr5, Gr6])
+                let mut regs = vec![Gr1, Gr2, Gr3, Gr4, Gr5, Gr6];
+                if matches!(offset_reg, Gr5) {
+                    regs.retain(|r| !matches!(r, Gr5));
+                }
+                self.get_save_registers_src(&regs)
+            };
+            let offset_line = if matches!(offset_reg, casl2::Register::Gr5) {
+                "".to_string()
+            } else {
+                format!(" LD GR5,{offset}", offset = offset_reg)
             };
             self.code(saves);
             self.code(format!(
-                r#" LD    GR5,{offset}
+                r#" {offset_line}
                     LAD   GR1,{dstpos}
                     LAD   GR3,{srcpos}
                     LD    GR4,{srclen}
@@ -2511,7 +2591,7 @@ impl Compiler {
                     LD    GR6,GR4
                     CALL  {copy}
                     ST    GR0,{dstlen}"#,
-                offset = offset_reg,
+                offset_line = offset_line,
                 dstpos = dst_labels.pos,
                 dstlen = dst_labels.len,
                 srcpos = src_labels.pos,
