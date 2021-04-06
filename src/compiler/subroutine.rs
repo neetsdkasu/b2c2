@@ -19,6 +19,7 @@ pub enum Id {
     UtilCopyToOffsetStr,
     UtilDivMod,
     UtilFill,
+    UtilLoadElement,
     UtilMul,
     UtilSafeIndex,
 }
@@ -57,6 +58,7 @@ pub fn get_src<T: Gen>(gen: &mut T, id: Id) -> Src {
         Id::UtilCopyToOffsetStr => get_util_copy_to_offset_str(gen, id),
         Id::UtilDivMod => get_util_div_mod(gen, id),
         Id::UtilFill => get_util_fill(gen, id),
+        Id::UtilLoadElement=> get_util_load_element(gen, id),
         Id::UtilMul => get_util_mul(gen, id),
         Id::UtilSafeIndex => get_util_safe_index(gen, id),
     }
@@ -227,30 +229,34 @@ fn get_util_compare_int<T: Gen>(gen: &mut T, id: Id) -> Src {
 }
 
 // Util: Safe Index
-fn get_util_safe_index<T: Gen>(_gen: &mut T, id: Id) -> Src {
+fn get_util_safe_index<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 index of array
     // GR2 size of array
     // GR0 = Max(0, Min(GR1, GR2 - 1))
     Src {
-        dependencies: vec![Id::FuncMax, Id::FuncMin],
+        dependencies: Vec::new(),
         statements: casl2::parse(&format!(
             r#"
                                    ; {comment}
-{prog}  PUSH   0,GR1
-        PUSH   0,GR2
-        LAD    GR2,-1,GR2
-        CALL   {min}
-        XOR    GR1,GR1
-        LD     GR2,GR0
-        CALL   {max}
-        POP    GR2
-        POP    GR1
-        RET
+{prog}    AND    GR2,GR2
+          JNZ    {lbound}
+          XOR    GR0,GR0
+          RET
+{lbound}  LD     GR0,GR1
+          JPL    {ubound}
+          XOR    GR0,GR0
+          RET
+{ubound}  CPL    GR0,GR2
+          JMI    {ok}                
+          LAD    GR0,-1
+          ADDL   GR0,GR2
+{ok}      RET
 "#,
             comment = format!("{:?}", id),
             prog = id.label(),
-            min = Id::FuncMin.label(),
-            max = Id::FuncMax.label()
+            lbound = gen.jump_label(),
+            ubound = gen.jump_label(),
+            ok = gen.jump_label()
         ))
         .unwrap(),
     }
@@ -840,6 +846,37 @@ fn get_util_copy_from_offset_str<T: Gen>(gen: &mut T, id: Id) -> Src {
             min = Id::FuncMin.label(),
             next = gen.jump_label(),
             ret = gen.jump_label()
+        ))
+        .unwrap(),
+    }
+}
+
+// Util: Load Element
+fn get_util_load_element<T: Gen>(gen: &mut T, id: Id) -> Src {
+    // GR1 .. index of arr or str
+    // GR2 .. length of arr or str
+    // GR3 .. adr of arr or str
+    // GR0 .. element value
+    Src {
+        dependencies: vec![Id::UtilSafeIndex],
+        statements: casl2::parse(&format!(
+            r#"
+                                   ; {comment}
+{prog}     AND  GR2,GR2
+           JNZ  {ok}
+           XOR  GR0,GR0
+           RET
+{ok}       CALL {fit}
+           PUSH 0,GR3
+           ADDL GR3,GR0
+           LD   GR0,0,GR3
+           POP  GR3
+           RET
+"#,
+            comment = format!("{:?}", id),
+            prog = id.label(),
+            fit = Id::UtilSafeIndex.label(),
+            ok = gen.jump_label()
         ))
         .unwrap(),
     }

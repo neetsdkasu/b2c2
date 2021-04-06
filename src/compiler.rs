@@ -905,6 +905,9 @@ impl Compiler {
 
         let value_labels = self.compile_str_expr(value);
 
+        // 想定では、
+        //  全てのレジスタ未使用
+        //  になっているはず…
         let (saves, recovers) = {
             use casl2::Register::*;
             self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
@@ -1273,6 +1276,10 @@ impl Compiler {
 
         let index_reg = self.compile_int_expr(index);
 
+        // 想定では、
+        //  index_reg = GR7
+        //  他のレジスタ未使用
+        //  になっているはず…
         let (saves, recovers) = {
             use casl2::Register::*;
             self.get_save_registers_src(&[Gr1, Gr2])
@@ -1290,6 +1297,7 @@ impl Compiler {
         self.code(recovers);
         self.code(format!(" LD {index},GR0", index = index_reg));
 
+        // 想定では GR6
         let value_reg = self.compile_int_expr(value);
 
         self.restore_register(index_reg);
@@ -1361,6 +1369,10 @@ impl Compiler {
 
         let index_reg = self.compile_int_expr(index);
 
+        // 想定では、
+        //  index_reg = GR7
+        //  他のレジスタ未使用
+        //  になっているはず…
         let (saves, recovers) = {
             use casl2::Register::*;
             self.get_save_registers_src(&[Gr1, Gr2])
@@ -1378,6 +1390,7 @@ impl Compiler {
         self.code(recovers);
         self.code(format!(" LD {index},GR0", index = index_reg));
 
+        // 想定では GR6
         let value_reg = self.compile_int_expr(value);
 
         self.restore_register(index_reg);
@@ -1439,6 +1452,10 @@ impl Compiler {
 
         let index_reg = self.compile_int_expr(index);
 
+        // 想定では、
+        //  index_reg = GR7
+        //  他のレジスタ未使用
+        //  になっているはず…
         let (saves, recovers) = {
             use casl2::Register::*;
             self.get_save_registers_src(&[Gr1, Gr2])
@@ -1457,6 +1474,7 @@ impl Compiler {
 
         self.code(format!(" LD {index},GR0", index = index_reg));
 
+        // 想定では GR6
         let value_reg = self.compile_int_expr(value);
 
         self.restore_register(index_reg);
@@ -1496,6 +1514,10 @@ impl Compiler {
 
         let index_reg = self.compile_int_expr(index);
 
+        // 想定では、
+        //  index_reg = GR7
+        //  他のレジスタ未使用
+        //  になっているはず…
         let (saves, recovers) = {
             use casl2::Register::*;
             self.get_save_registers_src(&[Gr1, Gr2])
@@ -1514,6 +1536,7 @@ impl Compiler {
 
         self.code(format!(" LD {index},GR0", index = index_reg));
 
+        // 想定では GR6
         let value_reg = self.compile_int_expr(value);
 
         self.restore_register(index_reg);
@@ -1553,6 +1576,10 @@ impl Compiler {
 
         let index_reg = self.compile_int_expr(index);
 
+        // 想定では、
+        //  index_reg = GR7
+        //  他のレジスタ未使用
+        //  になっているはず…
         let (saves, recovers) = {
             use casl2::Register::*;
             self.get_save_registers_src(&[Gr1, Gr2])
@@ -1571,9 +1598,13 @@ impl Compiler {
 
         self.code(format!(" LD {index},GR0", index = index_reg));
 
+        // 想定では GR6
         let value_reg = self.compile_int_expr(value);
 
         self.restore_register(index_reg);
+
+        // 仮に文字列長が0の文字列変数であったとしても
+        // index=0は文字列変数のバッファ予約領域なので書き込んでも無問題
 
         self.code(format!(
             r#" ST {value},{arr},{index}"#,
@@ -1650,6 +1681,9 @@ impl Compiler {
             )
         };
 
+        // 想定では、
+        //  全てのレジスタ未使用
+        //  になっているはず…
         let (saves, recovers) = {
             use casl2::Register::*;
             self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
@@ -1706,6 +1740,7 @@ impl Compiler {
 
         // calc {end}
         let end_var = self.get_temp_int_var_label();
+        // 想定では GR7
         let end_reg = self.compile_int_expr(end);
         self.code(casl2::Command::A {
             code: casl2::A::St,
@@ -1713,12 +1748,13 @@ impl Compiler {
             adr: casl2::Adr::label(&end_var),
             x: None,
         });
-        self.set_register_idle(end_reg);
+        self.set_register_idle(end_reg); // GR7 解放のはず
 
         // カウンタの準備
         let counter_var = self.int_var_labels.get(counter).expect("BUG").clone();
 
         // calc {init} and assign to {counter}
+        // 想定では GR7
         let init_reg = self.compile_int_expr(init);
         self.code(casl2::Command::A {
             code: casl2::A::St,
@@ -1726,7 +1762,7 @@ impl Compiler {
             adr: casl2::Adr::label(&counter_var),
             x: None,
         });
-        self.set_register_idle(init_reg);
+        self.set_register_idle(init_reg); // GR7 解放のはず
 
         // ラベルの準備
         let condition_label = self.get_new_jump_label();
@@ -1735,20 +1771,20 @@ impl Compiler {
 
         // ループ継続の判定部分
 
+        // 想定では、
+        //  全てのレジスタ未使用
+        //  になっているはず…
         let (saves, recovers) =
             self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
 
         self.code(format!("{cond} NOP", cond = condition_label));
-
         self.code(saves);
-
         self.code(format!(
             r#" LD    GR1,{counter}
                 CPA   GR1,{end}"#,
             counter = counter_var,
             end = end_var
         ));
-
         self.code(recovers);
 
         if step < 0 {
@@ -1764,15 +1800,16 @@ impl Compiler {
 
         // ループ末尾 (カウンタの更新など)
 
+        // 想定では、
+        //  全てのレジスタ未使用
+        //  になっているはず…
         let (saves, recovers) =
             self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
 
         self.comment(format!("Next {counter}", counter = counter));
 
         self.code(format!("{next} NOP", next = loop_label));
-
         self.code(saves);
-
         self.code(format!(
             r#" LD    GR1,{counter}
                 LAD   GR1,{step},GR1
@@ -1780,7 +1817,6 @@ impl Compiler {
             counter = counter_var,
             step = step
         ));
-
         self.code(recovers);
         self.code(format!(" JUMP {cond}", cond = condition_label));
         self.code(format!("{exit} NOP", exit = exit_label));
@@ -1814,6 +1850,7 @@ impl Compiler {
 
         // calc {step}
         let step_var = self.get_temp_int_var_label();
+        // 想定では GR7
         let step_reg = self.compile_int_expr(step);
         self.code(casl2::Command::A {
             code: casl2::A::St,
@@ -1821,10 +1858,11 @@ impl Compiler {
             adr: casl2::Adr::label(&step_var),
             x: None,
         });
-        self.set_register_idle(step_reg);
+        self.set_register_idle(step_reg); // GR7 解放のはず
 
         // calc {end}
         let end_var = self.get_temp_int_var_label();
+        // 想定では GR7
         let end_reg = self.compile_int_expr(end);
         self.code(casl2::Command::A {
             code: casl2::A::St,
@@ -1832,12 +1870,13 @@ impl Compiler {
             adr: casl2::Adr::label(&end_var),
             x: None,
         });
-        self.set_register_idle(end_reg);
+        self.set_register_idle(end_reg); // GR7 解放のはず
 
         // カウンタの準備
         let counter_var = self.int_var_labels.get(counter).expect("BUG").clone();
 
         // calc {init} and assign to {counter}
+        // 想定では GR7
         let init_reg = self.compile_int_expr(init);
         self.code(casl2::Command::A {
             code: casl2::A::St,
@@ -1845,7 +1884,7 @@ impl Compiler {
             adr: casl2::Adr::label(&counter_var),
             x: None,
         });
-        self.set_register_idle(init_reg);
+        self.set_register_idle(init_reg); // GR7 解放のはず
 
         // ラベルの準備
         let condition_label = self.get_new_jump_label();
@@ -1856,13 +1895,14 @@ impl Compiler {
 
         // ループ継続の判定部分
 
+        // 想定では、
+        //  全てのレジスタ未使用
+        //  になっているはず…
         let (saves, recovers) =
             self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
 
         self.code(format!("{cond} NOP", cond = condition_label));
-
         self.code(saves);
-
         self.code(format!(
             r#" LD    GR1,{step}
                 JMI   {nega}
@@ -1878,9 +1918,7 @@ impl Compiler {
             end = end_var,
             block = blockhead_label
         ));
-
         self.code(recovers);
-
         self.code(format!(" JPL {exit}", exit = exit_label));
 
         // ループ内のコードを実行
@@ -1890,14 +1928,15 @@ impl Compiler {
 
         // ループ末尾 (カウンタの更新など)
 
+        // 想定では、
+        //  全てのレジスタ未使用
+        //  になっているはず…
         let (saves, recovers) =
             self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
 
         self.comment(format!("Next {counter}", counter = counter));
         self.code(format!("{next} NOP", next = loop_label));
-
         self.code(saves);
-
         self.code(format!(
             r#" LD    GR1,{counter}
                 ADDA  GR1,{step}
@@ -1905,7 +1944,6 @@ impl Compiler {
             counter = counter_var,
             step = step_var
         ));
-
         self.code(recovers);
         self.code(format!(" JUMP {cond}", cond = condition_label));
         self.code(format!("{exit} NOP", exit = exit_label));
@@ -1939,6 +1977,7 @@ impl Compiler {
 
         self.comment(format!("Select Case {}", value));
 
+        // 想定では GR7
         let value_reg = self.compile_int_expr(value);
 
         for (case_stmt, label) in case_blocks.iter() {
@@ -1974,7 +2013,7 @@ impl Compiler {
             }
         }
 
-        self.set_register_idle(value_reg);
+        self.set_register_idle(value_reg); // GR7 解放のはず
 
         let exit_label = self.get_exit_label(exit_id);
 
@@ -2104,6 +2143,7 @@ impl Compiler {
 
         self.has_eof = true;
 
+        // 想定では GR7
         let index_reg = self.compile_int_expr(index);
 
         let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
@@ -2112,6 +2152,10 @@ impl Compiler {
         let (arr_label, arr_size) = self.int_arr_labels.get(var_name).cloned().expect("BUG");
         let label = self.get_new_jump_label();
 
+        // 想定では、
+        //  index_reg = GR7
+        //  他のレジスタ未使用
+        //  になっているはず…
         let (saves, recovers) = {
             use casl2::Register::*;
             self.get_save_registers_src(&[Gr1, Gr2, Gr3])
@@ -2143,7 +2187,7 @@ impl Compiler {
         ));
         self.code(recovers);
 
-        self.set_register_idle(index_reg);
+        self.set_register_idle(index_reg); // GR7 解放のはず
         self.return_temp_str_var_label(s_labels);
     }
 
@@ -2157,6 +2201,9 @@ impl Compiler {
 
         self.has_eof = true;
 
+        // 想定では、
+        //  全てのレジスタ未使用
+        //  になっているはず…
         let (saves, recovers) = {
             use casl2::Register::*;
             self.get_save_registers_src(&[Gr1, Gr2])
@@ -2261,10 +2308,15 @@ impl Compiler {
 
         self.comment(format!("Print {}", value));
 
+        // 想定では GR7
         let reg = self.compile_int_expr(value);
         let labels = self.get_temp_str_var_label();
         let cstr = self.load_subroutine(subroutine::Id::FuncCStrArgBool);
 
+        // 想定では、
+        //  reg = GR7
+        //  他のレジスタ未使用
+        //  になっているはず…
         let (saves, recovers) = {
             use casl2::Register::*;
             self.get_save_registers_src(&[Gr1, Gr2, Gr3])
@@ -2284,7 +2336,7 @@ impl Compiler {
         ));
         self.code(recovers);
 
-        self.set_register_idle(reg);
+        self.set_register_idle(reg); // GR7 解放のはず
         self.return_temp_str_var_label(labels);
     }
 
@@ -2321,17 +2373,21 @@ impl Compiler {
     fn compile_print_expr_integer(&mut self, value: &parser::Expr) {
         self.comment(format!("Print {}", value));
 
+        // 想定では GR7
         let value_reg = self.compile_int_expr(value);
         let call_label = self.load_subroutine(subroutine::Id::FuncCStrArgInt);
         let str_labels = self.get_temp_str_var_label();
 
+        // 想定では、
+        //  value_reg = GR7
+        //  他のレジスタ未使用
+        //  になっているはず…
         let (saves, recovers) = {
             use casl2::Register::*;
             self.get_save_registers_src(&[Gr1, Gr2, Gr3])
         };
 
         self.code(saves);
-
         self.code(format!(
             r#" LD    GR3,{value}
                 LAD   GR1,{pos}
@@ -2343,10 +2399,9 @@ impl Compiler {
             len = &str_labels.len,
             cstr = call_label
         ));
-
         self.code(recovers);
 
-        self.set_register_idle(value_reg);
+        self.set_register_idle(value_reg); // GR7 解放のはず
         self.return_temp_str_var_label(str_labels);
     }
 
@@ -2411,6 +2466,7 @@ impl Compiler {
         let lhs_labels = self.compile_str_expr(lhs);
         let rhs_labels = self.compile_str_expr(rhs);
 
+        // レジスタを退避
         let (saves, recovers) = {
             use casl2::Register::*;
             self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
@@ -2510,6 +2566,7 @@ impl Compiler {
             let length_reg = self.compile_int_expr(length);
             self.restore_register(offset_reg);
 
+            // レジスタを退避
             let (saves, recovers) = {
                 use casl2::Register::*;
                 let mut regs = vec![Gr1, Gr2, Gr3, Gr4];
@@ -2568,6 +2625,7 @@ impl Compiler {
 
             self.set_register_idle(length_reg);
         } else {
+            // レジスタを退避
             let (saves, recovers) = {
                 use casl2::Register::*;
                 let mut regs = vec![Gr1, Gr2, Gr3, Gr4, Gr5, Gr6];
@@ -2638,18 +2696,29 @@ impl Compiler {
 
         let labels = self.get_temp_str_var_label();
 
+        // レジスタを退避
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+            let mut regs = vec![Gr1, Gr2, Gr3];
+            if matches!(size_reg, Gr3) {
+                regs.pop();
+            }
+            self.get_save_registers_src(&regs)
+        };
+
+        let size_line = if matches!(size_reg, casl2::Register::Gr3) {
+            "".to_string()
+        } else {
+            format!(" LD GR3,{size}", size = size_reg)
         };
 
         self.code(saves);
         self.code(format!(
-            r#" LD   GR3,{size}
+            r#" {size_line}
                 LAD  GR1,{pos}
                 LAD  GR2,{len}
                 CALL {space}"#,
-            size = size_reg,
+            size_line = size_line,
             pos = labels.pos,
             len = labels.len,
             space = space
@@ -2663,16 +2732,10 @@ impl Compiler {
 
     // CStr(<boolean>/<integer>) 関数
     fn call_function_cstr(&mut self, param: &parser::Expr) -> StrLabels {
-        let value_reg = self.compile_int_expr(param);
-
-        let (saves, recovers) = {
-            use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
-        };
-
-        self.code(saves);
-
-        let t_labels = self.get_temp_str_var_label();
+        assert!(matches!(
+            param.return_type(),
+            parser::ExprType::Boolean | parser::ExprType::Integer
+        ));
 
         let id = match param.return_type() {
             parser::ExprType::Boolean => subroutine::Id::FuncCStrArgBool,
@@ -2682,17 +2745,37 @@ impl Compiler {
 
         let call_label = self.load_subroutine(id);
 
+        let value_reg = self.compile_int_expr(param);
+
+        let t_labels = self.get_temp_str_var_label();
+
+        // レジスタ退避
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            let mut regs = vec![Gr1, Gr2, Gr3];
+            if matches!(value_reg, Gr3) {
+                regs.pop();
+            }
+            self.get_save_registers_src(&regs)
+        };
+
+        let value_line = if matches!(value_reg, casl2::Register::Gr3) {
+            "".to_string()
+        } else {
+            format!(" LD GR3,{value}", value = value_reg)
+        };
+
+        self.code(saves);
         self.code(format!(
-            r#" LD    GR3,{value}
+            r#" {value_line}
                 LAD   GR1,{pos}
                 LAD   GR2,{len}
                 CALL  {call}"#,
-            value = value_reg,
+            value_line = value_line,
             len = t_labels.len,
             pos = t_labels.pos,
             call = call_label
         ));
-
         self.code(recovers);
 
         self.set_register_idle(value_reg);
@@ -2860,23 +2943,48 @@ impl Compiler {
     ) -> casl2::Register {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
 
+        // サイズ0の文字列…(parserでコンパイルエラーにすべきな気が…)
+        if lit_str.is_empty() {
+            let reg = self.get_idle_register();
+            self.code(format!(" XOR {reg},{reg}", reg = reg));
+            return reg;
+        }
+
+        let str_labels = self.get_lit_str_label_if_exists(lit_str);
+
+        // リテラル文字列の一部をリテラル整数で指定する、だと…？
+        if let parser::Expr::LitInteger(index) = index {
+            let index = ((*index).max(0) as usize).min(lit_str.chars().count() - 1);
+            let ch = lit_str.chars().nth(index).unwrap();
+            return self.compile_literal_character(ch);
+        }
+
         let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
 
         let index_reg = self.compile_int_expr(index);
 
-        let str_labels = self.get_lit_str_label_if_exists(lit_str);
-
+        // レジスタ退避
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2])
+            if matches!(index_reg, Gr1) {
+                self.get_save_registers_src(&[Gr2])
+            } else {
+                self.get_save_registers_src(&[Gr1, Gr2])
+            }
+        };
+
+        let index_line = if matches!(index_reg, casl2::Register::Gr1) {
+            "".to_string()
+        } else {
+            format!(" LD GR1,{index}", index = index_reg)
         };
 
         self.code(saves);
         self.code(format!(
-            r#" LD    GR1,{index}
+            r#" {index_line}
                 LD    GR2,{size}
                 CALL  {fit}"#,
-            index = index_reg,
+            index_line = index_line,
             size = str_labels.len,
             fit = safe_index
         ));
@@ -2900,33 +3008,169 @@ impl Compiler {
     ) -> casl2::Register {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
 
-        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+        let load_elem = self.load_subroutine(subroutine::Id::UtilLoadElement);
 
         let index_reg = self.compile_int_expr(index);
 
         let str_labels = self.str_var_labels.get(var_name).cloned().expect("BUG");
 
+        // レジスタ退避
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2])
+            if matches!(index_reg, Gr1) {
+                self.get_save_registers_src(&[Gr2, Gr3])
+            } else {
+                self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+            }
         };
+
+        let index_line = if matches!(index_reg, casl2::Register::Gr1) {
+            "".to_string()
+        } else {
+            format!(" LD GR1,{index}", index = index_reg)
+        };
+
+        /*
+           考察
+
+           サブルーチンを一切使用しない場合
+           新規レジスタは無いが、11行でラベルを4つ消費…(ラベルコストが高すぎる、10行あたり2個が理想)
+                 AND   {index},{index}
+                 JPL   {ok1}
+                 XOR   {index},{index}
+          {ok1}  CPL   {index},{len}
+                 JMI   {ok3}
+                 LD    {index},{len}
+                 JNZ   {ok2}
+                 XOR   {index},{index}
+                 JUMP  {ok4}
+         {ok2}   LAD   {index},-1,{index}
+         {ok3}   LD    {index},{var},{index}
+         {ok4}   NOP
+         
+                 7～12行でラベルを1つ消費(ただしサブルーチン行コスト13がある)
+                 (大半のケースは8行と思われ)(複雑な深いネストの計算式でもないとGR2あたりまで使用しない)
+                 (8行呼び出し5回以上でサブルーチンコストはチャラになる)
+                 (5回以上呼び出すケースはレアそうだが,INTSORTなど)
+                 (ラベルコストは4回以上でチャラ)
+                 ( 11 * 1 = 11　[ 4],  8 * 1 + 13 = 21 [1+4 = 5])
+                 ( 11 * 2 = 22 [ 8],  8 * 2 + 13 = 29 [2+4 = 6])
+                 ( 11 * 3 = 33 [12],  8 * 3 + 13 = 37 [3+4 = 7])
+                 ( 11 * 4 = 44 [16],  8 * 4 + 13 = 45 [4+4 = 8])
+                 ( 11 * 5 = 55 [20],  8 * 5 + 13 = 53 [5+4 = 9])
+                 ( 11 * 6 = 66 [24],  8 * 6 + 13 = 61 [6+4 =10])
+                 ( 11 * 7 = 77 [28],  8 * 7 + 13 = 69 [7+4 =11])
+
+                 [ PUSH  0,GR1 ]
+                 [ PUSH  0,GR2 ]
+                 [ LD    GR1,{index} ]
+                   LD    GR2,{len}
+                   CALL  {fit}
+                 [ POP   GR2 ]
+                 [ POP   GR1 ]
+                   LD    {index},GR0
+                   LD    {index},{var},{index}
+                   LD    GR0,{len}
+                   JNZ   {ok}
+                   XOR   {index},{index}
+         {ok}      NOP
+
+                 SafeIndexサブルーチン(13行)
+         {fit}     AND    GR2,GR2
+                   JNZ    {lbound}
+                   XOR    GR0,GR0
+                   RET
+         {lbound}  LD     GR0,GR1
+                   JPL    {ubound}
+                   XOR    GR0,GR0
+                   RET
+         {ubound}  CPL    GR0,GR2
+                   JMI    {ret}
+                   LAD    GR0,-1
+                   ADDL   GR0,GR2
+         {ret}     RET
+         
+         
+
+                 いっそ要素参照までをサブルーチン化は？
+                 4～11行のコスト、ラベルコストはない
+                 (大半は5行となると思う)(複雑な深いネストの計算式でもないとGR3あたりまで使用しない)
+                 サブルーチンコストは
+                    行コスト 13+10=23
+                    ラベルコスト 4+2=6
+                 4回以上呼び出しでチャラだが…
+                 (長さ0の文字列変数があるればの恩恵で、長さ1以上が確定の固定長整数配列などにはあまり意味が無いSafeIndexだけでよいが)
+                 ( 11 * 1 = 11　[ 4],  5 * 1 + 23 = 28 [6])
+                 ( 11 * 2 = 22 [ 8],  5 * 2 + 23 = 33 [6])
+                 ( 11 * 3 = 33 [12],  5 * 3 + 23 = 38 [6])
+                 ( 11 * 4 = 44 [16],  5 * 4 + 23 = 43 [6])
+                 ( 11 * 5 = 55 [20],  5 * 5 + 23 = 48 [6])
+                 ( 11 * 6 = 66 [24],  5 * 6 + 23 = 53 [6])
+                 ( 11 * 7 = 77 [28],  5 * 7 + 23 = 58 [6])
+
+                 [ PUSH 0,GR1 ]
+                 [ PUSH 0,GR2 ]
+                 [ PUSH 0,GR3 ]
+                 [ LD   GR1,{index} ]
+                   LD   GR2,{len}
+                   LAD  GR3,{var}
+                   CALL {load}
+                 [ POP  GR3 ]
+                 [ POP  GR2 ]
+                 [ POP  GR1 ]
+                   LD   {index},GR0
+
+               LoadElementサブルーチン(10行)
+        {load}     AND  GR2,GR2
+                   JNZ  {ok}
+                   XOR  GR0,GR0
+                   RET
+        {ok}       CALL {fit}
+                   PUSH 0,GR3
+                   ADDL GR3,GR0
+                   LD   GR0,0,GR3
+                   POP  GR3
+                   RET
+
+         文字列変数は長さ0がありうるからそのチェックが必要だが
+         真理値・整数配列なら固定長配列で長さ1以上が保証されてるから…
+         素で書くと8行コストのラベル2個か…
+                 AND   {index},{index}
+                 JPL   {ok1}
+                 XOR   {index},{index}
+          {ok1}  CPL   {index},{len}
+                 JMI   {ok2}
+                 LAD   {index},-1
+                 ADDL  {index},{len}
+          {ok2}  LD    {index},{arr},{index}
+          
+          SafeIndexサブルーチンを使用すると4～9行(大半は5行と思われ)、ラベルコストなし
+          (LoadElementサブルーチンを使う利点は皆無…最大行が増えるリスクが発生してしまう)
+                 [ PUSH  0,GR1 ]
+                 [ PUSH  0,GR2 ]
+                 [ LD    GR1,{index} ]
+                   LD    GR2,{len}
+                   CALL  {fit}
+                 [ POP   GR2 ]
+                 [ POP   GR1 ]
+                   LD    {index},GR0
+                   LD    {index},{arr},{index}
+
+         */
 
         self.code(saves);
         self.code(format!(
-            r#" LD    GR1,{index}
-                LD    GR2,{size}
-                CALL  {fit}"#,
-            index = index_reg,
-            size = str_labels.len,
-            fit = safe_index
+            r#" {index_line}
+                LD    GR2,{len}
+                LAD   GR3,{pos}
+                CALL  {load}"#,
+            index_line = index_line,
+            len = str_labels.len,
+            pos = str_labels.pos,
+            load = load_elem
         ));
         self.code(recovers);
-        self.code(format!(
-            r#" LD    {index},GR0
-                LD    {index},{var},{index}"#,
-            index = index_reg,
-            var = str_labels.pos
-        ));
+        self.code(format!(r#" LD {index},GR0"#,index = index_reg));
 
         index_reg
     }
@@ -2940,23 +3184,50 @@ impl Compiler {
     ) -> casl2::Register {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
 
+        let (arr_label, arr_size) = self.bool_arr_labels.get(arr_name).cloned().expect("BUG");
+
+        assert!(arr_size > 0);
+
+        // インデックスがリテラル整数で指定…
+        if let parser::Expr::LitInteger(index) = index {
+            let index = ((*index).max(0) as usize).min(arr_size - 1);
+            let reg = self.get_idle_register();
+            self.code(format!(
+                r#" LAD {reg},{index}
+                    LD  {reg},{arr},{reg}"#,
+                reg = reg,
+                index = index,
+                arr = arr_label
+            ));
+            return reg;
+        }
+
         let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
 
         let index_reg = self.compile_int_expr(index);
 
-        let (arr_label, arr_size) = self.bool_arr_labels.get(arr_name).cloned().expect("BUG");
-
+        // レジスタ退避
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2])
+            if matches!(index_reg, Gr1) {
+                self.get_save_registers_src(&[Gr2])
+            } else {
+                self.get_save_registers_src(&[Gr1, Gr2])
+            }
+        };
+
+        let index_line = if matches!(index_reg, casl2::Register::Gr1) {
+            "".to_string()
+        } else {
+            format!(" LD GR1,{index}", index = index_reg)
         };
 
         self.code(saves);
         self.code(format!(
-            r#" LD    GR1,{index}
+            r#" {index_line}
                 LAD   GR2,{size}
                 CALL  {fit}"#,
-            index = index_reg,
+            index_line = index_line,
             size = arr_size,
             fit = safe_index
         ));
