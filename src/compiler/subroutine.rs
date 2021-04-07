@@ -58,7 +58,7 @@ pub fn get_src<T: Gen>(gen: &mut T, id: Id) -> Src {
         Id::UtilCopyToOffsetStr => get_util_copy_to_offset_str(gen, id),
         Id::UtilDivMod => get_util_div_mod(gen, id),
         Id::UtilFill => get_util_fill(gen, id),
-        Id::UtilLoadElement=> get_util_load_element(gen, id),
+        Id::UtilLoadElement => get_util_load_element(gen, id),
         Id::UtilMul => get_util_mul(gen, id),
         Id::UtilSafeIndex => get_util_safe_index(gen, id),
     }
@@ -247,7 +247,7 @@ fn get_util_safe_index<T: Gen>(gen: &mut T, id: Id) -> Src {
           XOR    GR0,GR0
           RET
 {ubound}  CPL    GR0,GR2
-          JMI    {ok}                
+          JMI    {ok}
           LAD    GR0,-1
           ADDL   GR0,GR2
 {ok}      RET
@@ -269,7 +269,7 @@ fn get_util_div_mod<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR0 商    = GR2 \ GR3
     // GR1 余り   = GR2 Mod GR3
     Src {
-        dependencies: vec![Id::FuncAbs, Id::UtilMul],
+        dependencies: vec![Id::UtilMul],
         statements: casl2::parse(&format!(
             r#"
                                    ; {comment}
@@ -283,13 +283,15 @@ fn get_util_div_mod<T: Gen>(gen: &mut T, id: Id) -> Src {
         PUSH  0,GR4
         PUSH  0,GR5
         LD    GR4,GR2
-        LD    GR1,GR2
-        CALL  {abs}
-        LD    GR5,GR0
-        LD    GR1,GR3
-        CALL  {abs}
-        LD    GR1,GR0
-        LAD   GR0,1
+        LD    GR5,GR2
+        JPL   {x}
+        XOR   GR5,GR5
+        SUBA  GR5,GR2
+{x}     LD    GR1,GR3
+        JPL   {y}
+        XOR   GR1,GR1
+        SUBA  GR1,GR3
+{y}     LAD   GR0,1
 {shift} ADDL  GR1,GR1
         JOV   {pre}
         ADDL  GR0,GR0
@@ -322,8 +324,9 @@ fn get_util_div_mod<T: Gen>(gen: &mut T, id: Id) -> Src {
 "#,
             comment = format!("{:?}", id),
             prog = id.label(),
-            abs = Id::FuncAbs.label(),
             mul = Id::UtilMul.label(),
+            x = gen.jump_label(),
+            y = gen.jump_label(),
             ok = gen.jump_label(),
             shift = gen.jump_label(),
             pre = gen.jump_label(),
@@ -341,7 +344,7 @@ fn get_util_mul<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR0 積の下位16ビット  (GR2 * GR3) & 0x0000FFFF
     // GR1 積の上位16ビット ((GR2 * GR3) & 0xFFFF0000) >> 16
     Src {
-        dependencies: vec![Id::FuncAbs, Id::UtilMul],
+        dependencies: vec![Id::UtilMul],
         statements: casl2::parse(&format!(
             r#"
                                    ; {comment}
@@ -723,15 +726,15 @@ fn get_func_space<T: Gen>(_gen: &mut T, id: Id) -> Src {
 
 // Util: Copy To Offset Str
 fn get_util_copy_to_offset_str<T: Gen>(gen: &mut T, id: Id) -> Src {
-    // GR1 .. adr of s_buf (dst)
-    // GR2 .. s_len (dst)
+    // GR1 .. DST offset
+    // GR2 .. s_len (DST)
     // GR3 .. adr of s_buf (src)
     // GR4 .. s_len (src)
-    // GR5 .. dst offset
+    // GR5 .. adr of s_buf (DST)
     // GR6 .. copy length
     // GR0 .. copied length
     Src {
-        dependencies: vec![Id::UtilSafeIndex, Id::FuncMin],
+        dependencies: vec![Id::UtilSafeIndex],
         statements: casl2::parse(&format!(
             r#"
                                    ; {comment}
@@ -741,21 +744,22 @@ fn get_util_copy_to_offset_str<T: Gen>(gen: &mut T, id: Id) -> Src {
        PUSH  0,GR4
        PUSH  0,GR5
        PUSH  0,GR6
-       LD    GR0,GR1
-       LD    GR1,GR5
-       LD    GR5,GR0
        CALL  {fit}
        LD    GR1,GR6
        LD    GR6,GR0
-       CALL  {min}
-       LD    GR1,GR0
-       ADDL  GR1,GR6
-       CALL  {min}
-       SUBL  GR0,GR6
-       LD    GR1,GR0
-       LD    GR2,GR4
-       CALL  {min}
-       ADDL  GR5,GR6
+       CPL   GR1,GR2
+       JMI   {x}
+       LD    GR1,GR2
+{x}    ADDL  GR1,GR6
+       LD    GR0,GR1
+       CPL   GR0,GR2
+       JMI   {y}
+       LD    GR0,GR2
+{y}    SUBL  GR0,GR6
+       CPL   GR0,GR4
+       JMI   {z}
+       LD    GR0,GR4
+{z}    ADDL  GR5,GR6
        LD    GR6,GR5
        ADDL  GR5,GR0
        ADDL  GR3,GR0
@@ -777,7 +781,9 @@ fn get_util_copy_to_offset_str<T: Gen>(gen: &mut T, id: Id) -> Src {
             comment = format!("{:?}", id),
             prog = id.label(),
             fit = Id::UtilSafeIndex.label(),
-            min = Id::FuncMin.label(),
+            x = gen.jump_label(),
+            y = gen.jump_label(),
+            z = gen.jump_label(),
             next = gen.jump_label(),
             ret = gen.jump_label()
         ))
@@ -787,15 +793,15 @@ fn get_util_copy_to_offset_str<T: Gen>(gen: &mut T, id: Id) -> Src {
 
 // Util: Copy From Offset Str
 fn get_util_copy_from_offset_str<T: Gen>(gen: &mut T, id: Id) -> Src {
-    // GR1 .. adr of s_buf (dst)
-    // GR2 .. s_len (dst)
-    // GR3 .. adr of s_buf (src)
-    // GR4 .. s_len (src)
-    // GR5 .. src offset
+    // GR1 .. SRC offset
+    // GR2 .. s_len (SRC)
+    // GR3 .. adr of s_buf (SRC)
+    // GR4 .. s_len (dst)
+    // GR5 .. adr of s_buf (dst)
     // GR6 .. copy length
     // GR0 .. copied length
     Src {
-        dependencies: vec![Id::UtilSafeIndex, Id::FuncMin],
+        dependencies: vec![Id::UtilSafeIndex],
         statements: casl2::parse(&format!(
             r#"
                                    ; {comment}
@@ -805,24 +811,22 @@ fn get_util_copy_from_offset_str<T: Gen>(gen: &mut T, id: Id) -> Src {
        PUSH  0,GR4
        PUSH  0,GR5
        PUSH  0,GR6
-       LD    GR0,GR2
-       LD    GR2,GR4
-       LD    GR4,GR0
-       LD    GR0,GR1
-       LD    GR1,GR5
-       LD    GR5,GR0
        CALL  {fit}
        LD    GR1,GR6
        LD    GR6,GR0
-       CALL  {min}
-       LD    GR1,GR0
-       ADDL  GR1,GR6
-       CALL  {min}
-       SUBL  GR0,GR6
-       LD    GR1,GR0
-       LD    GR2,GR4
-       CALL  {min}
-       ADDL  GR3,GR6
+       CPL   GR1,GR2
+       JMI   {x}
+       LD    GR1,GR2
+{x}    ADDL  GR1,GR6
+       LD    GR0,GR1
+       CPL   GR0,GR2
+       JMI   {y}
+       LD    GR0,GR2
+{y}    SUBL  GR0,GR6
+       CPL   GR0,GR4
+       JMI   {z}
+       LD    GR0,GR4
+{z}    ADDL  GR3,GR6
        LD    GR6,GR5
        ADDL  GR6,GR0
 {next} CPL   GR5,GR6
@@ -843,7 +847,9 @@ fn get_util_copy_from_offset_str<T: Gen>(gen: &mut T, id: Id) -> Src {
             comment = format!("{:?}", id),
             prog = id.label(),
             fit = Id::UtilSafeIndex.label(),
-            min = Id::FuncMin.label(),
+            x = gen.jump_label(),
+            y = gen.jump_label(),
+            z = gen.jump_label(),
             next = gen.jump_label(),
             ret = gen.jump_label()
         ))

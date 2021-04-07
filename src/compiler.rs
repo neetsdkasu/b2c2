@@ -759,6 +759,8 @@ impl Compiler {
         assert!(matches!(offset.return_type(), parser::ExprType::Integer));
         assert!(matches!(value.return_type(), parser::ExprType::String));
 
+        let partialcopy = self.load_subroutine(subroutine::Id::UtilCopyToOffsetStr);
+
         if let Some(length) = length {
             assert!(matches!(length.return_type(), parser::ExprType::Integer));
             self.comment(format!(
@@ -774,13 +776,11 @@ impl Compiler {
             let length_reg = self.compile_int_expr(length);
             self.restore_register(offset_reg);
 
-            let partialcopy = self.load_subroutine(subroutine::Id::UtilCopyToOffsetStr);
-
             let (saves, recovers) = {
                 use casl2::Register::*;
-                let mut regs = vec![Gr1, Gr2, Gr3, Gr4];
-                if !matches!(offset_reg, Gr5) {
-                    regs.push(Gr5);
+                let mut regs = vec![Gr1, Gr2, Gr3, Gr4, Gr5];
+                if matches!(offset_reg, Gr1) {
+                    regs.retain(|r| !matches!(r, Gr1));
                 }
                 if !matches!(length_reg, Gr6) {
                     regs.push(Gr6);
@@ -788,11 +788,12 @@ impl Compiler {
                 self.get_save_registers_src(&regs)
             };
 
-            let (length_line1, length_line2) = if matches!(length_reg, casl2::Register::Gr5) {
-                (
-                    format!(" LD GR0,{length}", length = length_reg),
-                    " LD GR6,GR0".to_string(),
-                )
+            let (length_line1, length_line2) = if matches!(length_reg, casl2::Register::Gr1) {
+                if matches!(offset_reg, casl2::Register::Gr6) {
+                    (" LD GR0,GR1".to_string(), " LD GR6,GR0".to_string())
+                } else {
+                    (" LD GR6,GR1".to_string(), "".to_string())
+                }
             } else {
                 (
                     "".to_string(),
@@ -804,10 +805,10 @@ impl Compiler {
                 )
             };
 
-            let offset_line = if matches!(offset_reg, casl2::Register::Gr5) {
+            let offset_line = if matches!(offset_reg, casl2::Register::Gr1) {
                 "".to_string()
             } else {
-                format!(" LD GR5,{offset}", offset = offset_reg)
+                format!(" LD GR1,{offset}", offset = offset_reg)
             };
 
             self.code(saves);
@@ -815,7 +816,7 @@ impl Compiler {
                 r#" {length_line1}
                     {offset_line}
                     {length_line2}
-                    LAD   GR1,{dstpos}
+                    LAD   GR5,{dstpos}
                     LD    GR2,{dstlen}
                     LAD   GR3,{srcpos}
                     LD    GR4,{srclen}
@@ -845,27 +846,25 @@ impl Compiler {
             let value_labels = self.compile_str_expr(value);
             let offset_reg = self.compile_int_expr(offset);
 
-            let partialcopy = self.load_subroutine(subroutine::Id::UtilCopyToOffsetStr);
-
             let (saves, recovers) = {
                 use casl2::Register::*;
                 let mut regs = vec![Gr1, Gr2, Gr3, Gr4, Gr5, Gr6];
-                if matches!(offset_reg, Gr5) {
-                    regs.retain(|r| !matches!(r, Gr5));
+                if matches!(offset_reg, Gr1) {
+                    regs.retain(|r| !matches!(r, Gr1));
                 }
                 self.get_save_registers_src(&regs)
             };
 
-            let offset_line = if matches!(offset_reg, casl2::Register::Gr5) {
+            let offset_line = if matches!(offset_reg, casl2::Register::Gr1) {
                 "".to_string()
             } else {
-                format!(" LD GR5,{offset}", offset = offset_reg)
+                format!(" LD GR1,{offset}", offset = offset_reg)
             };
 
             self.code(saves);
             self.code(format!(
                 r#" {offset_line}
-                    LAD   GR1,{dstpos}
+                    LAD   GR5,{dstpos}
                     LD    GR2,{dstlen}
                     LAD   GR3,{srcpos}
                     LD    GR4,{srclen}
@@ -2569,9 +2568,9 @@ impl Compiler {
             // レジスタを退避
             let (saves, recovers) = {
                 use casl2::Register::*;
-                let mut regs = vec![Gr1, Gr2, Gr3, Gr4];
-                if !matches!(offset_reg, Gr5) {
-                    regs.push(Gr5);
+                let mut regs = vec![Gr1, Gr2, Gr3, Gr4, Gr5];
+                if matches!(offset_reg, Gr1) {
+                    regs.retain(|r| !matches!(r, Gr1));
                 }
                 if !matches!(length_reg, Gr6) {
                     regs.push(Gr6);
@@ -2579,11 +2578,12 @@ impl Compiler {
                 self.get_save_registers_src(&regs)
             };
 
-            let (length_line1, length_line2) = if matches!(length_reg, casl2::Register::Gr5) {
-                (
-                    format!(" LD GR0,{length}", length = length_reg),
-                    " LD GR6,GR0".to_string(),
-                )
+            let (length_line1, length_line2) = if matches!(length_reg, casl2::Register::Gr1) {
+                if matches!(offset_reg, casl2::Register::Gr6) {
+                    (" LD GR0,GR1".to_string(), " LD GR6,GR0".to_string())
+                } else {
+                    (" LD GR6,GR1".to_string(), "".to_string())
+                }
             } else {
                 (
                     "".to_string(),
@@ -2595,10 +2595,10 @@ impl Compiler {
                 )
             };
 
-            let offset_line = if matches!(offset_reg, casl2::Register::Gr5) {
+            let offset_line = if matches!(offset_reg, casl2::Register::Gr1) {
                 "".to_string()
             } else {
-                format!(" LD GR5,{offset}", offset = offset_reg)
+                format!(" LD GR1,{offset}", offset = offset_reg)
             };
 
             self.code(saves);
@@ -2606,7 +2606,7 @@ impl Compiler {
                 r#" {length_line1}
                     {offset_line}
                     {length_line2}
-                    LAD   GR1,{dstpos}
+                    LAD   GR5,{dstpos}
                     LAD   GR3,{srcpos}
                     LD    GR4,{srclen}
                     LD    GR2,GR4
@@ -2629,20 +2629,20 @@ impl Compiler {
             let (saves, recovers) = {
                 use casl2::Register::*;
                 let mut regs = vec![Gr1, Gr2, Gr3, Gr4, Gr5, Gr6];
-                if matches!(offset_reg, Gr5) {
-                    regs.retain(|r| !matches!(r, Gr5));
+                if matches!(offset_reg, Gr1) {
+                    regs.retain(|r| !matches!(r, Gr1));
                 }
                 self.get_save_registers_src(&regs)
             };
-            let offset_line = if matches!(offset_reg, casl2::Register::Gr5) {
+            let offset_line = if matches!(offset_reg, casl2::Register::Gr1) {
                 "".to_string()
             } else {
-                format!(" LD GR5,{offset}", offset = offset_reg)
+                format!(" LD GR1,{offset}", offset = offset_reg)
             };
             self.code(saves);
             self.code(format!(
                 r#" {offset_line}
-                    LAD   GR1,{dstpos}
+                    LAD   GR5,{dstpos}
                     LAD   GR3,{srcpos}
                     LD    GR4,{srclen}
                     LD    GR2,GR4
@@ -3047,7 +3047,7 @@ impl Compiler {
          {ok2}   LAD   {index},-1,{index}
          {ok3}   LD    {index},{var},{index}
          {ok4}   NOP
-         
+
                  7～12行でラベルを1つ消費(ただしサブルーチン行コスト13がある)
                  (大半のケースは8行と思われ)(複雑な深いネストの計算式でもないとGR2あたりまで使用しない)
                  (8行呼び出し5回以上でサブルーチンコストはチャラになる)
@@ -3089,8 +3089,8 @@ impl Compiler {
                    LAD    GR0,-1
                    ADDL   GR0,GR2
          {ret}     RET
-         
-         
+
+
 
                  いっそ要素参照までをサブルーチン化は？
                  4～11行のコスト、ラベルコストはない
@@ -3143,7 +3143,7 @@ impl Compiler {
                  LAD   {index},-1
                  ADDL  {index},{len}
           {ok2}  LD    {index},{arr},{index}
-          
+
           SafeIndexサブルーチンを使用すると4～9行(大半は5行と思われ)、ラベルコストなし
           (LoadElementサブルーチンを使う利点は皆無…最大行が増えるリスクが発生してしまう)
                  [ PUSH  0,GR1 ]
@@ -3170,7 +3170,7 @@ impl Compiler {
             load = load_elem
         ));
         self.code(recovers);
-        self.code(format!(r#" LD {index},GR0"#,index = index_reg));
+        self.code(format!(r#" LD {index},GR0"#, index = index_reg));
 
         index_reg
     }
@@ -3257,17 +3257,28 @@ impl Compiler {
 
         let (arr_label, arr_size) = self.int_arr_labels.get(arr_name).cloned().expect("BUG");
 
+        // レジスタ退避
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2])
+            if matches!(index_reg, Gr1) {
+                self.get_save_registers_src(&[Gr2])
+            } else {
+                self.get_save_registers_src(&[Gr1, Gr2])
+            }
+        };
+
+        let index_line = if matches!(index_reg, casl2::Register::Gr1) {
+            "".to_string()
+        } else {
+            format!(" LD GR1,{index}", index = index_reg)
         };
 
         self.code(saves);
         self.code(format!(
-            r#" LD    GR1,{index}
+            r#" {index_line}
                 LAD   GR2,{size}
                 CALL  {fit}"#,
-            index = index_reg,
+            index_line = index_line,
             size = arr_size,
             fit = safe_index
         ));
@@ -3371,6 +3382,7 @@ impl Compiler {
                 let lhs_labels = self.compile_str_expr(lhs);
                 let rhs_labels = self.compile_str_expr(rhs);
                 let cmpstr = self.load_subroutine(subroutine::Id::UtilCompareStr);
+                // レジスタ退避
                 let (saves, recovers) = {
                     use casl2::Register::*;
                     self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
@@ -3438,6 +3450,7 @@ impl Compiler {
                 let lhs_labels = self.compile_str_expr(lhs);
                 let rhs_labels = self.compile_str_expr(rhs);
                 let cmpstr = self.load_subroutine(subroutine::Id::UtilCompareStr);
+                // レジスタ退避
                 let (saves, recovers) = {
                     use casl2::Register::*;
                     self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
@@ -3505,6 +3518,7 @@ impl Compiler {
                 let lhs_labels = self.compile_str_expr(lhs);
                 let rhs_labels = self.compile_str_expr(rhs);
                 let cmpstr = self.load_subroutine(subroutine::Id::UtilCompareStr);
+                // レジスタ退避
                 let (saves, recovers) = {
                     use casl2::Register::*;
                     self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
@@ -3572,6 +3586,7 @@ impl Compiler {
                 let lhs_labels = self.compile_str_expr(lhs);
                 let rhs_labels = self.compile_str_expr(rhs);
                 let cmpstr = self.load_subroutine(subroutine::Id::UtilCompareStr);
+                // レジスタ退避
                 let (saves, recovers) = {
                     use casl2::Register::*;
                     self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
@@ -3638,6 +3653,7 @@ impl Compiler {
                 let lhs_labels = self.compile_str_expr(lhs);
                 let rhs_labels = self.compile_str_expr(rhs);
                 let cmpstr = self.load_subroutine(subroutine::Id::UtilCompareStr);
+                // レジスタ退避
                 let (saves, recovers) = {
                     use casl2::Register::*;
                     self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
@@ -3716,6 +3732,7 @@ impl Compiler {
                 let lhs_str = self.compile_str_expr(lhs);
                 let rhs_str = self.compile_str_expr(rhs);
                 let cmpstr = self.load_subroutine(subroutine::Id::UtilCompareStr);
+                // レジスタ退避
                 let (saves, recovers) = {
                     use casl2::Register::*;
                     self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
@@ -3834,20 +3851,80 @@ impl Compiler {
     ) -> casl2::Register {
         let mul_label = self.load_subroutine(subroutine::Id::UtilMul);
 
+        // レジスタ退避
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+            let mut regs = vec![Gr1];
+            if !matches!(lhs_reg, Gr2) {
+                regs.push(Gr2);
+            }
+            if !matches!(rhs_reg, Gr3) {
+                regs.push(Gr3);
+            }
+            self.get_save_registers_src(&regs)
+        };
+
+        // lhs=GR2 rhs=GR3
+        //    no code
+        //    no code
+        //    no code
+        // lhs=GR2 rhs=GR*
+        //    no code
+        //    LD GR3,{rhs}
+        //    no code
+        // lhs=GR* rhs=GR3
+        //    no code
+        //    no code
+        //    LD GR2,{lhs}
+        // lhs=GR3 rhs=GR2
+        //    LD GR0,{lhs}
+        //    LD GR3,{rhs}
+        //    LD GR2,GR0
+        // lhs=GR3 rhs=GR*
+        //    LD GR2,{lhs}
+        //    LD GR3,{rhs}
+        //    no code
+        // lhs=GR* rhs=GR2
+        //    no code
+        //    LD GR3,{rhs}
+        //    LD GR2,{lhs}
+        // lhs=GR* rhs=GR*
+        //    no code
+        //    LD GR3,{rhs}
+        //    LD GR2,{lhs}
+
+        let (lhs_line1, lhs_line2) = if matches!(lhs_reg, casl2::Register::Gr3) {
+            if matches!(rhs_reg, casl2::Register::Gr2) {
+                (" LD GR0,GR3".to_string(), " LD GR2,GR0".to_string())
+            } else {
+                (" LD GR2,GR3".to_string(), "".to_string())
+            }
+        } else {
+            (
+                "".to_string(),
+                if matches!(lhs_reg, casl2::Register::Gr2) {
+                    "".to_string()
+                } else {
+                    format!(" LD GR2,{lhs}", lhs = lhs_reg)
+                },
+            )
+        };
+
+        let rhs_line = if matches!(rhs_reg, casl2::Register::Gr3) {
+            "".to_string()
+        } else {
+            format!(" LD GR3,{rhs}", rhs = rhs_reg)
         };
 
         self.code(saves);
-
         self.code(format!(
-            r#" PUSH  0,{rhs}
-                LD    GR2,{lhs}
-                POP   GR3
+            r#" {lhs_line1}
+                {rhs_line}
+                {lhs_line2}
                 CALL  {mul}"#,
-            rhs = rhs_reg,
-            lhs = lhs_reg,
+            rhs_line = rhs_line,
+            lhs_line1 = lhs_line1,
+            lhs_line2 = lhs_line2,
             mul = mul_label
         ));
 
@@ -3869,25 +3946,54 @@ impl Compiler {
     ) -> casl2::Register {
         let divmod_label = self.load_subroutine(subroutine::Id::UtilDivMod);
 
+        // レジスタ退避
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+            let mut regs = vec![Gr1];
+            if !matches!(lhs_reg, Gr2) {
+                regs.push(Gr2);
+            }
+            if !matches!(rhs_reg, Gr3) {
+                regs.push(Gr3);
+            }
+            self.get_save_registers_src(&regs)
+        };
+
+        let (lhs_line1, lhs_line2) = if matches!(lhs_reg, casl2::Register::Gr3) {
+            if matches!(rhs_reg, casl2::Register::Gr2) {
+                (" LD GR0,GR3".to_string(), " LD GR2,GR0".to_string())
+            } else {
+                (" LD GR2,GR3".to_string(), "".to_string())
+            }
+        } else {
+            (
+                "".to_string(),
+                if matches!(lhs_reg, casl2::Register::Gr2) {
+                    "".to_string()
+                } else {
+                    format!(" LD GR2,{lhs}", lhs = lhs_reg)
+                },
+            )
+        };
+
+        let rhs_line = if matches!(rhs_reg, casl2::Register::Gr3) {
+            "".to_string()
+        } else {
+            format!(" LD GR3,{rhs}", rhs = rhs_reg)
         };
 
         self.code(saves);
-
         self.code(format!(
-            r#" PUSH  0,{rhs}
-                LD    GR2,{lhs}
-                POP   GR3
+            r#" {lhs_line1}
+                {rhs_line}
+                {lhs_line2}
                 CALL  {divmod}"#,
-            rhs = rhs_reg,
-            lhs = lhs_reg,
+            rhs_line = rhs_line,
+            lhs_line1 = lhs_line1,
+            lhs_line2 = lhs_line2,
             divmod = divmod_label
         ));
-
         self.code(recovers);
-
         self.code(format!(" LD {lhs},GR0", lhs = lhs_reg));
 
         self.set_register_idle(rhs_reg);
@@ -3904,26 +4010,55 @@ impl Compiler {
     ) -> casl2::Register {
         let divmod_label = self.load_subroutine(subroutine::Id::UtilDivMod);
 
+        // レジスタ退避
         let (saves, recovers) = {
             use casl2::Register::*;
-            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+            let mut regs = vec![Gr1];
+            if !matches!(lhs_reg, Gr2) {
+                regs.push(Gr2);
+            }
+            if !matches!(rhs_reg, Gr3) {
+                regs.push(Gr3);
+            }
+            self.get_save_registers_src(&regs)
+        };
+
+        let (lhs_line1, lhs_line2) = if matches!(lhs_reg, casl2::Register::Gr3) {
+            if matches!(rhs_reg, casl2::Register::Gr2) {
+                (" LD GR0,GR3".to_string(), " LD GR2,GR0".to_string())
+            } else {
+                (" LD GR2,GR3".to_string(), "".to_string())
+            }
+        } else {
+            (
+                "".to_string(),
+                if matches!(lhs_reg, casl2::Register::Gr2) {
+                    "".to_string()
+                } else {
+                    format!(" LD GR2,{lhs}", lhs = lhs_reg)
+                },
+            )
+        };
+
+        let rhs_line = if matches!(rhs_reg, casl2::Register::Gr3) {
+            "".to_string()
+        } else {
+            format!(" LD GR3,{rhs}", rhs = rhs_reg)
         };
 
         self.code(saves);
-
         self.code(format!(
-            r#" PUSH  0,{rhs}
-                LD    GR2,{lhs}
-                POP   GR3
+            r#" {lhs_line1}
+                {rhs_line}
+                {lhs_line2}
                 CALL  {divmod}
                 LD    GR0,GR1"#,
-            rhs = rhs_reg,
-            lhs = lhs_reg,
+            rhs_line = rhs_line,
+            lhs_line1 = lhs_line1,
+            lhs_line2 = lhs_line2,
             divmod = divmod_label
         ));
-
         self.code(recovers);
-
         self.code(format!(" LD {lhs},GR0", lhs = lhs_reg));
 
         self.set_register_idle(rhs_reg);
@@ -4014,10 +4149,96 @@ impl Compiler {
             Asc => self.call_function_asc(param),
             CInt => self.call_function_cint(param),
             Len => self.call_function_len(param),
-            Max => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMax),
-            Min => self.call_function_2_int_args_int_ret(param, subroutine::Id::FuncMin),
+            Max => self.call_function_max(param),
+            Min => self.call_function_min(param),
             CBool | Chr | CStr | Eof | Mid | Space => unreachable!("BUG"),
         }
+    }
+
+    // (式展開の処理の一部)
+    // Min(<integer>,<integer>)の処理
+    fn call_function_min(&mut self, param: &parser::Expr) -> casl2::Register {
+        let list = if let parser::Expr::ParamList(list) = param {
+            list
+        } else {
+            unreachable!("BUG");
+        };
+
+        let (lhs, rhs) = match list.as_slice() {
+            [lhs, rhs]
+                if matches!(lhs.return_type(), parser::ExprType::Integer)
+                    && matches!(rhs.return_type(), parser::ExprType::Integer) =>
+            {
+                (lhs, rhs)
+            }
+            _ => unreachable!("BUG"),
+        };
+
+        let lhs_reg = self.compile_int_expr(lhs);
+
+        let rhs_reg = self.compile_int_expr(rhs);
+
+        self.restore_register(lhs_reg);
+
+        let ok_label = self.get_new_jump_label();
+
+        self.code(format!(
+            r#" CPA  {lhs},{rhs}
+                JMI  {ok}
+                LD   {lhs},{rhs}
+{ok}            NOP
+"#,
+            lhs = lhs_reg,
+            rhs = rhs_reg,
+            ok = ok_label
+        ));
+
+        self.set_register_idle(rhs_reg);
+
+        lhs_reg
+    }
+
+    // (式展開の処理の一部)
+    // Max(<integer>,<integer>)の処理
+    fn call_function_max(&mut self, param: &parser::Expr) -> casl2::Register {
+        let list = if let parser::Expr::ParamList(list) = param {
+            list
+        } else {
+            unreachable!("BUG");
+        };
+
+        let (lhs, rhs) = match list.as_slice() {
+            [lhs, rhs]
+                if matches!(lhs.return_type(), parser::ExprType::Integer)
+                    && matches!(rhs.return_type(), parser::ExprType::Integer) =>
+            {
+                (lhs, rhs)
+            }
+            _ => unreachable!("BUG"),
+        };
+
+        let lhs_reg = self.compile_int_expr(lhs);
+
+        let rhs_reg = self.compile_int_expr(rhs);
+
+        self.restore_register(lhs_reg);
+
+        let ok_label = self.get_new_jump_label();
+
+        self.code(format!(
+            r#" CPA  {lhs},{rhs}
+                JPL  {ok}
+                LD   {lhs},{rhs}
+{ok}            NOP
+"#,
+            lhs = lhs_reg,
+            rhs = rhs_reg,
+            ok = ok_label
+        ));
+
+        self.set_register_idle(rhs_reg);
+
+        lhs_reg
     }
 
     // (式展開の処理の一部)
@@ -4054,21 +4275,54 @@ impl Compiler {
     fn call_function_abs(&mut self, param: &parser::Expr) -> casl2::Register {
         assert!(matches!(param.return_type(), parser::ExprType::Integer));
 
-        let abs = self.load_subroutine(subroutine::Id::FuncAbs);
+        /*
+            考察
+
+            素で書くと4行1ラベル
+                  LD    GR0,{reg}
+                  JPL   {ok}
+                  XOR   {reg},{reg}
+                  SUBA  {reg},GR0
+            {ok}  NOP
+
+            サブルーチン利用だと2～5行0ラベル(大半3行)
+                [ PUSH  0,GR1     ]
+                [ LD    GR1,{reg} ]
+                  CALL  {abs}
+                [ POP   GR1       ]
+                  LD    {reg},GR0
+            Absサブルーチン6行2ラベル
+            {abs} LD    GR0,GR1
+                  JMI   {mi}
+                  RET
+            {mi}  XOR   GR0,GR0
+                  SUBA  GR0,GR1
+                  RET
+
+            6~7回以上でチャラだが、普通そんなにAbsを多用せんだろJK...
+            (4 * 1 =  4 [1*1=1], 3 * 1 + 6 =  9 [2])
+            (4 * 2 =  8 [1*2=2], 3 * 2 + 6 = 12 [2])
+            (4 * 3 = 12 [1*3=3], 3 * 3 + 6 = 15 [2])
+            (4 * 4 = 16 [1*4=4], 3 * 4 + 6 = 18 [2])
+            (4 * 5 = 20 [1*5=5], 3 * 5 + 6 = 21 [2])
+            (4 * 6 = 24 [1*6=6], 3 * 6 + 6 = 24 [2])
+            (4 * 7 = 28 [1*7=7], 3 * 7 + 6 = 27 [2])
+        */
 
         let reg = self.compile_int_expr(param);
 
-        let (saves, recovers) = self.get_save_registers_src(&[casl2::Register::Gr1]);
+        let ok_label = self.get_new_jump_label();
 
-        self.code(saves);
         self.code(format!(
-            r#" LD    GR1,{reg}
-                CALL  {abs}"#,
+            r#" LD    GR0,{reg}
+                JPL   {ok}
+                XOR   {reg},{reg}
+                SUBA  {reg},GR0
+{ok}            NOP
+"#,
             reg = reg,
-            abs = abs
+            ok = ok_label
         ));
-        self.code(recovers);
-        self.code(format!(" LD {reg},GR0", reg = reg));
 
         reg
     }
@@ -4102,9 +4356,12 @@ impl Compiler {
                 self.set_register_idle(ret_reg);
                 let arg_str = self.compile_str_expr(param);
                 let cint = self.load_subroutine(subroutine::Id::FuncCInt);
+                // レジスタの退避
                 let (saves, recovers) = {
                     use casl2::Register::*;
-                    self.get_save_registers_src(&[Gr1, Gr2])
+                    let mut regs = vec![Gr1, Gr2];
+                    regs.retain(|r| *r != ret_reg);
+                    self.get_save_registers_src(&regs)
                 };
                 self.code(saves);
                 self.code(format!(
