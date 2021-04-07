@@ -1738,16 +1738,21 @@ impl Compiler {
         ));
 
         // calc {end}
-        let end_var = self.get_temp_int_var_label();
-        // 想定では GR7
-        let end_reg = self.compile_int_expr(end);
-        self.code(casl2::Command::A {
-            code: casl2::A::St,
-            r: end_reg,
-            adr: casl2::Adr::label(&end_var),
-            x: None,
-        });
-        self.set_register_idle(end_reg); // GR7 解放のはず
+        let end_var = if let parser::Expr::LitInteger(_) = end {
+            None
+        } else {
+            let end_var = self.get_temp_int_var_label();
+            // 想定では GR7
+            let end_reg = self.compile_int_expr(end);
+            self.code(casl2::Command::A {
+                code: casl2::A::St,
+                r: end_reg,
+                adr: casl2::Adr::label(&end_var),
+                x: None,
+            });
+            self.set_register_idle(end_reg); // GR7 解放のはず
+            Some(end_var)
+        };
 
         // カウンタの準備
         let counter_var = self.int_var_labels.get(counter).expect("BUG").clone();
@@ -1778,12 +1783,23 @@ impl Compiler {
 
         self.code(format!("{cond} NOP", cond = condition_label));
         self.code(saves);
-        self.code(format!(
-            r#" LD    GR1,{counter}
-                CPA   GR1,{end}"#,
-            counter = counter_var,
-            end = end_var
-        ));
+        if let Some(end_var) = end_var.as_ref() {
+            self.code(format!(
+                r#" LD    GR1,{counter}
+                    CPA   GR1,{end}"#,
+                counter = counter_var,
+                end = end_var
+            ));
+        } else if let parser::Expr::LitInteger(end) = end {
+            self.code(format!(
+                r#" LD    GR1,{counter}
+                    CPA   GR1,={end}"#,
+                counter = counter_var,
+                end = *end as i16
+            ));
+        } else {
+            unreachable!("BUG");
+        }
         self.code(recovers);
 
         if step < 0 {
@@ -1820,7 +1836,9 @@ impl Compiler {
         self.code(format!(" JUMP {cond}", cond = condition_label));
         self.code(format!("{exit} NOP", exit = exit_label));
 
-        self.return_temp_int_var_label(end_var);
+        if let Some(end_var) = end_var {
+            self.return_temp_int_var_label(end_var);
+        }
     }
 
     // For ステートメント
@@ -1860,16 +1878,21 @@ impl Compiler {
         self.set_register_idle(step_reg); // GR7 解放のはず
 
         // calc {end}
-        let end_var = self.get_temp_int_var_label();
-        // 想定では GR7
-        let end_reg = self.compile_int_expr(end);
-        self.code(casl2::Command::A {
-            code: casl2::A::St,
-            r: end_reg,
-            adr: casl2::Adr::label(&end_var),
-            x: None,
-        });
-        self.set_register_idle(end_reg); // GR7 解放のはず
+        let end_var = if let parser::Expr::LitInteger(_) = end {
+            None
+        } else {
+            let end_var = self.get_temp_int_var_label();
+            // 想定では GR7
+            let end_reg = self.compile_int_expr(end);
+            self.code(casl2::Command::A {
+                code: casl2::A::St,
+                r: end_reg,
+                adr: casl2::Adr::label(&end_var),
+                x: None,
+            });
+            self.set_register_idle(end_reg); // GR7 解放のはず
+            Some(end_var)
+        };
 
         // カウンタの準備
         let counter_var = self.int_var_labels.get(counter).expect("BUG").clone();
@@ -1902,8 +1925,9 @@ impl Compiler {
 
         self.code(format!("{cond} NOP", cond = condition_label));
         self.code(saves);
-        self.code(format!(
-            r#" LD    GR1,{step}
+        if let Some(end_var) = end_var.as_ref() {
+            self.code(format!(
+                r#" LD    GR1,{step}
                 JMI   {nega}
                 LD    GR1,{counter}
                 CPA   GR1,{end}
@@ -1911,12 +1935,31 @@ impl Compiler {
 {nega}          LD    GR1,{end}
                 CPA   GR1,{counter}
 {block}         NOP"#,
-            counter = counter_var,
-            step = step_var,
-            nega = negastep_label,
-            end = end_var,
-            block = blockhead_label
-        ));
+                counter = counter_var,
+                step = step_var,
+                nega = negastep_label,
+                end = end_var,
+                block = blockhead_label
+            ));
+        } else if let parser::Expr::LitInteger(end) = end {
+            self.code(format!(
+                r#" LD    GR1,{step}
+                JMI   {nega}
+                LD    GR1,{counter}
+                CPA   GR1,={end}
+                JUMP  {block}
+{nega}          LAD    GR1,{end}
+                CPA   GR1,{counter}
+{block}         NOP"#,
+                counter = counter_var,
+                step = step_var,
+                nega = negastep_label,
+                end = *end as i16,
+                block = blockhead_label
+            ));
+        } else {
+            unreachable!("BUG");
+        }
         self.code(recovers);
         self.code(format!(" JPL {exit}", exit = exit_label));
 
@@ -1947,7 +1990,9 @@ impl Compiler {
         self.code(format!(" JUMP {cond}", cond = condition_label));
         self.code(format!("{exit} NOP", exit = exit_label));
 
-        self.return_temp_int_var_label(end_var);
+        if let Some(end_var) = end_var {
+            self.return_temp_int_var_label(end_var);
+        }
         self.return_temp_int_var_label(step_var);
     }
 

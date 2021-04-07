@@ -660,13 +660,11 @@ fn for_statement_without_step_works() {
                      XOR    GR0,GR0
                      ST     GR0,I1
                                    ; For i = 1 To 10 Step 1
-                     LAD    GR7,10
-                     ST     GR7,T1
                      LAD    GR7,1
                      ST     GR7,I1
 J1                   NOP
                      LD     GR1,I1
-                     CPA    GR1,T1
+                     CPA    GR1,=10
                      JPL    J3
                                    ; Next i
 J2                   NOP
@@ -678,7 +676,6 @@ J3                   NOP
                      RET
                                    ; Dim i As Integer
 I1                   DS 1
-T1                   DS 1
                      END
 "#
         )
@@ -707,13 +704,11 @@ fn for_statement_positive_step_works() {
                      XOR    GR0,GR0
                      ST     GR0,I1
                                    ; For i = 1 To 10 Step 1
-                     LAD    GR7,10
-                     ST     GR7,T1
                      LAD    GR7,1
                      ST     GR7,I1
 J1                   NOP
                      LD     GR1,I1
-                     CPA    GR1,T1
+                     CPA    GR1,=10
                      JPL    J3
                                    ; Next i
 J2                   NOP
@@ -725,7 +720,6 @@ J3                   NOP
                      RET
                                    ; Dim i As Integer
 I1                   DS 1
-T1                   DS 1
                      END
 "#
         )
@@ -754,13 +748,11 @@ fn for_statement_negative_step_works() {
                      XOR    GR0,GR0
                      ST     GR0,I1
                                    ; For i = 24 To 8 Step -2
-                     LAD    GR7,8
-                     ST     GR7,T1
                      LAD    GR7,24
                      ST     GR7,I1
 J1                   NOP
                      LD     GR1,I1
-                     CPA    GR1,T1
+                     CPA    GR1,=8
                      JMI    J3
                                    ; Next i
 J2                   NOP
@@ -772,7 +764,6 @@ J3                   NOP
                      RET
                                    ; Dim i As Integer
 I1                   DS 1
-T1                   DS 1
                      END
 "#
         )
@@ -806,17 +797,15 @@ fn for_statement_expr_step_works() {
                                    ; For I = 1 To 10 Step S
                      LD     GR7,I1
                      ST     GR7,T1
-                     LAD    GR7,10
-                     ST     GR7,T2
                      LAD    GR7,1
                      ST     GR7,I2
 J1                   NOP
                      LD     GR1,T1
                      JMI    J2
                      LD     GR1,I2
-                     CPA    GR1,T2
+                     CPA    GR1,=10
                      JUMP   J3
-J2                   LD     GR1,T2
+J2                   LAD     GR1,10
                      CPA    GR1,I2
 J3                   NOP
                      JPL    J5
@@ -833,7 +822,6 @@ I1                   DS 1
                                    ; Dim I As Integer
 I2                   DS 1
 T1                   DS 1
-T2                   DS 1
 "#,
         fill = fill.label()
     ))
