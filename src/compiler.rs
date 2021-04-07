@@ -148,10 +148,10 @@ struct Compiler {
 // 文字列ラベルのタイプ判定に使う
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
 enum StrLabelType {
-    Const,       // IN/OUTの定数 LB**
-    Lit(String), // リテラル ='abc'
-    Temp,        // 一時変数 TB**
-    Var,         // 文字列変数 SB**
+    Const(String), // IN/OUTの定数 LB**
+    Lit(String),   // リテラル ='abc'
+    Temp,          // 一時変数 TB**
+    Var,           // 文字列変数 SB**
 }
 
 // 文字列のラベル
@@ -160,6 +160,23 @@ struct StrLabels {
     pos: String,
     len: String,
     label_type: StrLabelType,
+}
+
+impl StrLabels {
+    fn ld_len(&self, reg: casl2::Register) -> String {
+        match &self.label_type {
+            StrLabelType::Const(s) | StrLabelType::Lit(s) => {
+                if s.is_empty() {
+                    format!(" XOR {reg},{reg}", reg = reg)
+                } else {
+                    format!(" LAD {reg},{len}", reg = reg, len = s.chars().count())
+                }
+            }
+            StrLabelType::Temp | StrLabelType::Var => {
+                format!(" LD {reg},{len}", reg = reg, len = self.len)
+            }
+        }
+    }
 }
 
 impl subroutine::Gen for Compiler {
@@ -324,7 +341,7 @@ impl Compiler {
         let labels = StrLabels {
             len: format!("LL{}", self.lit_id),
             pos: format!("LB{}", self.lit_id),
-            label_type: StrLabelType::Const,
+            label_type: StrLabelType::Const(literal.to_string()),
         };
         self.lit_str_labels.insert(literal.into(), labels.clone());
         labels
@@ -819,7 +836,7 @@ impl Compiler {
                     LAD   GR5,{dstpos}
                     LD    GR2,{dstlen}
                     LAD   GR3,{srcpos}
-                    LD    GR4,{srclen}
+                    {ld_srclen}
                     CALL  {copy}"#,
                 length_line1 = length_line1,
                 offset_line = offset_line,
@@ -827,7 +844,7 @@ impl Compiler {
                 dstpos = var_labels.pos,
                 dstlen = var_labels.len,
                 srcpos = value_labels.pos,
-                srclen = value_labels.len,
+                ld_srclen = value_labels.ld_len(casl2::Register::Gr4),
                 copy = partialcopy
             ));
             self.code(recovers);
@@ -867,14 +884,14 @@ impl Compiler {
                     LAD   GR5,{dstpos}
                     LD    GR2,{dstlen}
                     LAD   GR3,{srcpos}
-                    LD    GR4,{srclen}
+                    {ld_srclen}
                     LD    GR6,GR2
                     CALL  {copy}"#,
                 offset_line = offset_line,
                 dstpos = var_labels.pos,
                 dstlen = var_labels.len,
                 srcpos = value_labels.pos,
-                srclen = value_labels.len,
+                ld_srclen = value_labels.ld_len(casl2::Register::Gr4),
                 copy = partialcopy
             ));
             self.code(recovers);
@@ -915,9 +932,9 @@ impl Compiler {
         self.code(saves);
         self.code(format!(
             r#" LAD  GR1,{pos}
-                LD   GR2,{len}"#,
+                {ld_len}"#,
             pos = value_labels.pos,
-            len = value_labels.len
+            ld_len = value_labels.ld_len(casl2::Register::Gr2)
         ));
 
         self.return_temp_str_var_label(value_labels);
@@ -1647,38 +1664,18 @@ impl Compiler {
         let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
         let var_label = self.str_var_labels.get(var_name).expect("BUG");
 
-        let src = if let StrLabels {
-            pos,
-            label_type: StrLabelType::Lit(s),
-            ..
-        } = &value_label
-        {
-            format!(
-                r#" LAD   GR1,{dstpos}
+        let src = format!(
+            r#" LAD   GR1,{dstpos}
                     LAD   GR2,{dstlen}
                     LAD   GR3,{srcpos}
-                    LAD   GR4,{srclen}
+                    {ld_srclen}
                     CALL  {copystr}"#,
-                dstpos = var_label.pos,
-                dstlen = var_label.len,
-                srcpos = pos,
-                srclen = s.chars().count(),
-                copystr = copystr
-            )
-        } else {
-            format!(
-                r#" LAD   GR1,{dstpos}
-                    LAD   GR2,{dstlen}
-                    LAD   GR3,{srcpos}
-                    LD    GR4,{srclen}
-                    CALL  {copystr}"#,
-                dstpos = var_label.pos,
-                dstlen = var_label.len,
-                srcpos = value_label.pos,
-                srclen = value_label.len,
-                copystr = copystr
-            )
-        };
+            dstpos = var_label.pos,
+            dstlen = var_label.len,
+            srcpos = value_label.pos,
+            ld_srclen = value_label.ld_len(casl2::Register::Gr4),
+            copystr = copystr
+        );
 
         // 想定では、
         //  全てのレジスタ未使用
@@ -2525,12 +2522,12 @@ impl Compiler {
                 r#" LAD   GR1,{tmppos}
                     LAD   GR2,{tmplen}
                     LAD   GR3,{srcpos}
-                    LD    GR4,{srclen}
+                    {ld_srclen}
                     CALL  {copy}"#,
                 tmppos = temp_labels.pos,
                 tmplen = temp_labels.len,
                 srcpos = lhs_labels.pos,
-                srclen = lhs_labels.len,
+                ld_srclen = lhs_labels.ld_len(casl2::Register::Gr4),
                 copy = copy
             ));
             temp_labels
@@ -2543,12 +2540,12 @@ impl Compiler {
             r#" LAD   GR1,{lhspos}
                 LAD   GR2,{lhslen}
                 LAD   GR3,{rhspos}
-                LD    GR4,{rhslen}
+                {ld_rhslen}
                 CALL  {concat}"#,
             lhspos = lhs_labels.pos,
             lhslen = lhs_labels.len,
             rhspos = rhs_labels.pos,
-            rhslen = rhs_labels.len,
+            ld_rhslen = rhs_labels.ld_len(casl2::Register::Gr4),
             concat = concat
         ));
 
@@ -2653,7 +2650,7 @@ impl Compiler {
                     {length_line2}
                     LAD   GR5,{dstpos}
                     LAD   GR3,{srcpos}
-                    LD    GR4,{srclen}
+                    {ld_srclen}
                     LD    GR2,GR4
                     CALL  {copy}
                     ST    GR0,{dstlen}"#,
@@ -2663,7 +2660,7 @@ impl Compiler {
                 dstpos = dst_labels.pos,
                 dstlen = dst_labels.len,
                 srcpos = src_labels.pos,
-                srclen = src_labels.len,
+                ld_srclen = src_labels.ld_len(casl2::Register::Gr4),
                 copy = partialcopy
             ));
             self.code(recovers);
@@ -2689,7 +2686,7 @@ impl Compiler {
                 r#" {offset_line}
                     LAD   GR5,{dstpos}
                     LAD   GR3,{srcpos}
-                    LD    GR4,{srclen}
+                    {ld_srclen}
                     LD    GR2,GR4
                     LD    GR6,GR4
                     CALL  {copy}
@@ -2698,7 +2695,7 @@ impl Compiler {
                 dstpos = dst_labels.pos,
                 dstlen = dst_labels.len,
                 srcpos = src_labels.pos,
-                srclen = src_labels.len,
+                ld_srclen = src_labels.ld_len(casl2::Register::Gr4),
                 copy = partialcopy
             ));
             self.code(recovers);
@@ -3027,10 +3024,10 @@ impl Compiler {
         self.code(saves);
         self.code(format!(
             r#" {index_line}
-                LD    GR2,{size}
+                {ld_size}
                 CALL  {fit}"#,
             index_line = index_line,
-            size = str_labels.len,
+            ld_size = str_labels.ld_len(casl2::Register::Gr2),
             fit = safe_index
         ));
         self.code(recovers);
@@ -3435,14 +3432,14 @@ impl Compiler {
                 self.code(saves);
                 self.code(format!(
                     r#" LAD   GR1,{lhspos}
-                        LD    GR2,{lhslen}
+                        {ld_lhslen}
                         LAD   GR3,{rhspos}
-                        LD    GR4,{rhslen}
+                        {ld_rhslen}
                         CALL  {cmpstr}"#,
                     lhspos = lhs_labels.pos,
-                    lhslen = lhs_labels.len,
+                    ld_lhslen = lhs_labels.ld_len(casl2::Register::Gr2),
                     rhspos = rhs_labels.pos,
-                    rhslen = rhs_labels.len,
+                    ld_rhslen = rhs_labels.ld_len(casl2::Register::Gr4),
                     cmpstr = cmpstr
                 ));
                 self.code(recovers);
@@ -3503,14 +3500,14 @@ impl Compiler {
                 self.code(saves);
                 self.code(format!(
                     r#" LAD   GR3,{lhspos}
-                        LD    GR4,{lhslen}
+                        {ld_lhslen}
                         LAD   GR1,{rhspos}
-                        LD    GR2,{rhslen}
+                        {ld_rhslen}
                         CALL  {cmpstr}"#,
                     lhspos = lhs_labels.pos,
-                    lhslen = lhs_labels.len,
+                    ld_lhslen = lhs_labels.ld_len(casl2::Register::Gr4),
                     rhspos = rhs_labels.pos,
-                    rhslen = rhs_labels.len,
+                    ld_rhslen = rhs_labels.ld_len(casl2::Register::Gr2),
                     cmpstr = cmpstr
                 ));
                 self.code(recovers);
@@ -3571,14 +3568,14 @@ impl Compiler {
                 self.code(saves);
                 self.code(format!(
                     r#" LAD   GR1,{lhspos}
-                        LD    GR2,{lhslen}
+                        {ld_lhslen}
                         LAD   GR3,{rhspos}
-                        LD    GR4,{rhslen}
+                        {ld_rhslen}
                         CALL  {cmpstr}"#,
                     lhspos = lhs_labels.pos,
-                    lhslen = lhs_labels.len,
+                    ld_lhslen = lhs_labels.ld_len(casl2::Register::Gr2),
                     rhspos = rhs_labels.pos,
-                    rhslen = rhs_labels.len,
+                    ld_rhslen = rhs_labels.ld_len(casl2::Register::Gr4),
                     cmpstr = cmpstr
                 ));
                 self.code(recovers);
@@ -3639,14 +3636,14 @@ impl Compiler {
                 self.code(saves);
                 self.code(format!(
                     r#" LAD   GR3,{lhspos}
-                        LD    GR4,{lhslen}
+                        {ld_lhslen}
                         LAD   GR1,{rhspos}
-                        LD    GR2,{rhslen}
+                        {ld_rhslen}
                         CALL  {cmpstr}"#,
                     lhspos = lhs_labels.pos,
-                    lhslen = lhs_labels.len,
+                    ld_lhslen = lhs_labels.ld_len(casl2::Register::Gr4),
                     rhspos = rhs_labels.pos,
-                    rhslen = rhs_labels.len,
+                    ld_rhslen = rhs_labels.ld_len(casl2::Register::Gr2),
                     cmpstr = cmpstr
                 ));
                 self.code(recovers);
@@ -3706,14 +3703,14 @@ impl Compiler {
                 self.code(saves);
                 self.code(format!(
                     r#" LAD   GR1,{lhspos}
-                        LD    GR2,{lhslen}
+                        {ld_lhslen}
                         LAD   GR3,{rhspos}
-                        LD    GR4,{rhslen}
+                        {ld_rhslen}
                         CALL  {cmpstr}"#,
                     lhspos = lhs_labels.pos,
-                    lhslen = lhs_labels.len,
+                    ld_lhslen = lhs_labels.ld_len(casl2::Register::Gr2),
                     rhspos = rhs_labels.pos,
-                    rhslen = rhs_labels.len,
+                    ld_rhslen = rhs_labels.ld_len(casl2::Register::Gr4),
                     cmpstr = cmpstr
                 ));
                 self.code(recovers);
@@ -3785,14 +3782,14 @@ impl Compiler {
                 self.code(saves);
                 self.code(format!(
                     r#" LAD   GR1,{lhspos}
-                        LD    GR2,{lhslen}
+                        {ld_lhslen}
                         LAD   GR3,{rhspos}
-                        LD    GR4,{rhslen}
+                        {ld_rhslen}
                         CALL  {cmpstr}"#,
                     lhspos = lhs_str.pos,
-                    lhslen = lhs_str.len,
+                    ld_lhslen = lhs_str.ld_len(casl2::Register::Gr2),
                     rhspos = rhs_str.pos,
-                    rhslen = rhs_str.len,
+                    ld_rhslen = rhs_str.ld_len(casl2::Register::Gr4),
                     cmpstr = cmpstr
                 ));
                 self.code(recovers);
@@ -3833,7 +3830,7 @@ impl Compiler {
                 ShiftLeft => Some(format!(" SLA {},{}", lhs_reg, value)),
                 ShiftRight => Some(format!(" SRA {},{}", lhs_reg, value)),
                 Add => Some(format!(" LAD {0},{1},{0}", lhs_reg, value)),
-                Sub => Some(format!(" SUBA {},={}", lhs_reg, value)),
+                Sub => Some(format!(" LAD {0},{1},{0}", lhs_reg, (-value) as i16)),
                 _ => None,
             },
             parser::Expr::LitCharacter(value) => match op {
@@ -4134,13 +4131,22 @@ impl Compiler {
     fn compile_literal_integer(&mut self, value: i32) -> casl2::Register {
         let reg = self.get_idle_register();
 
-        // LAD REG,VALUE
-        self.code(casl2::Command::A {
-            code: casl2::A::Lad,
-            r: reg,
-            adr: casl2::Adr::Dec(value as i16),
-            x: None,
-        });
+        if value == 0 {
+            // XOR REG,REG
+            self.code(casl2::Command::R {
+                code: casl2::R::Xor,
+                r1: reg,
+                r2: reg,
+            });
+        } else {
+            // LAD REG,VALUE
+            self.code(casl2::Command::A {
+                code: casl2::A::Lad,
+                r: reg,
+                adr: casl2::Adr::Dec(value as i16),
+                x: None,
+            });
+        }
 
         reg
     }
@@ -4167,15 +4173,23 @@ impl Compiler {
     // 真理値リテラルの読み込み
     fn compile_literal_boolean(&mut self, value: bool) -> casl2::Register {
         let reg = self.get_idle_register();
-        let value = if value { 0xFFFF } else { 0x0000 };
 
-        // LAD REG,VALUE
-        self.code(casl2::Command::A {
-            code: casl2::A::Lad,
-            r: reg,
-            adr: casl2::Adr::Hex(value),
-            x: None,
-        });
+        if value {
+            // LAD REG,VALUE
+            self.code(casl2::Command::A {
+                code: casl2::A::Lad,
+                r: reg,
+                adr: casl2::Adr::Hex(0xFFFF),
+                x: None,
+            });
+        } else {
+            // XOR REG,REG
+            self.code(casl2::Command::R {
+                code: casl2::R::Xor,
+                r1: reg,
+                r2: reg,
+            });
+        }
 
         reg
     }
@@ -4300,16 +4314,28 @@ impl Compiler {
 
         self.set_register_used(reg);
 
-        self.code(format!(
-            r#" LD   {reg},{len}
-                JZE  {ok}
-                LD   {reg},{pos}
-{ok}            NOP"#,
-            reg = reg,
-            len = labels.len,
-            pos = labels.pos,
-            ok = ok
-        ));
+        match &labels.label_type {
+            StrLabelType::Lit(s) | StrLabelType::Const(s) if s.is_empty() => {
+                self.code(casl2::Command::R {
+                    code: casl2::R::Xor,
+                    r1: reg,
+                    r2: reg,
+                })
+            }
+            StrLabelType::Lit(_) | StrLabelType::Const(_) => {
+                self.code(format!(r#" LD {reg},{pos}"#, reg = reg, pos = labels.pos))
+            }
+            StrLabelType::Var | StrLabelType::Temp => self.code(format!(
+                r#" LD   {reg},{len}
+                    JZE  {ok}
+                    LD   {reg},{pos}
+{ok}                NOP"#,
+                reg = reg,
+                len = labels.len,
+                pos = labels.pos,
+                ok = ok
+            )),
+        }
 
         self.return_temp_str_var_label(labels);
         reg
@@ -4384,7 +4410,7 @@ impl Compiler {
 
         self.set_register_used(reg);
 
-        self.code(format!(" LD {reg},{len}", reg = reg, len = str_labels.len));
+        self.code(str_labels.ld_len(reg));
 
         self.return_temp_str_var_label(str_labels);
 
@@ -4411,10 +4437,10 @@ impl Compiler {
                 self.code(saves);
                 self.code(format!(
                     r#" LAD   GR1,{strpos}
-                        LD    GR2,{strlen}
+                        {ld_strlen}
                         CALL  {cint}"#,
                     strpos = arg_str.pos,
-                    strlen = arg_str.len,
+                    ld_strlen = arg_str.ld_len(casl2::Register::Gr2),
                     cint = cint
                 ));
                 self.code(recovers);

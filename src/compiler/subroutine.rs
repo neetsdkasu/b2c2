@@ -587,7 +587,7 @@ fn get_util_copy_str<T: Gen>(gen: &mut T, id: Id) -> Src {
          ST    GR2,0,GR1
          LAD   GR3,1,GR3
          LAD   GR1,1,GR1
-         SUBA  GR4,=1
+         SUBL  GR4,=1
          JPL   {cycle}
 {ret}    POP   GR4
          POP   GR3

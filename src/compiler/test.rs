@@ -226,7 +226,7 @@ fn compiler_get_lit_str_labels_works() {
         StrLabels {
             len: "LL1".into(),
             pos: "LB1".into(),
-            label_type: StrLabelType::Const
+            label_type: StrLabelType::Const("-123".into())
         }
     );
     assert_eq!(
@@ -234,7 +234,7 @@ fn compiler_get_lit_str_labels_works() {
         StrLabels {
             len: "LL2".into(),
             pos: "LB2".into(),
-            label_type: StrLabelType::Const
+            label_type: StrLabelType::Const("A b c".into())
         }
     );
     assert_eq!(
@@ -242,7 +242,7 @@ fn compiler_get_lit_str_labels_works() {
         StrLabels {
             len: "LL3".into(),
             pos: "LB3".into(),
-            label_type: StrLabelType::Const
+            label_type: StrLabelType::Const("XYZ".into())
         }
     );
     assert_eq!(
@@ -250,7 +250,7 @@ fn compiler_get_lit_str_labels_works() {
         StrLabels {
             len: "LL4".into(),
             pos: "LB4".into(),
-            label_type: StrLabelType::Const
+            label_type: StrLabelType::Const("Test@1234".into())
         }
     );
     assert_eq!(
@@ -258,7 +258,7 @@ fn compiler_get_lit_str_labels_works() {
         StrLabels {
             len: "LL2".into(),
             pos: "LB2".into(),
-            label_type: StrLabelType::Const
+            label_type: StrLabelType::Const("A b c".into())
         }
     );
     assert_eq!(
@@ -266,7 +266,7 @@ fn compiler_get_lit_str_labels_works() {
         StrLabels {
             len: "LL3".into(),
             pos: "LB3".into(),
-            label_type: StrLabelType::Const
+            label_type: StrLabelType::Const("XYZ".into())
         }
     );
 
