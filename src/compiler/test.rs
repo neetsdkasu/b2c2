@@ -603,13 +603,13 @@ TEST   START
        CALL   {fill}
                                    ; Input intVar1
        IN     TB1,TL1
+       LAD    GR1,TB1
        LD     GR2,TL1
        JPL    J4
        JZE    J4
        ST     GR2,EOF
        XOR    GR2,GR2
-J4     LAD    GR1,TB1
-       CALL   {cint}
+J4     CALL   {cint}
        ST     GR0,I1
        RET
                                    ; Dim intVar1 As Integer

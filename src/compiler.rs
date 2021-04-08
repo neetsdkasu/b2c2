@@ -1287,6 +1287,48 @@ impl Compiler {
         ));
 
         let (arr_label, arr_size) = self.int_arr_labels.get(var_name).cloned().expect("BUG");
+        assert!(arr_size > 0);
+
+        // indexがリテラルの場合
+        if let parser::Expr::LitInteger(index) = index {
+            let index = *index as i16;
+            let index = (index.max(0) as usize).min(arr_size - 1);
+            // おそらくGR7
+            let value_reg = self.compile_int_expr(value);
+            // おそらくGR6
+            let temp_reg = self.get_idle_register();
+            assert_ne!(value_reg, temp_reg);
+            if index == 0 {
+                self.code(format!(
+                    r#" LD    {reg},{arr}
+                        SUBA  {reg},{value}
+                        ST    {reg},{arr}"#,
+                    reg = temp_reg,
+                    arr = arr_label,
+                    value = value_reg
+                ));
+            } else {
+                // おそらくGR5
+                let index_reg = self.get_idle_register();
+                assert_ne!(value_reg, index_reg);
+                assert_ne!(temp_reg, index_reg);
+                self.code(format!(
+                    r#" LAD   {index_reg},{index}
+                        LD    {reg},{arr},{index_reg}
+                        SUBA  {reg},{value}
+                        ST    {reg},{arr},{index_reg}"#,
+                    index_reg = index_reg,
+                    index = index,
+                    reg = temp_reg,
+                    arr = arr_label,
+                    value = value_reg
+                ));
+                self.set_register_idle(index_reg);
+            }
+            self.set_register_idle(temp_reg);
+            self.set_register_idle(value_reg);
+            return;
+        }
 
         let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
 
@@ -1380,6 +1422,39 @@ impl Compiler {
         ));
 
         let (arr_label, arr_size) = self.int_arr_labels.get(var_name).cloned().expect("BUG");
+        assert!(arr_size > 0);
+
+        // indexがリテラルの場合
+        if let parser::Expr::LitInteger(index) = index {
+            let index = *index as i16;
+            let index = (index.max(0) as usize).min(arr_size - 1);
+            // おそらくGR7
+            let value_reg = self.compile_int_expr(value);
+            if index == 0 {
+                self.code(format!(
+                    r#" ADDA  {value},{arr}
+                        ST    {value},{arr}"#,
+                    arr = arr_label,
+                    value = value_reg
+                ));
+            } else {
+                // おそらくGR6
+                let index_reg = self.get_idle_register();
+                assert_ne!(value_reg, index_reg);
+                self.code(format!(
+                    r#" LAD   {index_reg},{index}
+                        ADDA  {value},{arr},{index_reg}
+                        ST    {value},{arr},{index_reg}"#,
+                    index_reg = index_reg,
+                    index = index,
+                    arr = arr_label,
+                    value = value_reg
+                ));
+                self.set_register_idle(index_reg);
+            }
+            self.set_register_idle(value_reg);
+            return;
+        }
 
         let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
 
@@ -1462,9 +1537,40 @@ impl Compiler {
             value = value
         ));
 
-        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
-
         let (arr_label, arr_size) = self.bool_arr_labels.get(var_name).cloned().expect("BUG");
+        assert!(arr_size > 0);
+
+        // indexがリテラルの場合
+        if let parser::Expr::LitInteger(index) = index {
+            let index = *index as i16;
+            let index = (index.max(0) as usize).min(arr_size - 1);
+            // おそらくGR7
+            let value_reg = self.compile_int_expr(value);
+            if index == 0 {
+                self.code(format!(
+                    r#" ST    {value},{arr}"#,
+                    arr = arr_label,
+                    value = value_reg
+                ));
+            } else {
+                // おそらくGR6
+                let index_reg = self.get_idle_register();
+                assert_ne!(value_reg, index_reg);
+                self.code(format!(
+                    r#" LAD   {index_reg},{index}
+                        ST    {value},{arr},{index_reg}"#,
+                    index_reg = index_reg,
+                    index = index,
+                    arr = arr_label,
+                    value = value_reg
+                ));
+                self.set_register_idle(index_reg);
+            }
+            self.set_register_idle(value_reg);
+            return;
+        }
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
 
         let index_reg = self.compile_int_expr(index);
 
@@ -1524,9 +1630,40 @@ impl Compiler {
             value = value
         ));
 
-        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
-
         let (arr_label, arr_size) = self.int_arr_labels.get(var_name).cloned().expect("BUG");
+        assert!(arr_size > 0);
+
+        // indexがリテラルの場合
+        if let parser::Expr::LitInteger(index) = index {
+            let index = *index as i16;
+            let index = (index.max(0) as usize).min(arr_size - 1);
+            // おそらくGR7
+            let value_reg = self.compile_int_expr(value);
+            if index == 0 {
+                self.code(format!(
+                    r#" ST    {value},{arr}"#,
+                    arr = arr_label,
+                    value = value_reg
+                ));
+            } else {
+                // おそらくGR6
+                let index_reg = self.get_idle_register();
+                assert_ne!(value_reg, index_reg);
+                self.code(format!(
+                    r#" LAD   {index_reg},{index}
+                        ST    {value},{arr},{index_reg}"#,
+                    index_reg = index_reg,
+                    index = index,
+                    arr = arr_label,
+                    value = value_reg
+                ));
+                self.set_register_idle(index_reg);
+            }
+            self.set_register_idle(value_reg);
+            return;
+        }
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
 
         let index_reg = self.compile_int_expr(index);
 
@@ -2171,7 +2308,7 @@ impl Compiler {
         self.labeled(exit_label, casl2::Command::Nop);
     }
 
-    // Input ステートメント
+    // Input <int_arr>( <index> ) ステートメント
     // 整数配列の要素へのコンソール入力
     fn compile_input_element_integer(&mut self, var_name: &str, index: &parser::Expr) {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
@@ -2183,15 +2320,58 @@ impl Compiler {
         ));
 
         self.has_eof = true;
+        let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
+
+        let (arr_label, arr_size) = self.int_arr_labels.get(var_name).cloned().expect("BUG");
+        assert!(arr_size > 0);
+
+        // indexがリテラルの場合
+        if let parser::Expr::LitInteger(index) = index {
+            let index = *index as i16;
+            let index = (index.max(0) as usize).min(arr_size - 1);
+            let s_labels = self.get_temp_str_var_label();
+            let ok_label = self.get_new_jump_label();
+            // レジスタ退避
+            let (saves, recovers) = {
+                use casl2::Register::*;
+                self.get_save_registers_src(&[Gr1, Gr2])
+            };
+            self.code(saves);
+            self.code(format!(
+                r#" IN    {pos},{len}
+                    LAD   GR1,{pos}
+                    LD    GR2,{len}
+                    JPL   {ok}
+                    JZE   {ok}
+                    ST    GR2,EOF
+                    XOR   GR2,GR2
+{ok}                CALL  {cint}"#,
+                pos = s_labels.pos,
+                len = s_labels.len,
+                cint = cint_label,
+                ok = ok_label
+            ));
+            self.code(if index == 0 {
+                format!(r#" ST GR0,{arr}"#, arr = arr_label)
+            } else {
+                format!(
+                    r#" LAD   GR1,{index}
+                        ST    GR0,{arr},GR1"#,
+                    index = index,
+                    arr = arr_label
+                )
+            });
+            self.code(recovers);
+            self.return_temp_str_var_label(s_labels);
+            return;
+        }
 
         // 想定では GR7
         let index_reg = self.compile_int_expr(index);
 
         let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
-        let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
         let s_labels = self.get_temp_str_var_label();
-        let (arr_label, arr_size) = self.int_arr_labels.get(var_name).cloned().expect("BUG");
-        let label = self.get_new_jump_label();
+        let ok_label = self.get_new_jump_label();
 
         // 想定では、
         //  index_reg = GR7
@@ -2202,6 +2382,9 @@ impl Compiler {
             self.get_save_registers_src(&[Gr1, Gr2, Gr3])
         };
 
+        // index_regがGR1またはGR2の場合にGR3にfit後のindexを保持は必要
+        // index_regがGR1でもGR2でも無い場合でもindexにGR3を利用しててもデメリットは無いと思われる
+
         self.code(saves);
         self.code(format!(
             r#" LD    GR1,{index}
@@ -2209,20 +2392,20 @@ impl Compiler {
                 CALL  {fit}
                 LD    GR3,GR0
                 IN    {pos},{len}
+                LAD   GR1,{pos}
                 LD    GR2,{len}
                 JPL   {ok}
                 JZE   {ok}
                 ST    GR2,EOF
                 XOR   GR2,GR2
-{ok}            LAD   GR1,{pos}
-                CALL  {cint}
+{ok}            CALL  {cint}
                 ST    GR0,{arr},GR3"#,
             index = index_reg,
             size = arr_size,
             fit = safe_index,
             pos = s_labels.pos,
             len = s_labels.len,
-            ok = label,
+            ok = ok_label,
             cint = cint_label,
             arr = arr_label
         ));
@@ -2232,7 +2415,7 @@ impl Compiler {
         self.return_temp_str_var_label(s_labels);
     }
 
-    // Input ステートメント
+    // Input <int_var> ステートメント
     // 整数変数へのコンソール入力
     fn compile_input_integer(&mut self, var_name: &str) {
         let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
@@ -2254,13 +2437,13 @@ impl Compiler {
         self.code(saves);
         self.code(format!(
             r#" IN    {pos},{len}
+                LAD   GR1,{pos}
                 LD    GR2,{len}
                 JPL   {ok}
                 JZE   {ok}
                 ST    GR2,EOF
                 XOR   GR2,GR2
-{ok}            LAD   GR1,{pos}
-                CALL  {cint}
+{ok}            CALL  {cint}
                 ST    GR0,{var}"#,
             pos = s_labels.pos,
             len = s_labels.len,
@@ -2273,7 +2456,7 @@ impl Compiler {
         self.return_temp_str_var_label(s_labels);
     }
 
-    // Input ステートメント
+    // Input <str_var> ステートメント
     // 文字列変数へのコンソール入力
     fn compile_input_string(&mut self, var_name: &str) {
         let StrLabels { len, pos, .. } = self.str_var_labels.get(var_name).cloned().expect("BUG");
@@ -2296,7 +2479,7 @@ impl Compiler {
         ));
     }
 
-    // Print ステートメント
+    // Print <lit_bool> ステートメント
     // 真理値リテラルの画面出力
     fn compile_print_lit_boolean(&mut self, value: bool) {
         let s = if value { "True" } else { "False" };
@@ -2309,9 +2492,10 @@ impl Compiler {
         });
     }
 
-    // Print ステートメント
+    // Print <lit_int>ステートメント
     // 数字リテラルの画面出力
     fn compile_print_lit_integer(&mut self, value: i32) {
+        let value = value as i16;
         let StrLabels { len, pos, .. } = self.get_lit_str_labels(&value.to_string());
         self.comment(format!("Print {}", value));
         self.code(casl2::Command::Out {
@@ -2320,7 +2504,7 @@ impl Compiler {
         });
     }
 
-    // Print ステートメント
+    // Print <lit_str>ステートメント
     // 文字列リテラルの画面出力
     fn compile_print_lit_string(&mut self, value: &str) {
         let StrLabels { len, pos, .. } = self.get_lit_str_labels(value);
@@ -2331,7 +2515,7 @@ impl Compiler {
         });
     }
 
-    // Print ステートメント
+    // Print <str_var>ステートメント
     // 文字列変数の画面出力
     fn compile_print_var_string(&mut self, var_name: &str) {
         let StrLabels { len, pos, .. } = self.str_var_labels.get(var_name).cloned().expect("BUG");
@@ -2342,7 +2526,7 @@ impl Compiler {
         });
     }
 
-    // Print ステートメント
+    // Print <bool_expr>ステートメント
     // 真理値の演算結果の画面出力
     fn compile_print_expr_boolean(&mut self, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Boolean));
@@ -2381,7 +2565,7 @@ impl Compiler {
         self.return_temp_str_var_label(labels);
     }
 
-    // Print ステートメント
+    // Print <str_exprステートメント
     // 文字列の演算結果の画面出力
     fn compile_print_expr_string(&mut self, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::String));
@@ -2409,7 +2593,7 @@ impl Compiler {
         self.return_temp_str_var_label(labels);
     }
 
-    // Print ステートメント
+    // Print <int_expr>ステートメント
     // 整数の計算結果の画面出力
     fn compile_print_expr_integer(&mut self, value: &parser::Expr) {
         self.comment(format!("Print {}", value));
@@ -2774,10 +2958,17 @@ impl Compiler {
 
     // CStr(<boolean>/<integer>) 関数
     fn call_function_cstr(&mut self, param: &parser::Expr) -> StrLabels {
-        assert!(matches!(
-            param.return_type(),
-            parser::ExprType::Boolean | parser::ExprType::Integer
-        ));
+        // リテラルのとき
+        match param {
+            parser::Expr::LitBoolean(value) => {
+                return self.get_lit_str_label_if_exists(if *value { "True" } else { "False" })
+            }
+            parser::Expr::LitInteger(value) => {
+                let value = *value as i16;
+                return self.get_lit_str_label_if_exists(&value.to_string());
+            }
+            _ => {}
+        }
 
         let id = match param.return_type() {
             parser::ExprType::Boolean => subroutine::Id::FuncCStrArgBool,
@@ -2922,6 +3113,17 @@ impl Compiler {
     // CBool(<integer>)
     fn call_function_cbool(&mut self, param: &parser::Expr) -> casl2::Register {
         assert!(matches!(param.return_type(), parser::ExprType::Integer));
+
+        // リテラルのとき(は？)
+        if let parser::Expr::LitInteger(value) = param {
+            let reg = self.get_idle_register();
+            if *value == 0 {
+                self.code(format!(" XOR {reg},{reg}", reg = reg));
+            } else {
+                self.code(format!(" LAD {reg},#FFFF", reg = reg));
+            }
+            return reg;
+        }
 
         let reg = self.compile_int_expr(param);
         let label = self.get_new_jump_label();
@@ -3234,13 +3436,17 @@ impl Compiler {
         if let parser::Expr::LitInteger(index) = index {
             let index = ((*index).max(0) as usize).min(arr_size - 1);
             let reg = self.get_idle_register();
-            self.code(format!(
-                r#" LAD {reg},{index}
-                    LD  {reg},{arr},{reg}"#,
-                reg = reg,
-                index = index,
-                arr = arr_label
-            ));
+            self.code(if index == 0 {
+                format!(r#" LD {reg},{arr}"#, reg = reg, arr = arr_label)
+            } else {
+                format!(
+                    r#" LAD {reg},{index}
+                        LD  {reg},{arr},{reg}"#,
+                    reg = reg,
+                    index = index,
+                    arr = arr_label
+                )
+            });
             return reg;
         }
 
@@ -3293,11 +3499,31 @@ impl Compiler {
     ) -> casl2::Register {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
 
+        let (arr_label, arr_size) = self.int_arr_labels.get(arr_name).cloned().expect("BUG");
+
+        assert!(arr_size > 0);
+
+        // インデックスがリテラル整数で指定…
+        if let parser::Expr::LitInteger(index) = index {
+            let index = ((*index).max(0) as usize).min(arr_size - 1);
+            let reg = self.get_idle_register();
+            self.code(if index == 0 {
+                format!(r#" LD {reg},{arr}"#, reg = reg, arr = arr_label)
+            } else {
+                format!(
+                    r#" LAD {reg},{index}
+                        LD  {reg},{arr},{reg}"#,
+                    reg = reg,
+                    index = index,
+                    arr = arr_label
+                )
+            });
+            return reg;
+        }
+
         let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
 
         let index_reg = self.compile_int_expr(index);
-
-        let (arr_label, arr_size) = self.int_arr_labels.get(arr_name).cloned().expect("BUG");
 
         // レジスタ退避
         let (saves, recovers) = {
