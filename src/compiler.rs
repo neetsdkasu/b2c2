@@ -193,7 +193,8 @@ impl Compiler {
     // プログラム名のラベルとしての正当性チェック
     fn is_valid_program_name(program_name: &str) -> bool {
         // 予約済みラベル
-        // EOF Inputステートメント、EOF()関数で使用
+        // EOF  Inputステートメント、EOF()関数で使用
+        // EXIT Endステートメントで使用
         // 自動生成のラベルとの重複を避けるチェックが必要
         // B** 真理値変数
         // I** 整数変数
@@ -210,7 +211,7 @@ impl Compiler {
         // TL** 式展開時の一時的な文字列変数の長さ
         // TB** 式展開時の一時的な文字列変数の内容位置
         casl2::Label::from(program_name).is_valid()
-            && !(matches!(program_name, "EOF")
+            && !(matches!(program_name, "EOF" | "EXIT")
                 || ((program_name.chars().count() >= 2)
                     && ["B", "I", "T", "V", "J", "C"]
                         .iter()
@@ -253,10 +254,13 @@ impl Compiler {
                 vec![Gr7, Gr6, Gr5, Gr4, Gr3, Gr2, Gr1]
             },
             stacked_registers: Vec::new(),
-            statements: vec![casl2::Statement::labeled(
-                program_name,
-                casl2::Command::Start { entry_point: None },
-            )],
+            statements: vec![
+                casl2::Statement::labeled(
+                    program_name,
+                    casl2::Command::Start { entry_point: None },
+                ),
+                casl2::Statement::code(casl2::Command::Rpush),
+            ],
             has_eof: false,
             var_total_size: 0,
         })
@@ -468,6 +472,7 @@ impl Compiler {
         } = self;
 
         // RET ステートメント
+        statements.labeled("EXIT", casl2::Command::Rpop);
         statements.code(casl2::Command::Ret);
 
         let mut first_var_label: Option<String> = None;
@@ -558,7 +563,7 @@ impl Compiler {
                 .unwrap();
                 src.reverse();
                 for stmt in src {
-                    statements.insert(1, stmt);
+                    statements.insert(2, stmt);
                 }
             }
             Some(label) => {
@@ -574,7 +579,7 @@ impl Compiler {
                 .unwrap();
                 src.reverse();
                 for stmt in src {
-                    statements.insert(1, stmt);
+                    statements.insert(2, stmt);
                 }
             }
             _ => {}
@@ -754,11 +759,12 @@ impl Compiler {
     // End ステートメント
     fn compile_end(&mut self) {
         assert!(self.stacked_registers.is_empty());
-        // たぶん、コールスタックは初期状態のはず…
-        //  (ブロック(If/For/Do/Select)でPUSH/POP汚染はやってないはず…)
-        // RET でプログラム終了できるはずだが
         self.comment("End");
-        self.code(casl2::Command::Ret);
+        self.code(casl2::Command::P {
+            code: casl2::P::Jump,
+            adr: casl2::Adr::label("EXIT"),
+            x: None,
+        });
     }
 
     // Midステートメント
@@ -2060,13 +2066,13 @@ impl Compiler {
         if let Some(end_var) = end_var.as_ref() {
             self.code(format!(
                 r#" LD    GR1,{step}
-                JMI   {nega}
-                LD    GR1,{counter}
-                CPA   GR1,{end}
-                JUMP  {block}
-{nega}          LD    GR1,{end}
-                CPA   GR1,{counter}
-{block}         NOP"#,
+                    JMI   {nega}
+                    LD    GR1,{counter}
+                    CPA   GR1,{end}
+                    JUMP  {block}
+{nega}              LD    GR1,{end}
+                    CPA   GR1,{counter}
+{block}             NOP"#,
                 counter = counter_var,
                 step = step_var,
                 nega = negastep_label,
@@ -2076,13 +2082,13 @@ impl Compiler {
         } else if let parser::Expr::LitInteger(end) = end {
             self.code(format!(
                 r#" LD    GR1,{step}
-                JMI   {nega}
-                LD    GR1,{counter}
-                CPA   GR1,={end}
-                JUMP  {block}
-{nega}          LAD    GR1,{end}
-                CPA   GR1,{counter}
-{block}         NOP"#,
+                    JMI   {nega}
+                    LD    GR1,{counter}
+                    CPA   GR1,={end}
+                    JUMP  {block}
+{nega}              LAD    GR1,{end}
+                    CPA   GR1,{counter}
+{block}             NOP"#,
                 counter = counter_var,
                 step = step_var,
                 nega = negastep_label,

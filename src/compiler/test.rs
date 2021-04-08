@@ -275,6 +275,8 @@ fn compiler_get_lit_str_labels_works() {
         casl2::parse(
             r#"
 TEST   START
+       RPUSH
+EXIT   RPOP
        RET
 LL1    DC     4
 LB1    DC     '-123'
@@ -309,10 +311,12 @@ fn compiler_compile_dim_works() {
     let mut statements = casl2::parse(&format!(
         r#"
 TEST   START
+       RPUSH
        LAD    GR1,B2
        XOR    GR2,GR2
        LAD    GR3,705
        CALL   {fill}
+EXIT   RPOP
        RET
                                    ; Dim boolVar1 As Boolean
 B2     DS     1
@@ -362,6 +366,7 @@ fn compiler_compile_print_lit_boolean_works() {
         casl2::parse(
             r#"
 TEST   START
+       RPUSH
                                    ; Print True
        OUT    LB1,LL1
                                    ; Print False
@@ -370,6 +375,7 @@ TEST   START
        OUT    LB2,LL2
                                    ; Print True
        OUT    LB1,LL1
+EXIT   RPOP
        RET
 LL1    DC     4
 LB1    DC     'True'
@@ -396,6 +402,7 @@ fn compiler_compile_print_lit_integer_works() {
         casl2::parse(
             r#"
 TEST   START
+       RPUSH
                                    ; Print 1234
        OUT    LB1,LL1
                                    ; Print 999
@@ -404,6 +411,7 @@ TEST   START
        OUT    LB3,LL3
                                    ; Print 1234
        OUT    LB1,LL1
+EXIT   RPOP
        RET
 LL1    DC     4
 LB1    DC     '1234'
@@ -432,6 +440,7 @@ fn compiler_compile_print_lit_string_works() {
         casl2::parse(
             r#"
 TEST   START
+       RPUSH
                                    ; Print "ABCD"
        OUT    LB1,LL1
                                    ; Print "hey you!"
@@ -440,6 +449,7 @@ TEST   START
        OUT    LB3,LL3
                                    ; Print "ABCD"
        OUT    LB1,LL1
+EXIT   RPOP
        RET
 LL1    DC     4
 LB1    DC     'ABCD'
@@ -470,6 +480,7 @@ fn compiler_compile_print_var_string_works() {
     let mut statements = casl2::parse(&format!(
         r#"
 TEST   START
+       RPUSH
        LAD    GR1,SL1
        XOR    GR2,GR2
        LAD    GR3,771
@@ -480,6 +491,7 @@ TEST   START
        OUT    SB2,SL2
                                    ; Print strVar1
        OUT    SB1,SL1
+EXIT   RPOP
        RET
                                    ; Dim strVar1 As String
 SL1    DS     1
@@ -522,6 +534,7 @@ fn compiler_compile_input_string_works() {
     let mut statements = casl2::parse(&format!(
         r#"
 TEST   START
+       RPUSH
        LAD    GR1,SL1
        XOR    GR2,GR2
        LAD    GR3,772
@@ -553,6 +566,7 @@ J2     NOP
        XOR    GR0,GR0
        ST     GR0,SL1
 J3     NOP
+EXIT   RPOP
        RET
                                    ; Dim strVar1 As String
 SL1    DS     1
@@ -597,6 +611,7 @@ fn compiler_compile_input_integer_works() {
     let mut statements = casl2::parse(&format!(
         r#"
 TEST   START
+       RPUSH
        LAD    GR1,I1
        XOR    GR2,GR2
        LAD    GR3,2
@@ -611,6 +626,7 @@ TEST   START
        XOR    GR2,GR2
 J4     CALL   {cint}
        ST     GR0,I1
+EXIT   RPOP
        RET
                                    ; Dim intVar1 As Integer
 I1     DS     1
@@ -657,6 +673,7 @@ fn for_statement_without_step_works() {
         statements,
         casl2::parse(
             r#"TEST  START
+                     RPUSH
                      XOR    GR0,GR0
                      ST     GR0,I1
                                    ; For i = 1 To 10 Step 1
@@ -673,6 +690,7 @@ J2                   NOP
                      ST     GR1,I1
                      JUMP   J1
 J3                   NOP
+EXIT                 RPOP
                      RET
                                    ; Dim i As Integer
 I1                   DS 1
@@ -701,6 +719,7 @@ fn for_statement_positive_step_works() {
         statements,
         casl2::parse(
             r#"TEST  START
+                     RPUSH
                      XOR    GR0,GR0
                      ST     GR0,I1
                                    ; For i = 1 To 10 Step 1
@@ -717,6 +736,7 @@ J2                   NOP
                      ST     GR1,I1
                      JUMP   J1
 J3                   NOP
+EXIT                 RPOP
                      RET
                                    ; Dim i As Integer
 I1                   DS 1
@@ -745,6 +765,7 @@ fn for_statement_negative_step_works() {
         statements,
         casl2::parse(
             r#"TEST  START
+                     RPUSH
                      XOR    GR0,GR0
                      ST     GR0,I1
                                    ; For i = 24 To 8 Step -2
@@ -761,6 +782,7 @@ J2                   NOP
                      ST     GR1,I1
                      JUMP   J1
 J3                   NOP
+EXIT                 RPOP
                      RET
                                    ; Dim i As Integer
 I1                   DS 1
@@ -790,6 +812,7 @@ fn for_statement_expr_step_works() {
 
     let mut right_statements = casl2::parse(&format!(
         r#"TEST      START
+                     RPUSH
                      LAD    GR1,I1
                      XOR    GR2,GR2
                      LAD    GR3,2
@@ -816,6 +839,7 @@ J4                   NOP
                      ST     GR1,I2
                      JUMP   J1
 J5                   NOP
+EXIT                 RPOP
                      RET
                                    ; Dim S As Integer
 I1                   DS 1
@@ -855,12 +879,14 @@ fn expr_add_literal_int_rhs_works() {
         statements,
         casl2::parse(
             r#"TEST  START
+                     RPUSH
                      XOR    GR0,GR0
                      ST     GR0,I1
                                    ; x = (11 + 22)
                      LAD    GR7,11
                      LAD    GR7,22,GR7
                      ST     GR7,I1
+EXIT                 RPOP
                      RET
                                    ; Dim x As Integer
 I1                   DS 1
@@ -889,6 +915,7 @@ fn expr_add_variable_rhs_works() {
 
     let mut right_statements = casl2::parse(&format!(
         r#"TEST      START
+                     RPUSH
                      LAD    GR1,I1
                      XOR    GR2,GR2
                      LAD    GR3,2
@@ -898,6 +925,7 @@ fn expr_add_variable_rhs_works() {
                      LD     GR6,I2
                      ADDA   GR7,GR6
                      ST     GR7,I1
+EXIT                 RPOP
                      RET
                                    ; Dim x As Integer
 I1                   DS 1
@@ -1253,6 +1281,107 @@ Print t
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
     let statements = compile("INTSORT", &code[..]).unwrap();
+
+    statements.iter().for_each(|line| {
+        eprintln!("{}", line);
+    });
+
+    eprintln!("{}", crate::stat::analyze(&statements));
+
+    assert!(!statements.is_empty()); // dummy assert
+}
+
+#[test]
+fn brainfck_works() {
+    let src = r#"
+' *** BRAINFCK ***
+' ++++++++[>+++++++++[>+>++<<-]++[>>---<<-]<-]>>.>+++++.+++++++..+++.
+Dim mem(255) As Integer
+Dim mp As Integer
+Dim pc As Integer
+Dim cmd As String
+Dim i As Integer
+Dim brc As Integer
+Dim inStr As String
+Dim outStr As String
+Print "Command?"
+Input cmd
+i = -1
+Do While pc < Len(cmd)
+    Select Case cmd(pc)
+        Case "+"c
+            mem(mp) += 1
+        Case "-"c
+            mem(mp) -= 1
+        Case "<"c
+            mp -= 1
+        Case ">"c
+            mp += 1
+        Case "["c
+            If mem(mp) = 0 Then
+                Do
+                    Select Case cmd(pc)
+                        Case "["c
+                            brc += 1
+                        Case "]"c
+                            brc -= 1
+                    End Select
+                    pc += 1
+                Loop While brc <> 0 And pc < Len(cmd)
+                Continue Do
+            End If
+        Case "]"c
+            Do
+                Select Case cmd(pc)
+                Case "["c
+                    brc += 1
+                Case "]"c
+                    brc -= 1
+                End Select
+                pc -= 1
+            Loop While brc <> 0 And pc >= 0
+            If brc <> 0 Then
+                Exit Do
+            End If
+        Case ","c
+            If i < 0 Then
+                Input inStr
+                If Len(inStr) = 0 And Not EOF() Then
+                    mem(mp) = 13
+                    i = -1
+                Else
+                    mem(mp) = inStr(0)
+                    i = 1
+                End If
+            ElseIf i >= Len(inStr) Then
+                mem(mp) = 13
+                i = -1
+            Else
+                mem(mp) = inStr(i)
+                i += 1
+            End If
+        Case "."c
+            If mem(mp) = 13 Then
+                Print outStr
+                outStr = ""
+            Else
+                outStr = outStr & Chr(mem(mp))
+                If Len(outStr) >= 40 Then
+                    Print outStr
+                    outStr = ""
+                End If
+            End If
+    End Select
+    pc += 1
+Loop
+Print outStr
+"#;
+
+    let mut cursor = std::io::Cursor::new(src);
+
+    let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+    let statements = compile("BRAINFCK", &code[..]).unwrap();
 
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
