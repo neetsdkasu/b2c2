@@ -25,7 +25,7 @@ pub fn parse<R: BufRead>(reader: R) -> io::Result<Result<Vec<Statement>, SyntaxE
                     return Ok(Err(error));
                 }
             }
-            Some((pos, Token::Keyword(keyword))) if keyword.is_command() => {
+            Some((pos, Token::Keyword(keyword))) if keyword.is_toplevel_token() => {
                 // command statement
                 parser.line_start_position = *pos;
                 if let Err(error) = parser.parse_command(keyword, &pos_and_tokens[1..]) {
@@ -347,7 +347,7 @@ impl Parser {
             Keyword::Next => self.parse_command_next(pos_and_tokens),
             Keyword::Print => self.parse_command_print(pos_and_tokens),
             Keyword::Select => self.parse_command_select(pos_and_tokens),
-            _ if command.is_command() => unreachable!("BUG"),
+            _ if command.is_toplevel_token() => unreachable!("BUG"),
             _ => Err(self.syntax_error("invalid Code statement".into())),
         }
     }
@@ -1679,13 +1679,13 @@ fn validate_integer(minus: bool, value: i32) -> Option<i32> {
 }
 
 impl Keyword {
-    fn is_command(&self) -> bool {
+    fn is_toplevel_token(&self) -> bool {
         use Keyword::*;
         match self {
-            Case | Continue | Else | ElseIf | End | Exit | Dim | Do | For | If | Input | Loop
-            | Mid | Next | Print | Select => true,
+            Argument | ByRef | ByVal | Call | Case | Continue | Else | ElseIf | End | Exit
+            | Extern | Dim | Do | For | If | Input | Loop | Mid | Next | Print | Select => true,
 
-            As | Step | Then | To | Until | While | Rem => false,
+            As | Rem | Step | Sub | Then | To | Until | With | While => false,
         }
     }
 }

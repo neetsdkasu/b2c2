@@ -617,3 +617,51 @@ fn get_src2_statements() -> Vec<Statement> {
         },
     ]
 }
+
+#[test]
+fn parse_argument_works() -> io::Result<()> {
+    let src = r#"
+Argument
+    ByRef argInt1 As Integer With GR1
+    ByRef argStr1 As String With GR2,GR3
+    ByVal argStr2 As String With GR4,GR5
+    ByRef argArr1(10) As Integer With GR6
+    ByVal argArr2(10) As Integer With GR7
+End Argument
+Extern Sub FOOBAR
+    ByRef fbInt1 As Integer With GR1
+    ByRef fbStr1 As String With GR2,GR3
+    ByVal fbStr2 As String With GR4,GR5
+    ByRef fbArr1(10) As Integer With GR6
+    ByVal fbArr2(10) As Integer With GR7
+End Sub
+Dim int1 As Integer
+Dim str1 As String
+int1 = argInt1 + 1
+argInt1 = int1 * 2
+str1 = argStr1 & "x"
+argStr1 = "x" & str1
+argStr1(0) = "A"c
+argStr1(1) = "A"c
+argStr1(int1) = "A"c
+int1 = argStr(0) 
+int1 = argStr(1) 
+int1 = argStr(int1) 
+int1 = argArr1(0)
+int1 = argArr1(1)
+int1 = argArr1(int1)
+argArr1(0) = int1
+argArr1(1) = int1
+argArr1(int1) = int1
+Call FOOBAR
+"#;
+
+    let src = io::Cursor::new(src);
+    let statements = parse(src)?.unwrap();
+
+    for stmt in statements {
+        eprintln!("{:?}", stmt);
+    }
+
+    Ok(())
+}

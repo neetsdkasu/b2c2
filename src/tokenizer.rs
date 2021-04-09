@@ -308,13 +308,18 @@ macro_rules! enumdef {
 enumdef!(
     Keyword;
     KEYWORDS;
+    Argument,
     As,
+    ByRef,
+    ByVal,
+    Call,
     Case,
     Continue,
     Else,
     ElseIf,
     End,
     Exit,
+    Extern,
     Dim,
     Do,
     For,
@@ -327,9 +332,11 @@ enumdef!(
     Rem,
     Select,
     Step,
+    Sub,
     Then,
     To,
     Until,
+    With,
     While,
 );
 
