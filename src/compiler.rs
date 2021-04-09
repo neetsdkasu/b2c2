@@ -2287,6 +2287,11 @@ impl Compiler {
                 self.int_arr_labels.insert(var_name.into(), (label, *size));
                 self.var_total_size += size;
             }
+            VarType::RefBoolean
+            | VarType::RefInteger
+            | VarType::RefString
+            | VarType::RefArrayOfBoolean(_)
+            | VarType::RefArrayOfInteger(_) => unreachable!("BUG"),
         }
     }
 
