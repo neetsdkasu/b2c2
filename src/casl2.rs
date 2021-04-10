@@ -256,11 +256,11 @@ impl From<IndexRegister> for Register {
 }
 
 impl std::convert::TryFrom<Register> for IndexRegister {
-    type Error = i32;
+    type Error = ();
     fn try_from(r: Register) -> Result<Self, Self::Error> {
         use Register::*;
         let ir = match r {
-            Gr0 => return Err(0),
+            Gr0 => return Err(()),
             Gr1 => Self::Gr1,
             Gr2 => Self::Gr2,
             Gr3 => Self::Gr3,
@@ -268,6 +268,42 @@ impl std::convert::TryFrom<Register> for IndexRegister {
             Gr5 => Self::Gr5,
             Gr6 => Self::Gr6,
             Gr7 => Self::Gr7,
+        };
+        Ok(ir)
+    }
+}
+
+impl std::convert::TryFrom<&str> for IndexRegister {
+    type Error = ();
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        let s = s.to_ascii_uppercase();
+        let ir = match s.as_str() {
+            "GR1" => Self::Gr1,
+            "GR2" => Self::Gr2,
+            "GR3" => Self::Gr3,
+            "GR4" => Self::Gr4,
+            "GR5" => Self::Gr5,
+            "GR6" => Self::Gr6,
+            "GR7" => Self::Gr7,
+            _ => return Err(()),
+        };
+        Ok(ir)
+    }
+}
+impl std::convert::TryFrom<&str> for Register {
+    type Error = ();
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        let s = s.to_ascii_uppercase();
+        let ir = match s.as_str() {
+            "GR0" => Self::Gr0,
+            "GR1" => Self::Gr1,
+            "GR2" => Self::Gr2,
+            "GR3" => Self::Gr3,
+            "GR4" => Self::Gr4,
+            "GR5" => Self::Gr5,
+            "GR6" => Self::Gr6,
+            "GR7" => Self::Gr7,
+            _ => return Err(()),
         };
         Ok(ir)
     }

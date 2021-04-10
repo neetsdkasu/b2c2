@@ -267,13 +267,13 @@ macro_rules! enumdef {
             $($name::$value,)*
         ];
         impl std::convert::TryFrom<&str> for $name {
-            type Error = i32;
+            type Error = ();
             fn try_from(token: &str) -> std::result::Result<Self, Self::Error> {
                 $array
                     .iter()
                     .find(|v| v.to_str().eq_ignore_ascii_case(token))
                     .cloned()
-                    .ok_or(0)
+                    .ok_or(())
             }
         }
         impl From<$name> for Token {
@@ -322,6 +322,7 @@ enumdef!(
     Extern,
     Dim,
     Do,
+    From,
     For,
     If,
     Input,
@@ -329,6 +330,7 @@ enumdef!(
     Mid,
     Next,
     Print,
+    Program,
     Rem,
     Select,
     Step,

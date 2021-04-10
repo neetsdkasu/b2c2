@@ -1,6 +1,8 @@
+use crate::casl2::IndexRegister;
 use crate::tokenizer::*;
 use crate::SyntaxError;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::io::{self, BufRead};
 
 #[cfg(test)]
@@ -55,10 +57,11 @@ pub fn parse<R: BufRead>(reader: R) -> io::Result<Result<Vec<Statement>, SyntaxE
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 enum HeaderState {
-    Argument,
-    InArgument,
     ExternSub,
     InExternSub,
+    ProgramName,
+    Argument,
+    InArgument,
     Dim,
     NotHeader,
 }
@@ -69,27 +72,34 @@ impl HeaderState {
     }
 
     fn in_defininition(self) -> bool {
-        use HeaderState::*;
-        matches!(self, InArgument | InExternSub)
+        self.in_extern_sub() || self.in_argument()
+    }
+
+    fn in_extern_sub(self) -> bool {
+        matches!(self, HeaderState::InExternSub)
+    }
+
+    fn in_argument(self) -> bool {
+        matches!(self, HeaderState::InArgument)
     }
 
     fn can_command(self) -> bool {
         use HeaderState::*;
-        matches!(self, Argument | ExternSub | Dim | NotHeader)
+        matches!(self, ExternSub | ProgramName | Argument | Dim | NotHeader)
     }
 
     fn can_argument(self) -> bool {
-        matches!(self, HeaderState::Argument)
+        use HeaderState::*;
+        matches!(self, ExternSub | ProgramName | Argument)
     }
 
     fn can_extern_sub(self) -> bool {
-        use HeaderState::*;
-        matches!(self, Argument | ExternSub)
+        matches!(self, HeaderState::ExternSub)
     }
 
     fn can_dim(self) -> bool {
         use HeaderState::*;
-        matches!(self, Argument | ExternSub | Dim)
+        matches!(self, ExternSub | ProgramName | Argument | Dim)
     }
 }
 
@@ -105,6 +115,7 @@ struct Parser {
     exit_id: usize,
     is_select_head: bool,
     header_state: HeaderState,
+    used_register_for_argumets: usize,
 }
 
 impl Parser {
@@ -121,6 +132,7 @@ impl Parser {
             exit_id: 0,
             is_select_head: false,
             header_state: HeaderState::Argument,
+            used_register_for_argumets: 0,
         }
     }
 
@@ -370,38 +382,45 @@ impl Parser {
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
         if self.header_state.in_header() {
-            if self.header_state.in_defininition() {
-                match command {
-                    Keyword::ByRef => return self.parse_command_byref(pos_and_tokens),
-                    Keyword::ByVal => return self.parse_command_byval(pos_and_tokens),
-                    Keyword::End => return self.parse_command_end(pos_and_tokens),
-                    _ => return Err(self.syntax_error("invalid Code statement".into())),
-                }
-            } else {
-                match command {
-                    Keyword::Argument => return self.parse_command_argument(pos_and_tokens),
-                    Keyword::Sub => return self.parse_command_sub(pos_and_tokens),
-                    Keyword::Extern => return self.parse_command_extern_sub(pos_and_tokens),
-                    Keyword::Dim => return self.parse_command_dim(pos_and_tokens),
-                    _ => {}
-                }
+            match command {
+                Keyword::Argument => return self.parse_command_argument(pos_and_tokens),
+                Keyword::Dim => return self.parse_command_dim(pos_and_tokens),
+                Keyword::Extern => return self.parse_command_extern_sub(pos_and_tokens),
+                Keyword::Program => todo!(),
+                _ => {}
             }
         }
 
+        if self.header_state.in_defininition() {
+            return match command {
+                Keyword::ByRef => self.parse_command_byref(pos_and_tokens),
+                Keyword::ByVal => self.parse_command_byval(pos_and_tokens),
+                Keyword::End => self.parse_command_end(pos_and_tokens),
+                _ => Err(self.syntax_error(format!("invalid {:?} statement", command))),
+            };
+        }
+
         if !self.header_state.can_command() {
-            return Err(self.syntax_error("invalid Code statement".into()));
+            return Err(self.syntax_error(format!("invalid {:?} statement", command)));
         } else {
             self.header_state = HeaderState::NotHeader;
         }
 
+        if self.is_select_head {
+            return match command {
+                Keyword::Case => self.parse_command_case(pos_and_tokens),
+                Keyword::End => self.parse_command_end(pos_and_tokens),
+                _ => Err(self.syntax_error(format!("invalid {:?} statement", command))),
+            };
+        }
+
         match command {
-            Keyword::Case => self.parse_command_case(pos_and_tokens),
-            Keyword::End => self.parse_command_end(pos_and_tokens),
-            _ if self.is_select_head => Err(self.syntax_error("invalid Code statement".into())),
+            Keyword::Call => todo!(),
             Keyword::Continue => self.parse_command_continue(pos_and_tokens),
             Keyword::Do => self.parse_command_do(pos_and_tokens),
             Keyword::Else => self.parse_command_else(pos_and_tokens),
             Keyword::ElseIf => self.parse_command_elseif(pos_and_tokens),
+            Keyword::End => self.parse_command_end(pos_and_tokens),
             Keyword::Exit => self.parse_command_exit(pos_and_tokens),
             Keyword::For => self.parse_command_for(pos_and_tokens),
             Keyword::If => self.parse_command_if(pos_and_tokens),
@@ -411,27 +430,38 @@ impl Parser {
             Keyword::Next => self.parse_command_next(pos_and_tokens),
             Keyword::Print => self.parse_command_print(pos_and_tokens),
             Keyword::Select => self.parse_command_select(pos_and_tokens),
-            _ if command.is_toplevel_token() => unreachable!("BUG"),
-            _ => Err(self.syntax_error("invalid Code statement".into())),
-        }
-    }
 
-    // [Extern] Sub <name>
-    fn parse_command_sub(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
-        if let [(_, Token::Name(_name))] = pos_and_tokens {
-            todo!();
-        } else {
-            Err(self.syntax_error("invalid Extern statement".into()))
+            Keyword::Argument
+            | Keyword::ByRef
+            | Keyword::ByVal
+            | Keyword::Case
+            | Keyword::Dim
+            | Keyword::Extern
+            | Keyword::Program => {
+                Err(self.syntax_error(format!("invalid {:?} statement", command)))
+            }
+
+            Keyword::As
+            | Keyword::From
+            | Keyword::Rem
+            | Keyword::Step
+            | Keyword::Sub
+            | Keyword::Then
+            | Keyword::To
+            | Keyword::Until
+            | Keyword::With
+            | Keyword::While => unreachable!("BUG"),
         }
     }
 
     // Extern Sub <name>
+    // Extern Sub <name> With
     fn parse_command_extern_sub(
         &mut self,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
-        if let [(_, Token::Keyword(Keyword::Sub)), rest @ ..] = pos_and_tokens {
-            self.parse_command_sub(rest)
+        if let [(_, Token::Keyword(Keyword::Sub)), ..] = pos_and_tokens {
+            todo!();
         } else {
             Err(self.syntax_error("invalid Extern statement".into()))
         }
@@ -448,27 +478,63 @@ impl Parser {
         use Operator::{CloseBracket, Comma, OpenBracket};
         use Token::{Integer as I, Keyword as K, Name as N, Operator as Op, TypeName as T};
         use TypeName as Tn;
-        match pos_and_tokens {
-            [(_, N(name)), (_, K(As)), (_, T(Tn::Boolean)), (_, K(With)), (_, N(register))] => {
-                let _ = (name, register);
+        let ((pn, var_name), var_type, (pr1, register1), register2) = match pos_and_tokens {
+            [(pn, N(name)), (_, K(As)), (_, T(Tn::Boolean)), (_, K(With)), (pr, N(register))] => {
+                ((pn, name), VarType::RefBoolean, (pr, register), None)
             }
-            [(_, N(name)), (_, K(As)), (_, T(Tn::Integer)), (_, K(With)), (_, N(register))] => {
-                let _ = (name, register);
+            [(pn, N(name)), (_, K(As)), (_, T(Tn::Integer)), (_, K(With)), (pr, N(register))] => {
+                ((pn, name), VarType::RefInteger, (pr, register), None)
             }
-            [(_, N(name)), (_, K(As)), (_, T(Tn::String)), (_, K(With)), (_, N(register1)), (_, Op(Comma)), (_, N(register2))] =>
+            [(pn, N(name)), (_, K(As)), (_, T(Tn::String)), (_, K(With)), (pr1, N(register1)), (_, Op(Comma)), (pr2, N(register2))] =>
             {
-                let _ = (name, register1, register2);
+                let register2 = Some((pr2, register2));
+                ((pn, name), VarType::RefString, (pr1, register1), register2)
             }
-            [(_, N(name)), (_, Op(OpenBracket)), (_, I(ubound)), (_, Op(CloseBracket)), (_, K(As)), (_, T(Tn::Boolean)), (_, K(With)), (_, N(register))] =>
+            [(pn, N(name)), (_, Op(OpenBracket)), (pu, I(ubound)), (_, Op(CloseBracket)), (_, K(As)), (_, T(Tn::Boolean)), (_, K(With)), (pr, N(register))] =>
             {
-                let _ = (name, ubound, register);
+                if !(0..=255).contains(ubound) {
+                    return Err(
+                        self.syntax_error_pos(*pu, "invalid Array Size in ByRef statement".into())
+                    );
+                }
+                let size = *ubound + 1;
+                let var_type = VarType::RefArrayOfBoolean(size as usize);
+                ((pn, name), var_type, (pr, register), None)
             }
-            [(_, N(name)), (_, Op(OpenBracket)), (_, I(ubound)), (_, Op(CloseBracket)), (_, K(As)), (_, T(Tn::Integer)), (_, K(With)), (_, N(register))] =>
+            [(pn, N(name)), (_, Op(OpenBracket)), (pu, I(ubound)), (_, Op(CloseBracket)), (_, K(As)), (_, T(Tn::Integer)), (_, K(With)), (pr, N(register))] =>
             {
-                let _ = (name, ubound, register);
+                if !(0..=255).contains(ubound) {
+                    return Err(
+                        self.syntax_error_pos(*pu, "invalid Array Size in ByRef statement".into())
+                    );
+                }
+                let size = *ubound + 1;
+                let var_type = VarType::RefArrayOfInteger(size as usize);
+                ((pn, name), var_type, (pr, register), None)
             }
             _ => return Err(self.syntax_error("invalid ByRef statement".into())),
+        };
+        if self.variables.contains_key(var_name) {
+            return Err(
+                self.syntax_error_pos(*pn, format!("already defined variable: {}", var_name))
+            );
         }
+        let register1 = IndexRegister::try_from(register1.as_str())
+            .map_err(|_| self.syntax_error_pos(*pr1, "invalid ByRef statement".into()))?;
+        let register2 = if let Some((pr2, register2)) = register2 {
+            let register2 = IndexRegister::try_from(register2.as_str())
+                .map_err(|_| self.syntax_error_pos(*pr2, "invalid ByRef statement".into()))?;
+            if register1 == register2 {
+                return Err(
+                    self.syntax_error_pos(*pr2, format!("duplicate register: {}", register2))
+                );
+            }
+            Some(register2)
+        } else {
+            None
+        };
+
+        let _ = (var_name, var_type, register1, register2);
         todo!();
     }
 
@@ -601,27 +667,15 @@ impl Parser {
         Ok(())
     }
 
-    // End
-    // End { If / Select / Argument / Sub }
+    // End { Argument / Call / If / Program / Select / Sub }
     fn parse_command_end(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         match pos_and_tokens {
-            [] => {
-                self.add_statement(Statement::End);
-                Ok(())
-            }
-            [(_, Token::Keyword(Keyword::Argument))]
-                if matches!(self.header_state, HeaderState::InArgument) =>
-            {
-                self.header_state = HeaderState::ExternSub;
-                Ok(())
-            }
-            [(_, Token::Keyword(Keyword::Sub))]
-                if matches!(self.header_state, HeaderState::InExternSub) =>
-            {
-                todo!()
-            }
+            [(_, Token::Keyword(Keyword::Argument))] => todo!(),
+            [(_, Token::Keyword(Keyword::Call))] => todo!(),
             [(_, Token::Keyword(Keyword::If))] => self.compose_command_if(),
+            [(_, Token::Keyword(Keyword::Program))] => todo!(),
             [(_, Token::Keyword(Keyword::Select))] => self.compose_command_select(),
+            [(_, Token::Keyword(Keyword::Sub))] => todo!(),
             _ => Err(self.syntax_error("invalid End statement".into())),
         }
     }
@@ -880,7 +934,7 @@ impl Parser {
         Ok(())
     }
 
-    // Exit { Do / For / Select }
+    // Exit { Do / For / Program / Select }
     fn parse_command_exit(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         match pos_and_tokens {
             [(_, Token::Keyword(Keyword::Do))] => {
@@ -898,6 +952,7 @@ impl Parser {
                     return Err(self.syntax_error("invalid Exit statement".into()));
                 }
             }
+            [(_, Token::Keyword(Keyword::Program))] => todo!(),
             [(_, Token::Keyword(Keyword::Select))] => {
                 if let Some(&exit_id) = self.nest_of_select.last() {
                     self.add_statement(Statement::ExitSelect { exit_id });
@@ -1867,11 +1922,10 @@ impl Keyword {
         use Keyword::*;
         match self {
             Argument | ByRef | ByVal | Call | Case | Continue | Else | ElseIf | End | Exit
-            | Extern | Dim | Do | For | If | Input | Loop | Mid | Next | Print | Select | Sub => {
-                true
-            }
+            | Extern | Dim | Do | For | If | Input | Loop | Mid | Next | Print | Program
+            | Select => true,
 
-            As | Rem | Step | Then | To | Until | With | While => false,
+            As | From | Rem | Step | Sub | Then | To | Until | With | While => false,
         }
     }
 }
@@ -1931,8 +1985,30 @@ impl PartialOrd for Operator {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
+pub struct ArgumentInfo {
+    pub var_name: String,
+    pub var_type: VarType,
+    pub register1: IndexRegister,
+    pub register2: Option<IndexRegister>,
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum Statement {
-    End,
+    ProgramName {
+        name: String,
+    },
+    ExitProgram,
+    ExternSub {
+        name: String,
+        arguments: Vec<ArgumentInfo>,
+    },
+    Argument {
+        arguments: Vec<ArgumentInfo>,
+    },
+    Call {
+        name: String,
+        arguments: Vec<(String, Expr)>,
+    },
     AssignAddInto {
         var_name: String,
         value: Expr,

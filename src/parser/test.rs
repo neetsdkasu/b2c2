@@ -621,39 +621,51 @@ fn get_src2_statements() -> Vec<Statement> {
 #[test]
 fn parse_argument_works() -> io::Result<()> {
     let src = r#"
-Argument
-    ByRef argInt1 As Integer With GR1
-    ByRef argStr1 As String With GR2,GR3
-    ByVal argStr2 As String With GR4,GR5
-    ByRef argArr1(10) As Integer With GR6
-    ByVal argArr2(10) As Integer With GR7
-End Argument
-Extern Sub FOOBAR
-    ByRef fbInt1 As Integer With GR1
-    ByRef fbStr1 As String With GR2,GR3
-    ByVal fbStr2 As String With GR4,GR5
-    ByRef fbArr1(10) As Integer With GR6
-    ByVal fbArr2(10) As Integer With GR7
+Extern Sub FOO
+Extern Sub BAR With
+    ByRef xArray(10) As Integer To GR1
+    ByVal barList(10) As Integer To GR2
+    ByRef barText As String To GR3,GR4
+    ByVal barLine As String To GR5,GR6
+    ByRef zCount As Integer To GR7
 End Sub
-Dim int1 As Integer
-Dim str1 As String
-int1 = argInt1 + 1
-argInt1 = int1 * 2
-str1 = argStr1 & "x"
-argStr1 = "x" & str1
-argStr1(0) = "A"c
-argStr1(1) = "A"c
-argStr1(int1) = "A"c
-int1 = argStr(0) 
-int1 = argStr(1) 
-int1 = argStr(int1) 
-int1 = argArr1(0)
-int1 = argArr1(1)
-int1 = argArr1(int1)
-argArr1(0) = int1
-argArr1(1) = int1
-argArr1(int1) = int1
-Call FOOBAR
+Program BAZ
+    Argument
+        ByRef someNumber As Integer From GR1
+        ByRef someText As String From GR2,GR3
+        ByVal bazText As String From GR4,GR5
+        ByRef bazArray(10) As Integer From GR6
+        ByVal yesArray(10) As Integer From GR7
+    End Argument
+    Dim int1 As Integer
+    Dim str1 As String
+    Dim arr1(10) As Integer
+    int1 = someNumber
+    someNumber = 123
+    str1 = someText
+    someText = str1
+    someText(0) = "A"c
+    someText(1) = "A"c
+    someText(int1) = "A"c
+    int1 = someText(0) 
+    int1 = someText(1) 
+    int1 = someText(int1) 
+    int1 = bazArray(0)
+    int1 = bazArray(1)
+    int1 = bazArray(int1)
+    bazArray(0) = int1
+    bazArray(1) = int1
+    bazArray(int1) = int1
+    Call FOO
+    Call Bar (arr1, arr1, str1, str1, int1)
+    Call Bar With
+        xArray = arr1
+        barList = arr1
+        barText = str1
+        barLine = str1
+        zCount = int1
+    End Call
+End Program
 "#;
 
     let src = io::Cursor::new(src);

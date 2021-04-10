@@ -637,7 +637,11 @@ impl Compiler {
     fn compile(&mut self, stmt: &parser::Statement) {
         use parser::Statement::*;
         match stmt {
-            End => self.compile_end(),
+            ProgramName { .. } => todo!(),
+            Argument { .. } => todo!(),
+            Call { .. } => todo!(),
+            ExitProgram => todo!(),
+            ExternSub { .. } => todo!(),
             AssignAddInto { var_name, value } => self.compile_assign_add_into(var_name, value),
             AssignAddIntoElement {
                 var_name,
