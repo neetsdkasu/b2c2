@@ -196,25 +196,25 @@ fn it_works() {
 
 #[test]
 fn compiler_is_valid_program_name_works() {
-    assert!(Compiler::is_valid_program_name("TEST"));
-    assert!(Compiler::is_valid_program_name("X123"));
-    assert!(Compiler::is_valid_program_name("B"));
-    assert!(Compiler::is_valid_program_name("B123XY"));
+    assert!(is_valid_program_name("TEST"));
+    assert!(is_valid_program_name("X123"));
+    assert!(is_valid_program_name("B"));
+    assert!(is_valid_program_name("B123XY"));
 
-    assert!(!Compiler::is_valid_program_name("GR3")); // register name is BAD
-    assert!(!Compiler::is_valid_program_name("")); // empty is BAD
-    assert!(!Compiler::is_valid_program_name("FOOBARBAZ")); // too long (require len <= 8)
-    assert!(!Compiler::is_valid_program_name("Test")); // lowercase is BAD
-    assert!(!Compiler::is_valid_program_name("123TEST")); // digit start is BAD
-    assert!(!Compiler::is_valid_program_name("TEST$")); // all chars must be ascii digits or ascii uppercases
+    assert!(!is_valid_program_name("GR3")); // register name is BAD
+    assert!(!is_valid_program_name("")); // empty is BAD
+    assert!(!is_valid_program_name("FOOBARBAZ")); // too long (require len <= 8)
+    assert!(!is_valid_program_name("Test")); // lowercase is BAD
+    assert!(!is_valid_program_name("123TEST")); // digit start is BAD
+    assert!(!is_valid_program_name("TEST$")); // all chars must be ascii digits or ascii uppercases
 
     // compiler using names
-    assert!(!Compiler::is_valid_program_name("B123"));
-    assert!(!Compiler::is_valid_program_name("I123"));
-    assert!(!Compiler::is_valid_program_name("SL123"));
-    assert!(!Compiler::is_valid_program_name("SB123"));
-    assert!(!Compiler::is_valid_program_name("BA123"));
-    assert!(!Compiler::is_valid_program_name("IA123"));
+    assert!(!is_valid_program_name("B123"));
+    assert!(!is_valid_program_name("I123"));
+    assert!(!is_valid_program_name("SL123"));
+    assert!(!is_valid_program_name("SB123"));
+    assert!(!is_valid_program_name("BA123"));
+    assert!(!is_valid_program_name("IA123"));
 }
 
 #[test]

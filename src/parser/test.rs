@@ -619,7 +619,7 @@ fn get_src2_statements() -> Vec<Statement> {
 }
 
 #[test]
-fn parse_argument_works() -> io::Result<()> {
+fn parse_argument_1_works() -> io::Result<()> {
     let src = r#"
 Extern Sub FOO
 Extern Sub BAR With

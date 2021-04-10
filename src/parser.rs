@@ -1,4 +1,5 @@
 use crate::casl2::IndexRegister;
+use crate::compiler::is_valid_program_name;
 use crate::tokenizer::*;
 use crate::SyntaxError;
 use std::collections::HashMap;
@@ -7,6 +8,8 @@ use std::io::{self, BufRead};
 
 #[cfg(test)]
 mod test;
+
+const MAX_ARRAY_SIZE: usize = 256;
 
 pub fn parse<R: BufRead>(reader: R) -> io::Result<Result<Vec<Statement>, SyntaxError>> {
     let mut parser = Parser::new();
@@ -93,6 +96,11 @@ impl HeaderState {
         matches!(self, ExternSub | ProgramName | Argument)
     }
 
+    fn can_program_name(self) -> bool {
+        use HeaderState::*;
+        matches!(self, ExternSub | ProgramName)
+    }
+
     fn can_extern_sub(self) -> bool {
         matches!(self, HeaderState::ExternSub)
     }
@@ -115,7 +123,9 @@ struct Parser {
     exit_id: usize,
     is_select_head: bool,
     header_state: HeaderState,
-    used_register_for_argumets: usize,
+    temp_argumets: Vec<ArgumentInfo>,
+    temp_progam_name: Option<String>,
+    callables: HashMap<String, Vec<ArgumentInfo>>,
 }
 
 impl Parser {
@@ -125,14 +135,16 @@ impl Parser {
             line_start_position: 0,
             variables: HashMap::new(),
             statements: vec![vec![]; 1],
-            nest_of_do: vec![],
-            nest_of_for: vec![],
-            nest_of_select: vec![],
-            provisionals: vec![],
+            nest_of_do: Vec::new(),
+            nest_of_for: Vec::new(),
+            nest_of_select: Vec::new(),
+            provisionals: Vec::new(),
             exit_id: 0,
             is_select_head: false,
-            header_state: HeaderState::Argument,
-            used_register_for_argumets: 0,
+            header_state: HeaderState::ExternSub,
+            temp_argumets: Vec::new(),
+            temp_progam_name: None,
+            callables: HashMap::new(),
         }
     }
 
@@ -386,7 +398,7 @@ impl Parser {
                 Keyword::Argument => return self.parse_command_argument(pos_and_tokens),
                 Keyword::Dim => return self.parse_command_dim(pos_and_tokens),
                 Keyword::Extern => return self.parse_command_extern_sub(pos_and_tokens),
-                Keyword::Program => todo!(),
+                Keyword::Program => return self.parse_command_program_name(pos_and_tokens),
                 _ => {}
             }
         }
@@ -415,7 +427,7 @@ impl Parser {
         }
 
         match command {
-            Keyword::Call => todo!(),
+            Keyword::Call => self.parse_command_call_extern_sub(pos_and_tokens),
             Keyword::Continue => self.parse_command_continue(pos_and_tokens),
             Keyword::Do => self.parse_command_do(pos_and_tokens),
             Keyword::Else => self.parse_command_else(pos_and_tokens),
@@ -454,123 +466,266 @@ impl Parser {
         }
     }
 
+    // Call <name>
+    // Call <name> (<arguments>, ..)
+    // Call <name> With
+    fn parse_command_call_extern_sub(
+        &mut self,
+        pos_and_tokens: &[(usize, Token)],
+    ) -> Result<(), SyntaxError> {
+        todo!();
+    }
+
+    // プログラム名の正当性チェック
+    fn check_valid_program_name(&self, pn: usize, name: &str) -> Result<(), SyntaxError> {
+        if !is_valid_program_name(name) {
+            Err(self.syntax_error_pos(pn, format!("invalid Program Name: {}", name)))
+        } else if self.callables.contains_key(name) {
+            Err(self.syntax_error_pos(pn, format!("duplicate Program Name: {}", name)))
+        } else {
+            Ok(())
+        }
+    }
+
+    // Program
+    // Program <name>
+    fn parse_command_program_name(
+        &mut self,
+        pos_and_tokens: &[(usize, Token)],
+    ) -> Result<(), SyntaxError> {
+        todo!()
+    }
+
     // Extern Sub <name>
     // Extern Sub <name> With
     fn parse_command_extern_sub(
         &mut self,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
-        if let [(_, Token::Keyword(Keyword::Sub)), ..] = pos_and_tokens {
-            todo!();
-        } else {
-            Err(self.syntax_error("invalid Extern statement".into()))
+        if !self.header_state.can_extern_sub() {
+            return Err(self.syntax_error("invalid Extern statement".into()));
         }
+        match pos_and_tokens {
+            [(_, Token::Keyword(Keyword::Sub)), (pn, Token::Name(name)), (_, Token::Keyword(Keyword::With))] =>
+            {
+                self.check_valid_program_name(*pn, name)?;
+                assert!(self.temp_argumets.is_empty(), "BUG");
+                self.temp_progam_name = Some(name.clone());
+                self.header_state = HeaderState::InExternSub;
+            }
+            [(_, Token::Keyword(Keyword::Sub)), (pn, Token::Name(name))] => {
+                self.check_valid_program_name(*pn, name)?;
+                self.callables.insert(name.clone(), Vec::new());
+                self.add_statement(Statement::ExternSub {
+                    name: name.clone(),
+                    arguments: Vec::new(),
+                });
+            }
+            _ => return Err(self.syntax_error("invalid Extern statement".into())),
+        }
+        Ok(())
     }
 
-    // ByRef <name> As {Boolean / Integer} With <register>
-    // ByRef <name> As String With <register>,<register>
-    // ByRef <name>(<ubound>) As {Boolean / Integer} With <register>
+    // ByRef <name> As {Boolean / Integer} { From / To } <register>
+    // ByRef <name> As String { From / To } <register>,<register>
+    // ByRef <name>(<ubound>) As {Boolean / Integer} { From / To } <register>
     fn parse_command_byref(
         &mut self,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
-        use Keyword::{As, With};
-        use Operator::{CloseBracket, Comma, OpenBracket};
+        use Keyword::As;
+        use Operator::{CloseBracket as Cb, Comma as Co, OpenBracket as Ob};
         use Token::{Integer as I, Keyword as K, Name as N, Operator as Op, TypeName as T};
         use TypeName as Tn;
-        let ((pn, var_name), var_type, (pr1, register1), register2) = match pos_and_tokens {
-            [(pn, N(name)), (_, K(As)), (_, T(Tn::Boolean)), (_, K(With)), (pr, N(register))] => {
-                ((pn, name), VarType::RefBoolean, (pr, register), None)
+        let ((pn, var_name), var_type, (pf, flow), (pr1, reg1), reg2) = match pos_and_tokens {
+            [(pn, N(name)), (_, K(As)), (_, T(Tn::Boolean)), (pf, K(flow)), (pr, N(reg))] => {
+                ((pn, name), VarType::RefBoolean, (pf, flow), (pr, reg), None)
             }
-            [(pn, N(name)), (_, K(As)), (_, T(Tn::Integer)), (_, K(With)), (pr, N(register))] => {
-                ((pn, name), VarType::RefInteger, (pr, register), None)
+            [(pn, N(name)), (_, K(As)), (_, T(Tn::Integer)), (pf, K(flow)), (pr, N(reg))] => {
+                ((pn, name), VarType::RefInteger, (pf, flow), (pr, reg), None)
             }
-            [(pn, N(name)), (_, K(As)), (_, T(Tn::String)), (_, K(With)), (pr1, N(register1)), (_, Op(Comma)), (pr2, N(register2))] =>
+            [(pn, N(name)), (_, K(As)), (_, T(Tn::String)), (pf, K(flow)), (pr1, N(reg1)), (_, Op(Co)), (pr2, N(reg2))] =>
             {
-                let register2 = Some((pr2, register2));
-                ((pn, name), VarType::RefString, (pr1, register1), register2)
+                let reg2 = Some((pr2, reg2));
+                let var_type = VarType::RefString;
+                ((pn, name), var_type, (pf, flow), (pr1, reg1), reg2)
             }
-            [(pn, N(name)), (_, Op(OpenBracket)), (pu, I(ubound)), (_, Op(CloseBracket)), (_, K(As)), (_, T(Tn::Boolean)), (_, K(With)), (pr, N(register))] =>
+            [(pn, N(name)), (_, Op(Ob)), (pu, I(ubound)), (_, Op(Cb)), (_, K(As)), (_, T(Tn::Boolean)), (pf, K(flow)), (pr, N(reg))] =>
             {
-                if !(0..=255).contains(ubound) {
+                if !(0..MAX_ARRAY_SIZE as i32).contains(ubound) {
                     return Err(
-                        self.syntax_error_pos(*pu, "invalid Array Size in ByRef statement".into())
+                        self.syntax_error_pos(*pu, "invalid array size in ByRef statement".into())
                     );
                 }
-                let size = *ubound + 1;
-                let var_type = VarType::RefArrayOfBoolean(size as usize);
-                ((pn, name), var_type, (pr, register), None)
+                let var_type = VarType::RefArrayOfBoolean(*ubound as usize);
+                ((pn, name), var_type, (pf, flow), (pr, reg), None)
             }
-            [(pn, N(name)), (_, Op(OpenBracket)), (pu, I(ubound)), (_, Op(CloseBracket)), (_, K(As)), (_, T(Tn::Integer)), (_, K(With)), (pr, N(register))] =>
+            [(pn, N(name)), (_, Op(Ob)), (pu, I(ubound)), (_, Op(Cb)), (_, K(As)), (_, T(Tn::Integer)), (pf, K(flow)), (pr, N(reg))] =>
             {
-                if !(0..=255).contains(ubound) {
+                if !(0..MAX_ARRAY_SIZE as i32).contains(ubound) {
                     return Err(
-                        self.syntax_error_pos(*pu, "invalid Array Size in ByRef statement".into())
+                        self.syntax_error_pos(*pu, "invalid array size in ByRef statement".into())
                     );
                 }
-                let size = *ubound + 1;
-                let var_type = VarType::RefArrayOfInteger(size as usize);
-                ((pn, name), var_type, (pr, register), None)
+                let var_type = VarType::RefArrayOfInteger(*ubound as usize);
+                ((pn, name), var_type, (pf, flow), (pr, reg), None)
             }
             _ => return Err(self.syntax_error("invalid ByRef statement".into())),
         };
-        if self.variables.contains_key(var_name) {
+
+        if self
+            .temp_argumets
+            .iter()
+            .any(|arg| arg.var_name.eq(var_name))
+        {
             return Err(
-                self.syntax_error_pos(*pn, format!("already defined variable: {}", var_name))
+                self.syntax_error_pos(*pn, "dupulicate argument name in ByRef statement".into())
             );
         }
-        let register1 = IndexRegister::try_from(register1.as_str())
-            .map_err(|_| self.syntax_error_pos(*pr1, "invalid ByRef statement".into()))?;
-        let register2 = if let Some((pr2, register2)) = register2 {
-            let register2 = IndexRegister::try_from(register2.as_str())
-                .map_err(|_| self.syntax_error_pos(*pr2, "invalid ByRef statement".into()))?;
-            if register1 == register2 {
-                return Err(
-                    self.syntax_error_pos(*pr2, format!("duplicate register: {}", register2))
-                );
+
+        match flow {
+            Keyword::From if self.header_state.in_argument() => {}
+            Keyword::To if self.header_state.in_extern_sub() => {}
+            _ => return Err(self.syntax_error_pos(*pf, "invalid ByRef statement".into())),
+        }
+
+        let register1 = IndexRegister::try_from(reg1.as_str())
+            .map_err(|_| self.syntax_error_pos(*pr1, "invalid register name".into()))?;
+        if self
+            .temp_argumets
+            .iter()
+            .any(|arg| arg.register1 == register1 || arg.register2 == Some(register1))
+        {
+            return Err(self.syntax_error_pos(*pr1, "duplicate register name".into()));
+        }
+
+        let register2 = if let Some((pr2, reg2)) = reg2 {
+            let register2 = IndexRegister::try_from(reg2.as_str())
+                .map_err(|_| self.syntax_error_pos(*pr2, "invalid register name".into()))?;
+            if self
+                .temp_argumets
+                .iter()
+                .any(|arg| arg.register1 == register2 || arg.register2 == Some(register2))
+                || register1 == register2
+            {
+                return Err(self.syntax_error_pos(*pr2, "duplicate register name".into()));
             }
             Some(register2)
         } else {
             None
         };
 
-        let _ = (var_name, var_type, register1, register2);
-        todo!();
+        let arg_info = ArgumentInfo {
+            var_name: var_name.clone(),
+            var_type,
+            register1,
+            register2,
+        };
+
+        self.temp_argumets.push(arg_info);
+
+        Ok(())
     }
 
-    // ByVal <name> As {Boolean / Integer} With <register>
-    // ByVal <name> As String With <register>,<register>
-    // ByVal <name>(<ubound>) As {Boolean / Integer} With <register>
+    // ByVal <name> As {Boolean / Integer} { From / To } <register>
+    // ByVal <name> As String { From / To } <register>,<register>
+    // ByVal <name>(<ubound>) As {Boolean / Integer} { From / To } <register>
     fn parse_command_byval(
         &mut self,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
-        use Keyword::{As, With};
-        use Operator::{CloseBracket, Comma, OpenBracket};
+        use Keyword::As;
+        use Operator::{CloseBracket as Cb, Comma as Co, OpenBracket as Ob};
         use Token::{Integer as I, Keyword as K, Name as N, Operator as Op, TypeName as T};
         use TypeName as Tn;
-        match pos_and_tokens {
-            [(_, N(name)), (_, K(As)), (_, T(Tn::Boolean)), (_, K(With)), (_, N(register))] => {
-                let _ = (name, register);
+        let ((pn, var_name), var_type, (pf, flow), (pr1, reg1), reg2) = match pos_and_tokens {
+            [(pn, N(name)), (_, K(As)), (_, T(Tn::Boolean)), (pf, K(flow)), (pr, N(reg))] => {
+                ((pn, name), VarType::Boolean, (pf, flow), (pr, reg), None)
             }
-            [(_, N(name)), (_, K(As)), (_, T(Tn::Integer)), (_, K(With)), (_, N(register))] => {
-                let _ = (name, register);
+            [(pn, N(name)), (_, K(As)), (_, T(Tn::Integer)), (pf, K(flow)), (pr, N(reg))] => {
+                ((pn, name), VarType::Integer, (pf, flow), (pr, reg), None)
             }
-            [(_, N(name)), (_, K(As)), (_, T(Tn::String)), (_, K(With)), (_, N(register1)), (_, Op(Comma)), (_, N(register2))] =>
+            [(pn, N(name)), (_, K(As)), (_, T(Tn::String)), (pf, K(flow)), (pr1, N(reg1)), (_, Op(Co)), (pr2, N(reg2))] =>
             {
-                let _ = (name, register1, register2);
+                let reg2 = Some((pr2, reg2));
+                let var_type = VarType::String;
+                ((pn, name), var_type, (pf, flow), (pr1, reg1), reg2)
             }
-            [(_, N(name)), (_, Op(OpenBracket)), (_, I(ubound)), (_, Op(CloseBracket)), (_, K(As)), (_, T(Tn::Boolean)), (_, K(With)), (_, N(register))] =>
+            [(pn, N(name)), (_, Op(Ob)), (pu, I(ubound)), (_, Op(Cb)), (_, K(As)), (_, T(Tn::Boolean)), (pf, K(flow)), (pr, N(reg))] =>
             {
-                let _ = (name, ubound, register);
+                if !(0..MAX_ARRAY_SIZE as i32).contains(ubound) {
+                    return Err(
+                        self.syntax_error_pos(*pu, "invalid array size in ByVal statement".into())
+                    );
+                }
+                let var_type = VarType::ArrayOfBoolean(*ubound as usize);
+                ((pn, name), var_type, (pf, flow), (pr, reg), None)
             }
-            [(_, N(name)), (_, Op(OpenBracket)), (_, I(ubound)), (_, Op(CloseBracket)), (_, K(As)), (_, T(Tn::Integer)), (_, K(With)), (_, N(register))] =>
+            [(pn, N(name)), (_, Op(Ob)), (pu, I(ubound)), (_, Op(Cb)), (_, K(As)), (_, T(Tn::Integer)), (pf, K(flow)), (pr, N(reg))] =>
             {
-                let _ = (name, ubound, register);
+                if !(0..MAX_ARRAY_SIZE as i32).contains(ubound) {
+                    return Err(
+                        self.syntax_error_pos(*pu, "invalid array size in ByVal statement".into())
+                    );
+                }
+                let var_type = VarType::ArrayOfInteger(*ubound as usize);
+                ((pn, name), var_type, (pf, flow), (pr, reg), None)
             }
-            _ => return Err(self.syntax_error("invalid ByRef statement".into())),
+            _ => return Err(self.syntax_error("invalid ByVal statement".into())),
+        };
+
+        if self
+            .temp_argumets
+            .iter()
+            .any(|arg| arg.var_name.eq(var_name))
+        {
+            return Err(
+                self.syntax_error_pos(*pn, "dupulicate argument name in ByVal statement".into())
+            );
         }
-        todo!();
+
+        match flow {
+            Keyword::From if self.header_state.in_argument() => {}
+            Keyword::To if self.header_state.in_extern_sub() => {}
+            _ => return Err(self.syntax_error_pos(*pf, "invalid ByRef statement".into())),
+        }
+
+        let register1 = IndexRegister::try_from(reg1.as_str())
+            .map_err(|_| self.syntax_error_pos(*pr1, "invalid register name".into()))?;
+        if self
+            .temp_argumets
+            .iter()
+            .any(|arg| arg.register1 == register1 || arg.register2 == Some(register1))
+        {
+            return Err(self.syntax_error_pos(*pr1, "duplicate register name".into()));
+        }
+
+        let register2 = if let Some((pr2, reg2)) = reg2 {
+            let register2 = IndexRegister::try_from(reg2.as_str())
+                .map_err(|_| self.syntax_error_pos(*pr2, "invalid register name".into()))?;
+            if self
+                .temp_argumets
+                .iter()
+                .any(|arg| arg.register1 == register2 || arg.register2 == Some(register2))
+                || register1 == register2
+            {
+                return Err(self.syntax_error_pos(*pr2, "duplicate register name".into()));
+            }
+            Some(register2)
+        } else {
+            None
+        };
+
+        let arg_info = ArgumentInfo {
+            var_name: var_name.clone(),
+            var_type,
+            register1,
+            register2,
+        };
+
+        self.temp_argumets.push(arg_info);
+
+        Ok(())
     }
 
     // Argumentステートメント
@@ -675,9 +830,32 @@ impl Parser {
             [(_, Token::Keyword(Keyword::If))] => self.compose_command_if(),
             [(_, Token::Keyword(Keyword::Program))] => todo!(),
             [(_, Token::Keyword(Keyword::Select))] => self.compose_command_select(),
-            [(_, Token::Keyword(Keyword::Sub))] => todo!(),
+            [(_, Token::Keyword(Keyword::Sub))] => self.compose_command_sub(),
             _ => Err(self.syntax_error("invalid End statement".into())),
         }
+    }
+
+    // End Sub
+    fn compose_command_sub(&mut self) -> Result<(), SyntaxError> {
+        if !self.header_state.in_extern_sub() {
+            return Err(self.syntax_error("Invalid End statement".into()));
+        }
+
+        let name = if let Some(name) = self.temp_progam_name.take() {
+            name
+        } else {
+            unreachable!("BUG");
+        };
+
+        let arguments = self.temp_argumets.split_off(0);
+
+        self.callables.insert(name.clone(), arguments.clone());
+
+        self.add_statement(Statement::ExternSub { name, arguments });
+
+        self.header_state = HeaderState::ExternSub;
+
+        Ok(())
     }
 
     // End If
@@ -1483,7 +1661,7 @@ impl Parser {
                     return Err(self
                         .syntax_error_pos(*pos_n, format!("already defined variable: {}", name)));
                 }
-                if !(0..=255).contains(size) {
+                if !(0..MAX_ARRAY_SIZE as i32).contains(size) {
                     return Err(
                         self.syntax_error_pos(*pos_s, "invalid Array Size in Dim statement".into())
                     );

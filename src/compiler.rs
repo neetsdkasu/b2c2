@@ -189,44 +189,44 @@ impl subroutine::Gen for Compiler {
     }
 }
 
-impl Compiler {
-    // プログラム名のラベルとしての正当性チェック
-    fn is_valid_program_name(program_name: &str) -> bool {
-        // 予約済みラベル
-        // EOF  Inputステートメント、EOF()関数で使用
-        // EXIT Endステートメントで使用
-        // 自動生成のラベルとの重複を避けるチェックが必要
-        // B** 真理値変数
-        // I** 整数変数
-        // T** 式展開時の一時変数(真理値/整数で共有)(主にForループの終点とステップで使用)
-        // V** 組み込みサブルーチンのローカル変数
-        // J** ループや条件分岐に使うジャンプ先ラベルのId
-        // C** 組み込みサブルーチンの入り口のラベル
-        // SL** 文字列変数の長さ
-        // SB** 文字列変数の内容位置
-        // BA** 真理値配列
-        // IA** 整数配列
-        // LL** IN/OUTで使用の文字列定数の長さ
-        // LB** IN/OUTで使用の文字列定数の内容位置
-        // TL** 式展開時の一時的な文字列変数の長さ
-        // TB** 式展開時の一時的な文字列変数の内容位置
-        casl2::Label::from(program_name).is_valid()
-            && !(matches!(program_name, "EOF" | "EXIT")
-                || ((program_name.chars().count() >= 2)
-                    && ["B", "I", "T", "V", "J", "C"]
-                        .iter()
-                        .any(|prefix| program_name.starts_with(prefix))
-                    && program_name.chars().skip(1).all(|ch| ch.is_ascii_digit()))
-                || ((program_name.chars().count() >= 3)
-                    && ["SL", "SB", "BA", "IA", "LL", "LB", "TL", "TB"]
-                        .iter()
-                        .any(|prefix| program_name.starts_with(prefix))
-                    && program_name.chars().skip(2).all(|ch| ch.is_ascii_digit())))
-    }
+// プログラム名のラベルとしての正当性チェック
+pub fn is_valid_program_name(program_name: &str) -> bool {
+    // 予約済みラベル
+    // EOF  Inputステートメント、EOF()関数で使用
+    // EXIT Endステートメントで使用
+    // 自動生成のラベルとの重複を避けるチェックが必要
+    // B** 真理値変数
+    // I** 整数変数
+    // T** 式展開時の一時変数(真理値/整数で共有)(主にForループの終点とステップで使用)
+    // V** 組み込みサブルーチンのローカル変数
+    // J** ループや条件分岐に使うジャンプ先ラベルのId
+    // C** 組み込みサブルーチンの入り口のラベル
+    // SL** 文字列変数の長さ
+    // SB** 文字列変数の内容位置
+    // BA** 真理値配列
+    // IA** 整数配列
+    // LL** IN/OUTで使用の文字列定数の長さ
+    // LB** IN/OUTで使用の文字列定数の内容位置
+    // TL** 式展開時の一時的な文字列変数の長さ
+    // TB** 式展開時の一時的な文字列変数の内容位置
+    casl2::Label::from(program_name).is_valid()
+        && !(matches!(program_name, "EOF" | "EXIT")
+            || ((program_name.chars().count() >= 2)
+                && ["B", "I", "T", "V", "J", "C"]
+                    .iter()
+                    .any(|prefix| program_name.starts_with(prefix))
+                && program_name.chars().skip(1).all(|ch| ch.is_ascii_digit()))
+            || ((program_name.chars().count() >= 3)
+                && ["SL", "SB", "BA", "IA", "LL", "LB", "TL", "TB"]
+                    .iter()
+                    .any(|prefix| program_name.starts_with(prefix))
+                && program_name.chars().skip(2).all(|ch| ch.is_ascii_digit())))
+}
 
+impl Compiler {
     // コンパイラの初期化
     fn new(program_name: &str) -> Result<Self, CompileError> {
-        if !Self::is_valid_program_name(program_name) {
+        if !is_valid_program_name(program_name) {
             return Err(format!("invalid Program Name: {}", program_name));
         }
 
