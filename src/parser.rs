@@ -59,6 +59,13 @@ pub fn parse<R: BufRead>(reader: R) -> io::Result<Result<Vec<Statement>, SyntaxE
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
+enum EndProgramState {
+    Unnecessary,
+    Required,
+    Satisfied,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 enum HeaderState {
     ExternSub,
     InExternSub,
@@ -126,6 +133,7 @@ struct Parser {
     temp_argumets: Vec<ArgumentInfo>,
     temp_progam_name: Option<String>,
     callables: HashMap<String, Vec<ArgumentInfo>>,
+    end_program_state: EndProgramState,
 }
 
 impl Parser {
@@ -145,6 +153,7 @@ impl Parser {
             temp_argumets: Vec::new(),
             temp_progam_name: None,
             callables: HashMap::new(),
+            end_program_state: EndProgramState::Unnecessary,
         }
     }
 
@@ -156,6 +165,7 @@ impl Parser {
             && self.provisionals.is_empty()
             && !self.is_select_head
             && self.header_state.can_command()
+            && !matches!(self.end_program_state, EndProgramState::Required)
     }
 
     fn get_new_exit_id(&mut self) -> usize {
@@ -414,7 +424,10 @@ impl Parser {
 
         if !self.header_state.can_command() {
             return Err(self.syntax_error(format!("invalid {:?} statement", command)));
-        } else {
+        } else if self.header_state.in_header() {
+            if let Some(name) = self.temp_progam_name.take() {
+                self.callables.insert(name, Vec::new());
+            }
             self.header_state = HeaderState::NotHeader;
         }
 
@@ -493,7 +506,23 @@ impl Parser {
         &mut self,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
-        todo!()
+        if !self.header_state.can_program_name() {
+            return Err(self.syntax_error("invalid Program statement".into()));
+        }
+        match pos_and_tokens {
+            [] => {}
+            [(pn, Token::Name(name))] => {
+                self.check_valid_program_name(*pn, name)?;
+                assert!(self.temp_progam_name.is_none());
+                assert!(self.temp_argumets.is_empty());
+                self.temp_progam_name = Some(name.clone());
+                self.add_statement(Statement::ProgramName { name: name.clone() });
+            }
+            _ => return Err(self.syntax_error("invalid Program statement".into())),
+        }
+        self.header_state = HeaderState::Argument;
+        self.end_program_state = EndProgramState::Required;
+        Ok(())
     }
 
     // Extern Sub <name>
@@ -825,7 +854,7 @@ impl Parser {
     // End { Argument / Call / If / Program / Select / Sub }
     fn parse_command_end(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         match pos_and_tokens {
-            [(_, Token::Keyword(Keyword::Argument))] => todo!(),
+            [(_, Token::Keyword(Keyword::Argument))] => self.compose_command_argument(),
             [(_, Token::Keyword(Keyword::Call))] => todo!(),
             [(_, Token::Keyword(Keyword::If))] => self.compose_command_if(),
             [(_, Token::Keyword(Keyword::Program))] => todo!(),
@@ -833,6 +862,29 @@ impl Parser {
             [(_, Token::Keyword(Keyword::Sub))] => self.compose_command_sub(),
             _ => Err(self.syntax_error("invalid End statement".into())),
         }
+    }
+
+    // End Argument
+    fn compose_command_argument(&mut self) -> Result<(), SyntaxError> {
+        if !self.header_state.in_argument() {
+            return Err(self.syntax_error("Invalid End statement".into()));
+        }
+
+        let arguments = self.temp_argumets.split_off(0);
+
+        for arg in arguments.iter() {
+            self.variables.insert(arg.var_name.clone(), arg.var_type);
+        }
+
+        if let Some(name) = self.temp_progam_name.take() {
+            self.callables.insert(name, arguments.clone());
+        }
+
+        self.add_statement(Statement::Argument { arguments });
+
+        self.header_state = HeaderState::Dim;
+
+        Ok(())
     }
 
     // End Sub
@@ -1838,11 +1890,13 @@ impl Parser {
                 Some(VarType::Boolean) => return Ok(Expr::VarBoolean(name.clone())),
                 Some(VarType::Integer) => return Ok(Expr::VarInteger(name.clone())),
                 Some(VarType::String) => return Ok(Expr::VarString(name.clone())),
-                Some(_) => {
-                    return Err(
-                        self.syntax_error_pos(*pos, "invalid Array Variable in Expression".into())
-                    )
-                }
+                Some(VarType::RefBoolean) => todo!(),
+                Some(VarType::RefInteger) => todo!(),
+                Some(VarType::RefString) => todo!(),
+                Some(VarType::RefArrayOfBoolean(_)) => todo!(),
+                Some(VarType::RefArrayOfInteger(_)) => todo!(),
+                Some(VarType::ArrayOfBoolean(_)) => todo!(),
+                Some(VarType::ArrayOfInteger(_)) => todo!(),
                 None => {
                     return Err(self.syntax_error_pos(*pos, format!("undefined variable: {}", name)))
                 }
@@ -2604,6 +2658,54 @@ impl Function {
             // 引数は文字列1個
             Asc | Len => matches!(param.return_type(), ExprType::String),
         }
+    }
+}
+
+impl std::fmt::Display for ArgumentInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self.var_type {
+            VarType::Boolean => {
+                format!("ByVal {} As Boolean With {}", self.var_name, self.register1)
+            }
+            VarType::Integer => {
+                format!("ByVal {} As Integer With {}", self.var_name, self.register1)
+            }
+            VarType::String => format!(
+                "ByVal {} As String With {},{}",
+                self.var_name,
+                self.register1,
+                self.register2.expect("BUG")
+            ),
+            VarType::ArrayOfBoolean(size) => format!(
+                "ByVal {}({}) As Boolean With {}",
+                self.var_name, size, self.register1
+            ),
+            VarType::ArrayOfInteger(size) => format!(
+                "ByVal {}({}) As Integer With {}",
+                self.var_name, size, self.register1
+            ),
+            VarType::RefBoolean => {
+                format!("ByRef {} As Boolean With {}", self.var_name, self.register1)
+            }
+            VarType::RefInteger => {
+                format!("ByRef {} As Integer With {}", self.var_name, self.register1)
+            }
+            VarType::RefString => format!(
+                "ByRef {} As String With {},{}",
+                self.var_name,
+                self.register1,
+                self.register2.expect("BUG")
+            ),
+            VarType::RefArrayOfBoolean(size) => format!(
+                "ByRef {}({}) As Boolean With {}",
+                self.var_name, size, self.register1
+            ),
+            VarType::RefArrayOfInteger(size) => format!(
+                "ByRef {}({}) As Integer With {}",
+                self.var_name, size, self.register1
+            ),
+        };
+        s.fmt(f)
     }
 }
 
