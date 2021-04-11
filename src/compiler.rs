@@ -643,35 +643,45 @@ impl Compiler {
             ExitProgram => todo!(),
             ExternSub { .. } => todo!(),
             AssignAddInto { var_name, value } => self.compile_assign_add_into(var_name, value),
+            AssignRefAddInto { .. } => todo!(),
             AssignAddIntoElement {
                 var_name,
                 index,
                 value,
             } => self.compile_assign_add_into_element(var_name, index, value),
+            AssignRefAddIntoElement { .. } => todo!(),
             AssignBoolean { var_name, value } => self.compile_assign_boolean(var_name, value),
+            AssignRefBoolean { .. } => todo!(),
             AssignBooleanElement {
                 var_name,
                 index,
                 value,
             } => self.compile_assign_boolean_element(var_name, index, value),
+            AssignRefBooleanElement { .. } => todo!(),
             AssignIntegerElement {
                 var_name,
                 index,
                 value,
             } => self.compile_assign_integer_element(var_name, index, value),
+            AssignRefIntegerElement { .. } => todo!(),
             AssignCharacterElement {
                 var_name,
                 index,
                 value,
             } => self.compile_assign_character_element(var_name, index, value),
+            AssignRefCharacterElement { .. } => todo!(),
             AssignInteger { var_name, value } => self.compile_assign_integer(var_name, value),
+            AssignRefInteger { .. } => todo!(),
             AssignString { var_name, value } => self.compile_assign_string(var_name, value),
+            AssignRefString { .. } => todo!(),
             AssignSubInto { var_name, value } => self.compile_assign_sub_into(var_name, value),
+            AssignRefSubInto { .. } => todo!(),
             AssignSubIntoElement {
                 var_name,
                 index,
                 value,
             } => self.compile_assign_sub_into_element(var_name, index, value),
+            AssignRefSubIntoElement { .. } => todo!(),
             ContinueDo { exit_id } => self.compile_continue_loop(*exit_id, "Do"),
             ContinueFor { exit_id } => self.compile_continue_loop(*exit_id, "For"),
             Dim { var_name, var_type } => self.compile_dim(var_name, var_type),
@@ -2658,6 +2668,7 @@ impl Compiler {
             | BinaryOperatorInteger(..)
             | CharOfLitString(..)
             | CharOfVarString(..)
+            | CharOfVarRefString(..)
             | FunctionBoolean(..)
             | FunctionInteger(..)
             | LitBoolean(..)
@@ -2671,6 +2682,8 @@ impl Compiler {
             | VarRefInteger(..)
             | VarArrayOfBoolean(..)
             | VarArrayOfInteger(..)
+            | VarRefArrayOfBoolean(..)
+            | VarRefArrayOfInteger(..)
             | ReferenceOfVar(..)
             | ParamList(..) => unreachable!("BUG"),
         }
@@ -3045,6 +3058,7 @@ impl Compiler {
             BinaryOperatorInteger(op, lhs, rhs) => self.compile_bin_op_integer(*op, lhs, rhs),
             CharOfLitString(lit_str, index) => self.compile_character_of_literal(lit_str, index),
             CharOfVarString(var_name, index) => self.compile_character_of_variable(var_name, index),
+            CharOfVarRefString(..) => todo!(),
             FunctionBoolean(func, param) => self.compile_function_boolean(*func, param),
             FunctionInteger(func, param) => self.compile_function_integer(*func, param),
             LitBoolean(lit_bool) => self.compile_literal_boolean(*lit_bool),
@@ -3059,9 +3073,11 @@ impl Compiler {
             VarArrayOfBoolean(arr_name, index) => {
                 self.compile_variable_array_of_boolean(arr_name, index)
             }
+            VarRefArrayOfBoolean(..) => todo!(),
             VarArrayOfInteger(arr_name, index) => {
                 self.compile_variable_array_of_integer(arr_name, index)
             }
+            VarRefArrayOfInteger(..) => todo!(),
 
             // 戻り値が整数でも真理値でもないもの
             BinaryOperatorString(..)

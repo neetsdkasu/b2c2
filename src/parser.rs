@@ -221,7 +221,12 @@ impl Parser {
             [(_, Token::Operator(Operator::Equal)), rest @ ..]
                 if matches!(
                     var_type,
-                    VarType::Boolean | VarType::Integer | VarType::String
+                    VarType::Boolean
+                        | VarType::Integer
+                        | VarType::String
+                        | VarType::RefBoolean
+                        | VarType::RefInteger
+                        | VarType::RefString
                 ) =>
             {
                 let expr = self.parse_expr(rest)?;
@@ -232,14 +237,32 @@ impl Parser {
                             value: expr,
                         });
                     }
+                    ExprType::Boolean if matches!(var_type, VarType::RefBoolean) => {
+                        self.add_statement(Statement::AssignRefBoolean {
+                            var_name: name.into(),
+                            value: expr,
+                        });
+                    }
                     ExprType::Integer if matches!(var_type, VarType::Integer) => {
                         self.add_statement(Statement::AssignInteger {
                             var_name: name.into(),
                             value: expr,
                         });
                     }
+                    ExprType::Integer if matches!(var_type, VarType::RefInteger) => {
+                        self.add_statement(Statement::AssignRefInteger {
+                            var_name: name.into(),
+                            value: expr,
+                        });
+                    }
                     ExprType::String if matches!(var_type, VarType::String) => {
                         self.add_statement(Statement::AssignString {
+                            var_name: name.into(),
+                            value: expr,
+                        });
+                    }
+                    ExprType::String if matches!(var_type, VarType::RefString) => {
+                        self.add_statement(Statement::AssignRefString {
                             var_name: name.into(),
                             value: expr,
                         });
@@ -261,6 +284,20 @@ impl Parser {
                     return Err(self.syntax_error("invalid Assign statement".into()));
                 }
             }
+            // 加算代入(左辺参照型)
+            [(_, Token::Operator(Operator::AddInto)), rest @ ..]
+                if matches!(var_type, VarType::RefInteger) =>
+            {
+                let expr = self.parse_expr(rest)?;
+                if matches!(expr.return_type(), ExprType::Integer) {
+                    self.add_statement(Statement::AssignRefAddInto {
+                        var_name: name.into(),
+                        value: expr,
+                    });
+                } else {
+                    return Err(self.syntax_error("invalid Assign statement".into()));
+                }
+            }
             // 減算代入
             [(_, Token::Operator(Operator::SubInto)), rest @ ..]
                 if matches!(var_type, VarType::Integer) =>
@@ -275,11 +312,30 @@ impl Parser {
                     return Err(self.syntax_error("invalid Assign statement".into()));
                 }
             }
+            // 減算代入(左辺参照型)
+            [(_, Token::Operator(Operator::SubInto)), rest @ ..]
+                if matches!(var_type, VarType::RefInteger) =>
+            {
+                let expr = self.parse_expr(rest)?;
+                if matches!(expr.return_type(), ExprType::Integer) {
+                    self.add_statement(Statement::AssignRefSubInto {
+                        var_name: name.into(),
+                        value: expr,
+                    });
+                } else {
+                    return Err(self.syntax_error("invalid Assign statement".into()));
+                }
+            }
             // 配列要素または文字列要素に代入
             [(_, Token::Operator(Operator::OpenBracket)), ..]
                 if matches!(
                     var_type,
-                    VarType::String | VarType::ArrayOfBoolean(_) | VarType::ArrayOfInteger(_)
+                    VarType::String
+                        | VarType::ArrayOfBoolean(_)
+                        | VarType::ArrayOfInteger(_)
+                        | VarType::RefString
+                        | VarType::RefArrayOfBoolean(_)
+                        | VarType::RefArrayOfInteger(_)
                 ) =>
             {
                 return self.parse_assign_element(name, var_type, pos_and_tokens);
@@ -344,6 +400,13 @@ impl Parser {
                             value: expr,
                         });
                     }
+                    ExprType::Boolean if matches!(var_type, VarType::RefArrayOfBoolean(_)) => {
+                        self.add_statement(Statement::AssignRefBooleanElement {
+                            var_name: name.into(),
+                            index: param,
+                            value: expr,
+                        });
+                    }
                     ExprType::Integer if matches!(var_type, VarType::ArrayOfInteger(_)) => {
                         self.add_statement(Statement::AssignIntegerElement {
                             var_name: name.into(),
@@ -351,8 +414,22 @@ impl Parser {
                             value: expr,
                         });
                     }
+                    ExprType::Integer if matches!(var_type, VarType::RefArrayOfInteger(_)) => {
+                        self.add_statement(Statement::AssignRefIntegerElement {
+                            var_name: name.into(),
+                            index: param,
+                            value: expr,
+                        });
+                    }
                     ExprType::Integer if matches!(var_type, VarType::String) => {
                         self.add_statement(Statement::AssignCharacterElement {
+                            var_name: name.into(),
+                            index: param,
+                            value: expr,
+                        });
+                    }
+                    ExprType::Integer if matches!(var_type, VarType::RefString) => {
+                        self.add_statement(Statement::AssignRefCharacterElement {
                             var_name: name.into(),
                             index: param,
                             value: expr,
@@ -376,6 +453,21 @@ impl Parser {
                     return Err(self.syntax_error("invalid Assign statement".into()));
                 }
             }
+            // 要素への加算代入(左辺参照型)
+            [(_, Token::Operator(Operator::AddInto)), rest @ ..]
+                if matches!(var_type, VarType::RefArrayOfInteger(_)) =>
+            {
+                let expr = self.parse_expr(rest)?;
+                if matches!(expr.return_type(), ExprType::Integer) {
+                    self.add_statement(Statement::AssignRefAddIntoElement {
+                        var_name: name.into(),
+                        index: param,
+                        value: expr,
+                    });
+                } else {
+                    return Err(self.syntax_error("invalid Assign statement".into()));
+                }
+            }
             // 要素への減算代入
             [(_, Token::Operator(Operator::SubInto)), rest @ ..]
                 if matches!(var_type, VarType::ArrayOfInteger(_)) =>
@@ -383,6 +475,21 @@ impl Parser {
                 let expr = self.parse_expr(rest)?;
                 if matches!(expr.return_type(), ExprType::Integer) {
                     self.add_statement(Statement::AssignSubIntoElement {
+                        var_name: name.into(),
+                        index: param,
+                        value: expr,
+                    });
+                } else {
+                    return Err(self.syntax_error("invalid Assign statement".into()));
+                }
+            }
+            // 要素への減算代入(左辺参照型)
+            [(_, Token::Operator(Operator::SubInto)), rest @ ..]
+                if matches!(var_type, VarType::RefArrayOfInteger(_)) =>
+            {
+                let expr = self.parse_expr(rest)?;
+                if matches!(expr.return_type(), ExprType::Integer) {
+                    self.add_statement(Statement::AssignRefSubIntoElement {
                         var_name: name.into(),
                         index: param,
                         value: expr,
@@ -2101,11 +2208,20 @@ impl Parser {
                         Some(VarType::ArrayOfBoolean(_)) => {
                             Ok(Expr::VarArrayOfBoolean(name.clone(), Box::new(expr)))
                         }
+                        Some(VarType::RefArrayOfBoolean(_)) => {
+                            Ok(Expr::VarRefArrayOfBoolean(name.clone(), Box::new(expr)))
+                        }
                         Some(VarType::ArrayOfInteger(_)) => {
                             Ok(Expr::VarArrayOfInteger(name.clone(), Box::new(expr)))
                         }
+                        Some(VarType::RefArrayOfInteger(_)) => {
+                            Ok(Expr::VarRefArrayOfInteger(name.clone(), Box::new(expr)))
+                        }
                         Some(VarType::String) => {
                             Ok(Expr::CharOfVarString(name.clone(), Box::new(expr)))
+                        }
+                        Some(VarType::RefString) => {
+                            Ok(Expr::CharOfVarRefString(name.clone(), Box::new(expr)))
                         }
                         Some(_) => Err(self.syntax_error_pos(*pos_n, "invalid Expression".into())),
                         None => {
@@ -2256,7 +2372,16 @@ pub enum Statement {
         var_name: String,
         value: Expr,
     },
+    AssignRefAddInto {
+        var_name: String,
+        value: Expr,
+    },
     AssignAddIntoElement {
+        var_name: String,
+        index: Expr,
+        value: Expr,
+    },
+    AssignRefAddIntoElement {
         var_name: String,
         index: Expr,
         value: Expr,
@@ -2265,7 +2390,16 @@ pub enum Statement {
         var_name: String,
         value: Expr,
     },
+    AssignRefBoolean {
+        var_name: String,
+        value: Expr,
+    },
     AssignBooleanElement {
+        var_name: String,
+        index: Expr,
+        value: Expr,
+    },
+    AssignRefBooleanElement {
         var_name: String,
         index: Expr,
         value: Expr,
@@ -2275,7 +2409,17 @@ pub enum Statement {
         index: Expr,
         value: Expr,
     },
+    AssignRefIntegerElement {
+        var_name: String,
+        index: Expr,
+        value: Expr,
+    },
     AssignCharacterElement {
+        var_name: String,
+        index: Expr,
+        value: Expr,
+    },
+    AssignRefCharacterElement {
         var_name: String,
         index: Expr,
         value: Expr,
@@ -2284,7 +2428,15 @@ pub enum Statement {
         var_name: String,
         value: Expr,
     },
+    AssignRefInteger {
+        var_name: String,
+        value: Expr,
+    },
     AssignString {
+        var_name: String,
+        value: Expr,
+    },
+    AssignRefString {
         var_name: String,
         value: Expr,
     },
@@ -2292,7 +2444,16 @@ pub enum Statement {
         var_name: String,
         value: Expr,
     },
+    AssignRefSubInto {
+        var_name: String,
+        value: Expr,
+    },
     AssignSubIntoElement {
+        var_name: String,
+        index: Expr,
+        value: Expr,
+    },
+    AssignRefSubIntoElement {
         var_name: String,
         index: Expr,
         value: Expr,
@@ -2490,6 +2651,7 @@ pub enum Expr {
     BinaryOperatorString(Operator, Box<Expr>, Box<Expr>),
     CharOfLitString(String, Box<Expr>),
     CharOfVarString(String, Box<Expr>),
+    CharOfVarRefString(String, Box<Expr>),
     FunctionBoolean(Function, Box<Expr>),
     FunctionInteger(Function, Box<Expr>),
     FunctionString(Function, Box<Expr>),
@@ -2507,6 +2669,8 @@ pub enum Expr {
     VarRefString(String),
     VarArrayOfBoolean(String, Box<Expr>),
     VarArrayOfInteger(String, Box<Expr>),
+    VarRefArrayOfBoolean(String, Box<Expr>),
+    VarRefArrayOfInteger(String, Box<Expr>),
     ReferenceOfVar(String, VarType),
     ParamList(Vec<Expr>),
 }
@@ -2600,7 +2764,8 @@ impl Expr {
             | UnaryOperatorBoolean(..)
             | VarBoolean(..)
             | VarRefBoolean(..)
-            | VarArrayOfBoolean(..) => ExprType::Boolean,
+            | VarArrayOfBoolean(..)
+            | VarRefArrayOfBoolean(..) => ExprType::Boolean,
 
             BinaryOperatorInteger(..)
             | FunctionInteger(..)
@@ -2610,8 +2775,10 @@ impl Expr {
             | VarInteger(..)
             | VarRefInteger(..)
             | VarArrayOfInteger(..)
+            | VarRefArrayOfInteger(..)
             | CharOfLitString(..)
-            | CharOfVarString(..) => ExprType::Integer,
+            | CharOfVarString(..)
+            | CharOfVarRefString(..) => ExprType::Integer,
 
             BinaryOperatorString(..)
             | FunctionString(..)
@@ -2770,6 +2937,9 @@ impl std::fmt::Display for Expr {
             VarArrayOfBoolean(var, index)
             | VarArrayOfInteger(var, index)
             | CharOfVarString(var, index)
+            | VarRefArrayOfBoolean(var, index)
+            | VarRefArrayOfInteger(var, index)
+            | CharOfVarRefString(var, index)
                 if matches!(
                     index.as_ref(),
                     BinaryOperatorBoolean(..)
@@ -2781,7 +2951,10 @@ impl std::fmt::Display for Expr {
             }
             VarArrayOfBoolean(var, index)
             | VarArrayOfInteger(var, index)
-            | CharOfVarString(var, index) => format!("{}({})", var, index.to_string()).fmt(f),
+            | CharOfVarString(var, index)
+            | VarRefArrayOfBoolean(var, index)
+            | VarRefArrayOfInteger(var, index)
+            | CharOfVarRefString(var, index) => format!("{}({})", var, index.to_string()).fmt(f),
             FunctionBoolean(func, param)
             | FunctionInteger(func, param)
             | FunctionString(func, param)
