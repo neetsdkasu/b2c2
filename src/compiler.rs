@@ -16,7 +16,7 @@ type CompileError = String;
 
 // 正しい src が来ることを前提とする (不正な src の判定は面倒くさい)
 pub fn compile(
-    program_name: &str,
+    program_name: Option<String>,
     src: &[parser::Statement],
 ) -> Result<Vec<casl2::Statement>, CompileError> {
     let mut compiler = Compiler::new(program_name)?;
@@ -38,15 +38,16 @@ pub struct Flag {
     pub remove_unreferenced_label: bool,
     // サブルーチンを分割
     pub split_subroutines: bool,
+
+    pub program_name: Option<String>,
 }
 
 // 条件付き(?)コンパイル
 pub fn compile_with_flag(
-    program_name: &str,
     src: &[parser::Statement],
     flag: Flag,
 ) -> Result<Vec<(String, Vec<casl2::Statement>)>, CompileError> {
-    let mut statements = compile(program_name, src)?;
+    let mut statements = compile(flag.program_name.clone(), src)?;
 
     if flag.remove_comment {
         statements = remove_comment(&statements);
@@ -61,13 +62,30 @@ pub fn compile_with_flag(
     }
 
     if !flag.split_subroutines {
-        return Ok(vec![(program_name.to_string(), statements)]);
+        let name = statements
+            .iter()
+            .find_map(|stmt| {
+                if let casl2::Statement::Code {
+                    label: Some(label),
+                    command: casl2::Command::Start { .. },
+                    ..
+                } = stmt
+                {
+                    Some(label.as_str().to_string())
+                } else {
+                    None
+                }
+            })
+            .expect("BUG");
+        return Ok(vec![(name, statements)]);
     }
 
-    Ok(split_subroutines(program_name, statements))
+    Ok(split_subroutines(statements))
 }
 
 struct Compiler {
+    program_name: Option<String>,
+
     // ソース定義の変数のId (真理値/整数/文字列の全体で一意)
     var_id: usize,
 
@@ -225,12 +243,15 @@ pub fn is_valid_program_name(program_name: &str) -> bool {
 
 impl Compiler {
     // コンパイラの初期化
-    fn new(program_name: &str) -> Result<Self, CompileError> {
-        if !is_valid_program_name(program_name) {
-            return Err(format!("invalid Program Name: {}", program_name));
+    fn new(program_name: Option<String>) -> Result<Self, CompileError> {
+        if let Some(name) = program_name.as_ref() {
+            if !is_valid_program_name(name) {
+                return Err(format!("invalid Program Name: {}", name));
+            }
         }
 
         Ok(Self {
+            program_name,
             var_id: 0,
             lit_id: 0,
             local_var_id: 0,
@@ -254,13 +275,7 @@ impl Compiler {
                 vec![Gr7, Gr6, Gr5, Gr4, Gr3, Gr2, Gr1]
             },
             stacked_registers: Vec::new(),
-            statements: vec![
-                casl2::Statement::labeled(
-                    program_name,
-                    casl2::Command::Start { entry_point: None },
-                ),
-                casl2::Statement::code(casl2::Command::Rpush),
-            ],
+            statements: Vec::new(),
             has_eof: false,
             var_total_size: 0,
         })
@@ -456,6 +471,7 @@ impl Compiler {
             self.load_subroutine(subroutine::Id::UtilFill);
         }
         let Self {
+            program_name,
             bool_var_labels,
             int_var_labels,
             str_var_labels,
@@ -553,37 +569,56 @@ impl Compiler {
             statements.labeled("EOF", casl2::Command::Ds { size: 1 });
         }
 
+        let mut temp_statements = Vec::<casl2::Statement>::new();
+
+        if let Some(name) = program_name {
+            temp_statements.code(casl2::Statement::Code {
+                label: Some(name.into()),
+                command: casl2::Command::Start { entry_point: None },
+                comment: None,
+            });
+        } else {
+            // 暫定 MAIN
+            // TODO: (Callのプログラム名との競合を防ぐ処理をあとで入れる)
+            temp_statements.code(casl2::Statement::Code {
+                label: Some("MAIN".into()),
+                command: casl2::Command::Start { entry_point: None },
+                comment: None,
+            });
+        }
+
+        temp_statements.code(casl2::Command::Rpush);
+
         match first_var_label {
             Some(label) if var_total_size == 1 => {
-                let mut src = casl2::parse(&format!(
-                    r#" XOR   GR0,GR0
+                temp_statements.extend(
+                    casl2::parse(&format!(
+                        r#" XOR   GR0,GR0
                         ST    GR0,{label}"#,
-                    label = label
-                ))
-                .unwrap();
-                src.reverse();
-                for stmt in src {
-                    statements.insert(2, stmt);
-                }
+                        label = label
+                    ))
+                    .unwrap(),
+                );
             }
             Some(label) => {
-                let mut src = casl2::parse(&format!(
-                    r#" LAD   GR1,{start}
+                temp_statements.extend(
+                    casl2::parse(&format!(
+                        r#" LAD   GR1,{start}
                         XOR   GR2,GR2
                         LAD   GR3,{size}
                         CALL  {fill}"#,
-                    start = label,
-                    size = var_total_size,
-                    fill = subroutine::Id::UtilFill.label()
-                ))
-                .unwrap();
-                src.reverse();
-                for stmt in src {
-                    statements.insert(2, stmt);
-                }
+                        start = label,
+                        size = var_total_size,
+                        fill = subroutine::Id::UtilFill.label()
+                    ))
+                    .unwrap(),
+                );
             }
             _ => {}
         }
+
+        temp_statements.extend(statements);
+        let mut statements = temp_statements;
 
         // 式展開等で使う一時変数(整数/真理値で共有) T**
         for label in temp_int_var_labels.into_iter().collect::<BTreeSet<_>>() {
@@ -4993,7 +5028,6 @@ pub fn remove_unreferenced_label(statements: &[casl2::Statement]) -> Vec<casl2::
 
 // 組み込みルーチンを分離する
 fn split_subroutines(
-    program_name: &str,
     mut statements: Vec<casl2::Statement>,
 ) -> Vec<(String, Vec<casl2::Statement>)> {
     let mut indexes: Vec<(String, usize)> = vec![];
@@ -5060,7 +5094,23 @@ fn split_subroutines(
         statements.code(casl2::Command::End);
     }
 
-    ret.push((program_name.to_string(), statements));
+    let program_name = statements
+        .iter()
+        .find_map(|stmt| {
+            if let casl2::Statement::Code {
+                label: Some(label),
+                command: casl2::Command::Start { .. },
+                ..
+            } = stmt
+            {
+                Some(label.as_str().to_string())
+            } else {
+                None
+            }
+        })
+        .expect("BUG");
+
+    ret.push((program_name, statements));
 
     ret
 }

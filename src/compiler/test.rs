@@ -189,7 +189,7 @@ fn it_works() {
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("TEST", &code[..]).unwrap();
+    let statements = compile(Some("TEST".into()), &code[..]).unwrap();
 
     assert!(!statements.is_empty()); // dummy assert
 }
@@ -219,7 +219,7 @@ fn compiler_is_valid_program_name_works() {
 
 #[test]
 fn compiler_get_lit_str_labels_works() {
-    let mut compiler = Compiler::new("TEST").unwrap();
+    let mut compiler = Compiler::new(Some("TEST".into())).unwrap();
 
     assert_eq!(
         compiler.get_lit_str_labels("-123"),
@@ -295,7 +295,7 @@ LB4    DC     'Test@1234'
 
 #[test]
 fn compiler_compile_dim_works() {
-    let mut compiler = Compiler::new("TEST").unwrap();
+    let mut compiler = Compiler::new(Some("TEST".into())).unwrap();
 
     compiler.compile_dim("strVar1", &parser::VarType::String);
     compiler.compile_dim("boolVar1", &parser::VarType::Boolean);
@@ -354,7 +354,7 @@ IA7    DS     155
 
 #[test]
 fn compiler_compile_print_lit_boolean_works() {
-    let mut compiler = Compiler::new("TEST").unwrap();
+    let mut compiler = Compiler::new(Some("TEST".into())).unwrap();
 
     compiler.compile_print_lit_boolean(true);
     compiler.compile_print_lit_boolean(false);
@@ -390,7 +390,7 @@ LB2    DC     'False'
 
 #[test]
 fn compiler_compile_print_lit_integer_works() {
-    let mut compiler = Compiler::new("TEST").unwrap();
+    let mut compiler = Compiler::new(Some("TEST".into())).unwrap();
 
     compiler.compile_print_lit_integer(1234);
     compiler.compile_print_lit_integer(999);
@@ -428,7 +428,7 @@ LB3    DC     '-100'
 
 #[test]
 fn compiler_compile_print_lit_string_works() {
-    let mut compiler = Compiler::new("TEST").unwrap();
+    let mut compiler = Compiler::new(Some("TEST".into())).unwrap();
 
     compiler.compile_print_lit_string("ABCD");
     compiler.compile_print_lit_string("hey you!");
@@ -466,7 +466,7 @@ LB3    DS     0
 
 #[test]
 fn compiler_compile_print_var_string_works() {
-    let mut compiler = Compiler::new("TEST").unwrap();
+    let mut compiler = Compiler::new(Some("TEST".into())).unwrap();
 
     compiler.compile_dim("strVar1", &parser::VarType::String);
     compiler.compile_dim("strVar2", &parser::VarType::String);
@@ -520,7 +520,7 @@ SB3    DS     256
 
 #[test]
 fn compiler_compile_input_string_works() {
-    let mut compiler = Compiler::new("TEST").unwrap();
+    let mut compiler = Compiler::new(Some("TEST".into())).unwrap();
 
     compiler.compile_dim("strVar1", &parser::VarType::String);
     compiler.compile_dim("strVar2", &parser::VarType::String);
@@ -596,7 +596,7 @@ EOF    DS     1
 
 #[test]
 fn compiler_compile_input_integer_works() {
-    let mut compiler = Compiler::new("TEST").unwrap();
+    let mut compiler = Compiler::new(Some("TEST".into())).unwrap();
 
     compiler.compile_dim("intVar1", &parser::VarType::Integer);
 
@@ -667,7 +667,7 @@ fn for_statement_without_step_works() {
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("TEST", &code[..]).unwrap();
+    let statements = compile(Some("TEST".into()), &code[..]).unwrap();
 
     assert_eq!(
         statements,
@@ -713,7 +713,7 @@ fn for_statement_positive_step_works() {
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("TEST", &code[..]).unwrap();
+    let statements = compile(Some("TEST".into()), &code[..]).unwrap();
 
     assert_eq!(
         statements,
@@ -759,7 +759,7 @@ fn for_statement_negative_step_works() {
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("TEST", &code[..]).unwrap();
+    let statements = compile(Some("TEST".into()), &code[..]).unwrap();
 
     assert_eq!(
         statements,
@@ -806,7 +806,7 @@ fn for_statement_expr_step_works() {
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("TEST", &code[..]).unwrap();
+    let statements = compile(Some("TEST".into()), &code[..]).unwrap();
 
     let fill = subroutine::Id::UtilFill;
 
@@ -873,7 +873,7 @@ fn expr_add_literal_int_rhs_works() {
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("TEST", &code[..]).unwrap();
+    let statements = compile(Some("TEST".into()), &code[..]).unwrap();
 
     assert_eq!(
         statements,
@@ -909,7 +909,7 @@ fn expr_add_variable_rhs_works() {
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("TEST", &code[..]).unwrap();
+    let statements = compile(Some("TEST".into()), &code[..]).unwrap();
 
     let fill = subroutine::Id::UtilFill;
 
@@ -973,7 +973,7 @@ Next i
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("FIZZBUZZ", &code[..]).unwrap();
+    let statements = compile(Some("FIZZBUZZ".into()), &code[..]).unwrap();
 
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
@@ -1017,7 +1017,7 @@ Loop
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("FIZZBUZZ", &code[..]).unwrap();
+    let statements = compile(Some("FIZZBUZZ".into()), &code[..]).unwrap();
 
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
@@ -1075,7 +1075,7 @@ End If
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("PRIMES", &code[..]).unwrap();
+    let statements = compile(Some("PRIMES".into()), &code[..]).unwrap();
 
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
@@ -1108,7 +1108,7 @@ Print s
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("SWAPCASE", &code[..]).unwrap();
+    let statements = compile(Some("SWAPCASE".into()), &code[..]).unwrap();
 
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
@@ -1167,7 +1167,7 @@ End If
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("FACTORS", &code[..]).unwrap();
+    let statements = compile(Some("FACTORS".into()), &code[..]).unwrap();
 
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
@@ -1232,7 +1232,7 @@ Print s
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("STRSORT", &code[..]).unwrap();
+    let statements = compile(Some("STRSORT".into()), &code[..]).unwrap();
 
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
@@ -1280,7 +1280,7 @@ Print t
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("INTSORT", &code[..]).unwrap();
+    let statements = compile(Some("INTSORT".into()), &code[..]).unwrap();
 
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
@@ -1381,7 +1381,7 @@ Print outStr
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("BRAINFCK", &code[..]).unwrap();
+    let statements = compile(Some("BRAINFCK".into()), &code[..]).unwrap();
 
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
@@ -1446,7 +1446,7 @@ End Program
 
     let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    let statements = compile("BAZ", &code[..]).unwrap();
+    let statements = compile(None, &code[..]).unwrap();
 
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
