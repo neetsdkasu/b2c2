@@ -657,8 +657,8 @@ Program BAZ
     bazArray(1) = int1
     bazArray(int1) = int1
     Call FOO
-    Call Bar (arr1, arr1, str1, str1, int1)
-    Call Bar With
+    Call BAR (arr1, arr1, str1, str1, int1)
+    Call BAR With
         xArray = arr1
         barList = arr1
         barText = str1

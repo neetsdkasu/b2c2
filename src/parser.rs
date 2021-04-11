@@ -134,6 +134,8 @@ struct Parser {
     temp_progam_name: Option<String>,
     callables: HashMap<String, Vec<ArgumentInfo>>,
     end_program_state: EndProgramState,
+    in_call_with: bool,
+    temp_call_with_arguments: Vec<(String, Expr)>,
 }
 
 impl Parser {
@@ -154,6 +156,8 @@ impl Parser {
             temp_progam_name: None,
             callables: HashMap::new(),
             end_program_state: EndProgramState::Unnecessary,
+            in_call_with: false,
+            temp_call_with_arguments: Vec::new(),
         }
     }
 
@@ -166,6 +170,7 @@ impl Parser {
             && !self.is_select_head
             && self.header_state.can_command()
             && !matches!(self.end_program_state, EndProgramState::Required)
+            && !self.in_call_with
     }
 
     fn get_new_exit_id(&mut self) -> usize {
@@ -192,6 +197,14 @@ impl Parser {
         name: &str,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
+        if matches!(self.end_program_state, EndProgramState::Satisfied) {
+            return Err(self.syntax_error("invalid Code statement".into()));
+        }
+
+        if self.in_call_with {
+            return self.parse_assign_argument(name, pos_and_tokens);
+        }
+
         if self.is_select_head {
             return Err(self.syntax_error("invalid Code statement".into()));
         }
@@ -504,12 +517,56 @@ impl Parser {
         Ok(())
     }
 
+    // Assign Argument
+    fn parse_assign_argument(
+        &mut self,
+        name: &str,
+        pos_and_tokens: &[(usize, Token)],
+    ) -> Result<(), SyntaxError> {
+        assert!(self.in_call_with);
+
+        for (arg_name, _) in self.temp_call_with_arguments.iter() {
+            if arg_name == name {
+                return Err(self.syntax_error(format!("duplicate Call argument name: {}", name)));
+            }
+        }
+
+        let value = if let [(_, Token::Operator(Operator::Equal)), rest @ ..] = pos_and_tokens {
+            self.parse_expr(rest)?
+        } else {
+            return Err(self.syntax_error("invalid Call argument statement".into()));
+        };
+
+        if let Some(arg) = self
+            .callables
+            .get(self.temp_progam_name.as_ref().expect("BUG"))
+            .expect("BUG")
+            .iter()
+            .find(|arg| arg.var_name == name)
+        {
+            if !arg.is_valid_type(&value) {
+                return Err(self.syntax_error(format!("invalid Call argument: {} {}", name, value)));
+            }
+        } else {
+            return Err(self.syntax_error(format!("invalid Call argument name: {}", name)));
+        }
+
+        self.temp_call_with_arguments
+            .push((name.to_string(), value));
+
+        Ok(())
+    }
+
     // Command
     fn parse_command(
         &mut self,
         command: &Keyword,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
+        if matches!(self.end_program_state, EndProgramState::Satisfied) {
+            return Err(self.syntax_error("invalid Code statement".into()));
+        }
+
         if self.header_state.in_header() {
             match command {
                 Keyword::Argument => return self.parse_command_argument(pos_and_tokens),
@@ -536,6 +593,14 @@ impl Parser {
                 self.callables.insert(name, Vec::new());
             }
             self.header_state = HeaderState::NotHeader;
+        }
+
+        if self.in_call_with {
+            return if let Keyword::End = command {
+                self.parse_command_end(pos_and_tokens)
+            } else {
+                Err(self.syntax_error(format!("invalid {:?} statement", command)))
+            };
         }
 
         if self.is_select_head {
@@ -593,7 +658,71 @@ impl Parser {
         &mut self,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
-        todo!();
+        match pos_and_tokens {
+            [(pn, Token::Name(name))] => {
+                if let Some(args) = self.callables.get(name) {
+                    if !args.is_empty() {
+                        return Err(self.syntax_error_pos(*pn, "invalid Call arguments".into()));
+                    }
+                } else {
+                    return Err(self.syntax_error_pos(*pn, format!("invalid Call name: {}", name)));
+                }
+                self.add_statement(Statement::Call {
+                    name: name.clone(),
+                    arguments: Vec::new(),
+                });
+            }
+            [(pn, Token::Name(name)), (_, Token::Keyword(Keyword::With))] => {
+                if !self.callables.contains_key(name) {
+                    return Err(self.syntax_error_pos(*pn, format!("invalid Call name: {}", name)));
+                }
+                assert!(self.temp_progam_name.is_none());
+                assert!(self.temp_call_with_arguments.is_empty());
+                assert!(!self.in_call_with);
+                self.temp_progam_name = Some(name.clone());
+                self.in_call_with = true;
+            }
+            [(pn, Token::Name(name)), rest @ ..] => {
+                let param = self.parse_expr(rest)?;
+                let arguments = if let Some(args) = self.callables.get(name) {
+                    if let Expr::ParamList(list) = param {
+                        if list.len() != args.len() {
+                            return Err(self.syntax_error("invalid Call arguments".into()));
+                        }
+                        let mut arguments = Vec::with_capacity(list.len());
+                        for (arg, expr) in args.iter().zip(list) {
+                            if !arg.is_valid_type(&expr) {
+                                return Err(self.syntax_error(format!(
+                                    "invalid Call argument: {}, {}",
+                                    arg.var_name, expr
+                                )));
+                            }
+                            arguments.push((arg.var_name.clone(), expr));
+                        }
+                        arguments
+                    } else if args.len() == 1 {
+                        let arg = args.first().unwrap();
+                        if !arg.is_valid_type(&param) {
+                            return Err(self.syntax_error(format!(
+                                "invalid Call argument: {} {}",
+                                arg.var_name, param
+                            )));
+                        }
+                        vec![(arg.var_name.clone(), param)]
+                    } else {
+                        return Err(self.syntax_error_pos(*pn, "invalid Call arguments".into()));
+                    }
+                } else {
+                    return Err(self.syntax_error_pos(*pn, format!("invalid Call name: {}", name)));
+                };
+                self.add_statement(Statement::Call {
+                    name: name.clone(),
+                    arguments,
+                });
+            }
+            _ => return Err(self.syntax_error("invalid Call statement".into())),
+        }
+        Ok(())
     }
 
     // プログラム名の正当性チェック
@@ -693,7 +822,7 @@ impl Parser {
                         self.syntax_error_pos(*pu, "invalid array size in ByRef statement".into())
                     );
                 }
-                let var_type = VarType::RefArrayOfBoolean(*ubound as usize);
+                let var_type = VarType::RefArrayOfBoolean(*ubound as usize + 1);
                 ((pn, name), var_type, (pf, flow), (pr, reg), None)
             }
             [(pn, N(name)), (_, Op(Ob)), (pu, I(ubound)), (_, Op(Cb)), (_, K(As)), (_, T(Tn::Integer)), (pf, K(flow)), (pr, N(reg))] =>
@@ -703,7 +832,7 @@ impl Parser {
                         self.syntax_error_pos(*pu, "invalid array size in ByRef statement".into())
                     );
                 }
-                let var_type = VarType::RefArrayOfInteger(*ubound as usize);
+                let var_type = VarType::RefArrayOfInteger(*ubound as usize + 1);
                 ((pn, name), var_type, (pf, flow), (pr, reg), None)
             }
             _ => return Err(self.syntax_error("invalid ByRef statement".into())),
@@ -794,7 +923,7 @@ impl Parser {
                         self.syntax_error_pos(*pu, "invalid array size in ByVal statement".into())
                     );
                 }
-                let var_type = VarType::ArrayOfBoolean(*ubound as usize);
+                let var_type = VarType::ArrayOfBoolean(*ubound as usize + 1);
                 ((pn, name), var_type, (pf, flow), (pr, reg), None)
             }
             [(pn, N(name)), (_, Op(Ob)), (pu, I(ubound)), (_, Op(Cb)), (_, K(As)), (_, T(Tn::Integer)), (pf, K(flow)), (pr, N(reg))] =>
@@ -804,7 +933,7 @@ impl Parser {
                         self.syntax_error_pos(*pu, "invalid array size in ByVal statement".into())
                     );
                 }
-                let var_type = VarType::ArrayOfInteger(*ubound as usize);
+                let var_type = VarType::ArrayOfInteger(*ubound as usize + 1);
                 ((pn, name), var_type, (pf, flow), (pr, reg), None)
             }
             _ => return Err(self.syntax_error("invalid ByVal statement".into())),
@@ -962,13 +1091,40 @@ impl Parser {
     fn parse_command_end(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         match pos_and_tokens {
             [(_, Token::Keyword(Keyword::Argument))] => self.compose_command_argument(),
-            [(_, Token::Keyword(Keyword::Call))] => todo!(),
+            [(_, Token::Keyword(Keyword::Call))] => self.compose_command_call_with(),
             [(_, Token::Keyword(Keyword::If))] => self.compose_command_if(),
-            [(_, Token::Keyword(Keyword::Program))] => todo!(),
+            [(_, Token::Keyword(Keyword::Program))] => {
+                if matches!(self.end_program_state, EndProgramState::Required) {
+                    self.end_program_state = EndProgramState::Satisfied;
+                    Ok(())
+                } else {
+                    Err(self.syntax_error("invalid End statement".into()))
+                }
+            }
             [(_, Token::Keyword(Keyword::Select))] => self.compose_command_select(),
             [(_, Token::Keyword(Keyword::Sub))] => self.compose_command_sub(),
             _ => Err(self.syntax_error("invalid End statement".into())),
         }
+    }
+
+    // End Call
+    fn compose_command_call_with(&mut self) -> Result<(), SyntaxError> {
+        if !self.in_call_with {
+            return Err(self.syntax_error("Invalid End statement".into()));
+        }
+
+        let name = self.temp_progam_name.take().expect("BUG");
+        let arguments = self.temp_call_with_arguments.split_off(0);
+
+        if self.callables.get(&name).expect("BUG").len() != arguments.len() {
+            return Err(self.syntax_error("invalid Call arguments".into()));
+        }
+
+        self.add_statement(Statement::Call { name, arguments });
+
+        self.in_call_with = false;
+
+        Ok(())
     }
 
     // End Argument
@@ -1289,7 +1445,7 @@ impl Parser {
                     return Err(self.syntax_error("invalid Exit statement".into()));
                 }
             }
-            [(_, Token::Keyword(Keyword::Program))] => todo!(),
+            [(_, Token::Keyword(Keyword::Program))] => self.add_statement(Statement::ExitProgram),
             [(_, Token::Keyword(Keyword::Select))] => {
                 if let Some(&exit_id) = self.nest_of_select.last() {
                     self.add_statement(Statement::ExitSelect { exit_id });
@@ -2349,6 +2505,30 @@ pub struct ArgumentInfo {
     pub var_type: VarType,
     pub register1: IndexRegister,
     pub register2: Option<IndexRegister>,
+}
+
+impl ArgumentInfo {
+    fn is_valid_type(&self, expr: &Expr) -> bool {
+        match self.var_type {
+            VarType::Boolean | VarType::RefBoolean => {
+                matches!(expr.return_type(), ExprType::Boolean)
+            }
+            VarType::Integer | VarType::RefInteger => {
+                matches!(expr.return_type(), ExprType::Integer)
+            }
+            VarType::String | VarType::RefString => matches!(expr.return_type(), ExprType::String),
+            VarType::ArrayOfBoolean(size1) | VarType::RefArrayOfBoolean(size1) => match expr {
+                Expr::ReferenceOfVar(_, VarType::ArrayOfBoolean(size2))
+                | Expr::ReferenceOfVar(_, VarType::RefArrayOfBoolean(size2)) => size1 == *size2,
+                _ => false,
+            },
+            VarType::ArrayOfInteger(size1) | VarType::RefArrayOfInteger(size1) => match expr {
+                Expr::ReferenceOfVar(_, VarType::ArrayOfInteger(size2))
+                | Expr::ReferenceOfVar(_, VarType::RefArrayOfInteger(size2)) => size1 == *size2,
+                _ => false,
+            },
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
