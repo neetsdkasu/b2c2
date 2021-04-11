@@ -1391,3 +1391,68 @@ Print outStr
 
     assert!(!statements.is_empty()); // dummy assert
 }
+
+#[test]
+fn with_arguments_works() {
+    let src = r#"
+Extern Sub FOO
+Extern Sub BAR With
+    ByRef xArray(10) As Integer To GR1
+    ByVal barList(10) As Integer To GR2
+    ByRef barText As String To GR3,GR4
+    ByVal barLine As String To GR5,GR6
+    ByRef zCount As Integer To GR7
+End Sub
+Program BAZ
+    Argument
+        ByRef someNumber As Integer From GR1
+        ByRef someText As String From GR2,GR3
+        ByVal bazText As String From GR4,GR5
+        ByRef bazArray(10) As Integer From GR6
+        ByVal yesArray(10) As Integer From GR7
+    End Argument
+    Dim int1 As Integer
+    Dim str1 As String
+    Dim arr1(10) As Integer
+    int1 = someNumber
+    someNumber = 123
+    str1 = someText
+    someText = str1
+    someText(0) = "A"c
+    someText(1) = "A"c
+    someText(int1) = "A"c
+    int1 = someText(0) 
+    int1 = someText(1) 
+    int1 = someText(int1) 
+    int1 = bazArray(0)
+    int1 = bazArray(1)
+    int1 = bazArray(int1)
+    bazArray(0) = int1
+    bazArray(1) = int1
+    bazArray(int1) = int1
+    Call FOO
+    Call BAR (arr1, arr1, str1, str1, int1)
+    Call BAR With
+        xArray = arr1
+        barList = arr1
+        barText = str1
+        barLine = str1
+        zCount = int1
+    End Call
+End Program
+"#;
+
+    let mut cursor = std::io::Cursor::new(src);
+
+    let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+    let statements = compile("BAZ", &code[..]).unwrap();
+
+    statements.iter().for_each(|line| {
+        eprintln!("{}", line);
+    });
+
+    eprintln!("{}", crate::stat::analyze(&statements));
+
+    assert!(!statements.is_empty()); // dummy assert
+}
