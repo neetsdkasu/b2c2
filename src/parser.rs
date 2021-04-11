@@ -1853,7 +1853,7 @@ impl Parser {
             ExprType::Boolean => self.add_statement(Statement::PrintExprBoolan { value: expr }),
             ExprType::Integer => self.add_statement(Statement::PrintExprInteger { value: expr }),
             ExprType::String => self.add_statement(Statement::PrintExprString { value: expr }),
-            ExprType::ParamList => {
+            ExprType::ParamList | ExprType::ReferenceOfVar => {
                 return Err(self.syntax_error("invalid Expression in Print statement".into()))
             }
         }
@@ -1886,21 +1886,32 @@ impl Parser {
             [(_, Token::String(value))] => return Ok(Expr::LitString(value.clone())),
 
             // プリミティブ変数
-            [(pos, Token::Name(name))] => match self.variables.get(name) {
-                Some(VarType::Boolean) => return Ok(Expr::VarBoolean(name.clone())),
-                Some(VarType::Integer) => return Ok(Expr::VarInteger(name.clone())),
-                Some(VarType::String) => return Ok(Expr::VarString(name.clone())),
-                Some(VarType::RefBoolean) => todo!(),
-                Some(VarType::RefInteger) => todo!(),
-                Some(VarType::RefString) => todo!(),
-                Some(VarType::RefArrayOfBoolean(_)) => todo!(),
-                Some(VarType::RefArrayOfInteger(_)) => todo!(),
-                Some(VarType::ArrayOfBoolean(_)) => todo!(),
-                Some(VarType::ArrayOfInteger(_)) => todo!(),
-                None => {
-                    return Err(self.syntax_error_pos(*pos, format!("undefined variable: {}", name)))
-                }
-            },
+            [(pos, Token::Name(name))] => {
+                let expr = match self.variables.get(name) {
+                    Some(VarType::Boolean) => Expr::VarBoolean(name.clone()),
+                    Some(VarType::Integer) => Expr::VarInteger(name.clone()),
+                    Some(VarType::String) => Expr::VarString(name.clone()),
+                    Some(VarType::RefBoolean) => Expr::VarRefBoolean(name.clone()),
+                    Some(VarType::RefInteger) => Expr::VarRefInteger(name.clone()),
+                    Some(VarType::RefString) => Expr::VarRefString(name.clone()),
+                    Some(var_type) => {
+                        assert!(matches!(
+                            var_type,
+                            VarType::ArrayOfBoolean(_)
+                                | VarType::ArrayOfInteger(_)
+                                | VarType::RefArrayOfBoolean(_)
+                                | VarType::RefArrayOfInteger(_)
+                        ));
+                        Expr::ReferenceOfVar(name.clone(), *var_type)
+                    }
+                    None => {
+                        return Err(
+                            self.syntax_error_pos(*pos, format!("undefined variable: {}", name))
+                        )
+                    }
+                };
+                return Ok(expr);
+            }
 
             // 単項演算子と真理値
             [(_, Token::Operator(op)), (_, Token::Boolean(value))] if op.can_be_unary_boolean() => {
@@ -2469,6 +2480,7 @@ pub enum ExprType {
     Integer,
     String,
     ParamList,
+    ReferenceOfVar,
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -2490,8 +2502,12 @@ pub enum Expr {
     VarBoolean(String),
     VarInteger(String),
     VarString(String),
+    VarRefBoolean(String),
+    VarRefInteger(String),
+    VarRefString(String),
     VarArrayOfBoolean(String, Box<Expr>),
     VarArrayOfInteger(String, Box<Expr>),
+    ReferenceOfVar(String, VarType),
     ParamList(Vec<Expr>),
 }
 
@@ -2578,28 +2594,34 @@ impl Expr {
     pub fn return_type(&self) -> ExprType {
         use Expr::*;
         match self {
-            BinaryOperatorBoolean(_, _, _)
-            | FunctionBoolean(_, _)
-            | LitBoolean(_)
-            | UnaryOperatorBoolean(_, _)
-            | VarBoolean(_)
-            | VarArrayOfBoolean(_, _) => ExprType::Boolean,
+            BinaryOperatorBoolean(..)
+            | FunctionBoolean(..)
+            | LitBoolean(..)
+            | UnaryOperatorBoolean(..)
+            | VarBoolean(..)
+            | VarRefBoolean(..)
+            | VarArrayOfBoolean(..) => ExprType::Boolean,
 
-            BinaryOperatorInteger(_, _, _)
-            | FunctionInteger(_, _)
-            | LitInteger(_)
-            | LitCharacter(_)
-            | UnaryOperatorInteger(_, _)
-            | VarInteger(_)
-            | VarArrayOfInteger(_, _)
-            | CharOfLitString(_, _)
-            | CharOfVarString(_, _) => ExprType::Integer,
+            BinaryOperatorInteger(..)
+            | FunctionInteger(..)
+            | LitInteger(..)
+            | LitCharacter(..)
+            | UnaryOperatorInteger(..)
+            | VarInteger(..)
+            | VarRefInteger(..)
+            | VarArrayOfInteger(..)
+            | CharOfLitString(..)
+            | CharOfVarString(..) => ExprType::Integer,
 
-            BinaryOperatorString(_, _, _) | FunctionString(_, _) | LitString(_) | VarString(_) => {
-                ExprType::String
-            }
+            BinaryOperatorString(..)
+            | FunctionString(..)
+            | LitString(..)
+            | VarString(..)
+            | VarRefString(..) => ExprType::String,
 
-            ParamList(_) => ExprType::ParamList,
+            ParamList(..) => ExprType::ParamList,
+
+            ReferenceOfVar(..) => ExprType::ReferenceOfVar,
         }
     }
 }
@@ -2785,7 +2807,13 @@ impl std::fmt::Display for Expr {
             UnaryOperatorInteger(op, value) | UnaryOperatorBoolean(op, value) => {
                 format!("{} {}", op.to_string(), value.to_string()).fmt(f)
             }
-            VarBoolean(var) | VarInteger(var) | VarString(var) => var.fmt(f),
+            VarBoolean(var)
+            | VarInteger(var)
+            | VarString(var)
+            | VarRefBoolean(var)
+            | VarRefInteger(var)
+            | VarRefString(var)
+            | ReferenceOfVar(var, ..) => var.fmt(f),
             ParamList(list) => list
                 .iter()
                 .map(|v| v.to_string())

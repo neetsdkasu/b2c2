@@ -2651,6 +2651,7 @@ impl Compiler {
             FunctionString(func, param) => self.compile_function_string(*func, param),
             LitString(lit_str) => self.get_lit_str_label_if_exists(lit_str),
             VarString(var_name) => self.str_var_labels.get(var_name).cloned().expect("BUG"),
+            VarRefString(..) => todo!(),
 
             // 戻り値が文字列ではないもの
             BinaryOperatorBoolean(..)
@@ -2666,9 +2667,12 @@ impl Compiler {
             | UnaryOperatorBoolean(..)
             | VarBoolean(..)
             | VarInteger(..)
+            | VarRefBoolean(..)
+            | VarRefInteger(..)
             | VarArrayOfBoolean(..)
             | VarArrayOfInteger(..)
-            | ParamList(_) => unreachable!("BUG"),
+            | ReferenceOfVar(..)
+            | ParamList(..) => unreachable!("BUG"),
         }
     }
 
@@ -2986,7 +2990,11 @@ impl Compiler {
         let id = match param.return_type() {
             parser::ExprType::Boolean => subroutine::Id::FuncCStrArgBool,
             parser::ExprType::Integer => subroutine::Id::FuncCStrArgInt,
-            parser::ExprType::String | parser::ExprType::ParamList => unreachable!("BUG"),
+            parser::ExprType::String
+            | parser::ExprType::ParamList
+            | parser::ExprType::ReferenceOfVar => {
+                unreachable!("BUG")
+            }
         };
 
         let call_label = self.load_subroutine(id);
@@ -3045,7 +3053,9 @@ impl Compiler {
             UnaryOperatorInteger(op, value) => self.compile_unary_op_integer(*op, value),
             UnaryOperatorBoolean(op, value) => self.compile_unary_op_boolean(*op, value),
             VarBoolean(var_name) => self.compile_variable_boolean(var_name),
+            VarRefBoolean(..) => todo!(),
             VarInteger(var_name) => self.compile_variable_integer(var_name),
+            VarRefInteger(..) => todo!(),
             VarArrayOfBoolean(arr_name, index) => {
                 self.compile_variable_array_of_boolean(arr_name, index)
             }
@@ -3058,6 +3068,8 @@ impl Compiler {
             | FunctionString(..)
             | LitString(..)
             | VarString(..)
+            | VarRefString(..)
+            | ReferenceOfVar(..)
             | ParamList(_) => unreachable!("BUG"),
         }
     }
@@ -3693,6 +3705,7 @@ impl Compiler {
                 self.set_register_used(reg);
                 reg
             }
+            parser::ExprType::ReferenceOfVar => todo!(),
             parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
@@ -3761,6 +3774,7 @@ impl Compiler {
                 self.set_register_used(reg);
                 reg
             }
+            parser::ExprType::ReferenceOfVar => todo!(),
             parser::ExprType::Boolean | parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
@@ -3829,6 +3843,7 @@ impl Compiler {
                 self.set_register_used(reg);
                 reg
             }
+            parser::ExprType::ReferenceOfVar => todo!(),
             parser::ExprType::Boolean | parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
@@ -3896,6 +3911,7 @@ impl Compiler {
                 self.set_register_used(reg);
                 reg
             }
+            parser::ExprType::ReferenceOfVar => todo!(),
             parser::ExprType::Boolean | parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
@@ -3963,6 +3979,7 @@ impl Compiler {
                 self.set_register_used(reg);
                 reg
             }
+            parser::ExprType::ReferenceOfVar => todo!(),
             parser::ExprType::Boolean | parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
@@ -4044,6 +4061,7 @@ impl Compiler {
                 self.set_register_used(ret_reg);
                 ret_reg
             }
+            parser::ExprType::ReferenceOfVar => todo!(),
             parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
@@ -4688,7 +4706,9 @@ impl Compiler {
                 self.set_register_used(ret_reg);
                 ret_reg
             }
-            parser::ExprType::Integer | parser::ExprType::ParamList => unreachable!("BUG"),
+            parser::ExprType::Integer
+            | parser::ExprType::ParamList
+            | parser::ExprType::ReferenceOfVar => unreachable!("BUG"),
         }
     }
 
