@@ -182,7 +182,7 @@ fn it_works() {
             Print "X"
         End If
         int1 = Max((((123,45)))) ' これも合法ｗｗ、パラメータリスト・タプルのような感じになってるおｗｗ
-        End
+        Exit Program
         "#;
 
     let mut cursor = std::io::Cursor::new(src);

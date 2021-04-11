@@ -640,7 +640,7 @@ impl Compiler {
             ProgramName { .. } => todo!(),
             Argument { .. } => todo!(),
             Call { .. } => todo!(),
-            ExitProgram => todo!(),
+            ExitProgram => self.compile_exit_program(),
             ExternSub { .. } => todo!(),
             AssignAddInto { var_name, value } => self.compile_assign_add_into(var_name, value),
             AssignRefAddInto { .. } => todo!(),
@@ -770,10 +770,9 @@ impl Compiler {
         }
     }
 
-    // End ステートメント
-    fn compile_end(&mut self) {
-        assert!(self.stacked_registers.is_empty());
-        self.comment("End");
+    // Exit Program ステートメント
+    fn compile_exit_program(&mut self) {
+        self.comment("Exit Program");
         self.code(casl2::Command::P {
             code: casl2::P::Jump,
             adr: casl2::Adr::label("EXIT"),
