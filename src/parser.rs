@@ -613,6 +613,7 @@ impl Parser {
 
         match command {
             Keyword::Call => self.parse_command_call_extern_sub(pos_and_tokens),
+            Keyword::Case => self.parse_command_case(pos_and_tokens),
             Keyword::Continue => self.parse_command_continue(pos_and_tokens),
             Keyword::Do => self.parse_command_do(pos_and_tokens),
             Keyword::Else => self.parse_command_else(pos_and_tokens),
@@ -631,7 +632,6 @@ impl Parser {
             Keyword::Argument
             | Keyword::ByRef
             | Keyword::ByVal
-            | Keyword::Case
             | Keyword::Dim
             | Keyword::Extern
             | Keyword::Program => {
