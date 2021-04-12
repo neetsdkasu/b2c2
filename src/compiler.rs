@@ -84,7 +84,20 @@ pub fn compile_with_flag(
 }
 
 struct Compiler {
+    // プログラム名
     program_name: Option<String>,
+
+    // プログラム引数リスト
+    arguments: Vec<parser::ArgumentInfo>,
+
+    // プログラム引数のラベル (真理値/整数/真理値配列/整数配列) (引数名, (ラベル, 引数情報))
+    argument_labels: HashMap<String, (String, parser::ArgumentInfo)>,
+
+    // プログラム引数のラベル (文字列) (引数名, (ラベル, 引数情報))
+    str_argument_labels: HashMap<String, (StrLabels, parser::ArgumentInfo)>,
+
+    // 外部プログラム呼び出し情報
+    callables: HashMap<String, Vec<parser::ArgumentInfo>>,
 
     // ソース定義の変数のId (真理値/整数/文字列の全体で一意)
     var_id: usize,
@@ -166,10 +179,12 @@ struct Compiler {
 // 文字列ラベルのタイプ判定に使う
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
 enum StrLabelType {
-    Const(String), // IN/OUTの定数 LB**
-    Lit(String),   // リテラル ='abc'
-    Temp,          // 一時変数 TB**
-    Var,           // 文字列変数 SB**
+    Const(String), // IN/OUTの定数 LB**/LL**
+    Lit(String),   // リテラル ='abc'/=3
+    Temp,          // 一時変数 TB**/TL**
+    Var,           // 文字列変数 SB**/SL**
+    ArgRef,        // 引数(参照型) ARG*/ARG*
+    ArgVal,        // 引数 ARG*/ARG*
 }
 
 // 文字列のラベル
@@ -193,6 +208,8 @@ impl StrLabels {
             StrLabelType::Temp | StrLabelType::Var => {
                 format!(" LD {reg},{len}", reg = reg, len = self.len)
             }
+            StrLabelType::ArgRef => todo!(),
+            StrLabelType::ArgVal => todo!(),
         }
     }
 }
@@ -219,6 +236,7 @@ pub fn is_valid_program_name(program_name: &str) -> bool {
     // V** 組み込みサブルーチンのローカル変数
     // J** ループや条件分岐に使うジャンプ先ラベルのId
     // C** 組み込みサブルーチンの入り口のラベル
+    // R** 真理値変数(参照型)/整数変数(参照型) ※プログラムの引数でのみ使用
     // SL** 文字列変数の長さ
     // SB** 文字列変数の内容位置
     // BA** 真理値配列
@@ -227,6 +245,7 @@ pub fn is_valid_program_name(program_name: &str) -> bool {
     // LB** IN/OUTで使用の文字列定数の内容位置
     // TL** 式展開時の一時的な文字列変数の長さ
     // TB** 式展開時の一時的な文字列変数の内容位置
+    // ARG* プログラム引数
     casl2::Label::from(program_name).is_valid()
         && !(matches!(program_name, "EOF" | "EXIT")
             || ((program_name.chars().count() >= 2)
@@ -238,7 +257,10 @@ pub fn is_valid_program_name(program_name: &str) -> bool {
                 && ["SL", "SB", "BA", "IA", "LL", "LB", "TL", "TB"]
                     .iter()
                     .any(|prefix| program_name.starts_with(prefix))
-                && program_name.chars().skip(2).all(|ch| ch.is_ascii_digit())))
+                && program_name.chars().skip(2).all(|ch| ch.is_ascii_digit()))
+            || ((program_name.chars().count() == 4)
+                && program_name.starts_with("ARG")
+                && program_name.chars().skip(3).all(|ch| ch.is_ascii_digit())))
 }
 
 impl Compiler {
@@ -252,6 +274,10 @@ impl Compiler {
 
         Ok(Self {
             program_name,
+            arguments: Vec::new(),
+            argument_labels: HashMap::new(),
+            str_argument_labels: HashMap::new(),
+            callables: HashMap::new(),
             var_id: 0,
             lit_id: 0,
             local_var_id: 0,
@@ -472,6 +498,10 @@ impl Compiler {
         }
         let Self {
             program_name,
+            arguments,
+            argument_labels,
+            str_argument_labels,
+            callables,
             bool_var_labels,
             int_var_labels,
             str_var_labels,
@@ -491,6 +521,37 @@ impl Compiler {
         statements.labeled("EXIT", casl2::Command::Rpop);
         statements.code(casl2::Command::Ret);
 
+        // 引数 ARG*
+        for arg in arguments {
+            statements.comment(arg.to_string());
+            match arg.var_type {
+                parser::VarType::Boolean
+                | parser::VarType::RefBoolean
+                | parser::VarType::Integer
+                | parser::VarType::RefInteger
+                | parser::VarType::RefArrayOfBoolean(_)
+                | parser::VarType::RefArrayOfInteger(_) => {
+                    let (label, _) = argument_labels.get(&arg.var_name).expect("BUG");
+                    statements.labeled(label.clone(), casl2::Command::Ds { size: 1 });
+                }
+                parser::VarType::ArrayOfBoolean(size) | parser::VarType::ArrayOfInteger(size) => {
+                    let (label, _) = argument_labels.get(&arg.var_name).expect("BUG");
+                    statements.labeled(label.clone(), casl2::Command::Ds { size: size as u16 });
+                }
+                parser::VarType::String => {
+                    let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
+                    statements.labeled(&labels.len, casl2::Command::Ds { size: 1 });
+                    statements.labeled(&labels.pos, casl2::Command::Ds { size: 256 });
+                }
+                parser::VarType::RefString => {
+                    let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
+                    statements.labeled(&labels.len, casl2::Command::Ds { size: 1 });
+                    statements.labeled(&labels.pos, casl2::Command::Ds { size: 1 });
+                }
+            }
+        }
+
+        // 初期化が必要な領域の最初のラベル
         let mut first_var_label: Option<String> = None;
 
         // 真理値変数 B**
@@ -578,10 +639,17 @@ impl Compiler {
                 comment: None,
             });
         } else {
-            // 暫定 MAIN
-            // TODO: (Callのプログラム名との競合を防ぐ処理をあとで入れる)
+            let mut name = "MAIN".to_string();
+            if callables.contains_key(&name) {
+                for i in 0.. {
+                    name = format!("MAIN{}", i);
+                    if !callables.contains_key(&name) {
+                        break;
+                    }
+                }
+            }
             temp_statements.code(casl2::Statement::Code {
-                label: Some("MAIN".into()),
+                label: Some(name.into()),
                 command: casl2::Command::Start { entry_point: None },
                 comment: None,
             });
@@ -4642,6 +4710,8 @@ impl Compiler {
                 pos = labels.pos,
                 ok = ok
             )),
+            StrLabelType::ArgRef => todo!(),
+            StrLabelType::ArgVal => todo!(),
         }
 
         self.return_temp_str_var_label(labels);
