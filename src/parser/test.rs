@@ -416,6 +416,7 @@ fn get_src1_statements() -> Vec<Statement> {
         Statement::For {
             exit_id: 0,
             counter: "i".into(),
+            counter_is_ref: false,
             init: Expr::LitInteger(1),
             end: Expr::VarInteger("c".into()),
             step: Some(Expr::LitInteger(1)),

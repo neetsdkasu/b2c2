@@ -196,20 +196,56 @@ struct StrLabels {
 }
 
 impl StrLabels {
+    fn lad_pos(&self, reg: casl2::Register) -> String {
+        match &self.label_type {
+            StrLabelType::Const(_)
+            | StrLabelType::Lit(_)
+            | StrLabelType::Temp
+            | StrLabelType::Var
+            | StrLabelType::ArgVal => {
+                format!(r#" LAD {reg},{pos}"#, reg = reg, pos = self.pos)
+            }
+            StrLabelType::ArgRef => {
+                format!(r#" LD {reg},{pos}"#, reg = reg, pos = self.pos)
+            }
+        }
+    }
+
+    fn lad_len(&self, reg: casl2::Register) -> String {
+        match &self.label_type {
+            StrLabelType::Const(_)
+            | StrLabelType::Lit(_)
+            | StrLabelType::Temp
+            | StrLabelType::Var
+            | StrLabelType::ArgVal => {
+                format!(r#" LAD {reg},{len}"#, reg = reg, len = self.len)
+            }
+            StrLabelType::ArgRef => {
+                format!(r#" LD {reg},{len}"#, reg = reg, len = self.len)
+            }
+        }
+    }
+
     fn ld_len(&self, reg: casl2::Register) -> String {
         match &self.label_type {
             StrLabelType::Const(s) | StrLabelType::Lit(s) => {
                 if s.is_empty() {
-                    format!(" XOR {reg},{reg}", reg = reg)
+                    format!(r#" XOR {reg},{reg}"#, reg = reg)
                 } else {
-                    format!(" LAD {reg},{len}", reg = reg, len = s.chars().count())
+                    format!(r#" LAD {reg},{len}"#, reg = reg, len = s.chars().count())
                 }
             }
-            StrLabelType::Temp | StrLabelType::Var => {
-                format!(" LD {reg},{len}", reg = reg, len = self.len)
+            StrLabelType::Temp | StrLabelType::Var | StrLabelType::ArgVal => {
+                format!(r#" LD {reg},{len}"#, reg = reg, len = self.len)
             }
-            StrLabelType::ArgRef => todo!(),
-            StrLabelType::ArgVal => todo!(),
+            StrLabelType::ArgRef => {
+                format!(
+                    r#" LD {reg},{len}
+                        LD {reg},0,{reg}"#,
+                    reg = reg,
+                    len = self.len
+                )
+            }
         }
     }
 }
@@ -522,7 +558,7 @@ impl Compiler {
         statements.code(casl2::Command::Ret);
 
         // 引数 ARG*
-        for arg in arguments {
+        for arg in arguments.iter() {
             statements.comment(arg.to_string());
             match arg.var_type {
                 parser::VarType::Boolean
@@ -657,6 +693,11 @@ impl Compiler {
 
         temp_statements.code(casl2::Command::Rpush);
 
+        // TODO
+        for _arg in arguments.iter() {
+            todo!();
+        }
+
         match first_var_label {
             Some(label) if var_total_size == 1 => {
                 temp_statements.extend(
@@ -774,7 +815,9 @@ impl Compiler {
             } => self.compile_assign_character_element(var_name, index, value),
             AssignRefCharacterElement { .. } => todo!(),
             AssignInteger { var_name, value } => self.compile_assign_integer(var_name, value),
-            AssignRefInteger { .. } => todo!(),
+            AssignRefInteger { var_name, value } => {
+                self.compile_assign_ref_integer(var_name, value)
+            }
             AssignString { var_name, value } => self.compile_assign_string(var_name, value),
             AssignRefString { .. } => todo!(),
             AssignSubInto { var_name, value } => self.compile_assign_sub_into(var_name, value),
@@ -790,10 +833,11 @@ impl Compiler {
             Dim { var_name, var_type } => self.compile_dim(var_name, var_type),
             Mid {
                 var_name,
+                var_is_ref,
                 offset,
                 length,
                 value,
-            } => self.compile_mid(var_name, offset, length, value),
+            } => self.compile_mid(var_name, *var_is_ref, offset, length, value),
             DoLoop { exit_id, block } => self.compile_do_loop(*exit_id, block),
             DoLoopUntil {
                 exit_id,
@@ -879,18 +923,60 @@ impl Compiler {
     }
 
     // Argument ステートメント
-    fn compile_argument(&mut self, _arguments: &[parser::ArgumentInfo]) {
-        todo!();
+    fn compile_argument(&mut self, arguments: &[parser::ArgumentInfo]) {
+        for arg in arguments.iter() {
+            match arg.var_type {
+                parser::VarType::Boolean
+                | parser::VarType::RefBoolean
+                | parser::VarType::Integer
+                | parser::VarType::RefInteger
+                | parser::VarType::ArrayOfBoolean(_)
+                | parser::VarType::RefArrayOfBoolean(_)
+                | parser::VarType::ArrayOfInteger(_)
+                | parser::VarType::RefArrayOfInteger(_) => {
+                    let label = format!("ARG{}", arg.register1 as isize);
+                    self.argument_labels
+                        .insert(arg.var_name.clone(), (label, arg.clone()));
+                }
+                parser::VarType::String => {
+                    let labels = StrLabels {
+                        len: format!("ARG{}", arg.register1 as isize),
+                        pos: format!("ARG{}", arg.register2.expect("BUG") as isize),
+                        label_type: StrLabelType::ArgVal,
+                    };
+                    self.str_argument_labels
+                        .insert(arg.var_name.clone(), (labels, arg.clone()));
+                }
+                parser::VarType::RefString => {
+                    let labels = StrLabels {
+                        len: format!("ARG{}", arg.register1 as isize),
+                        pos: format!("ARG{}", arg.register2.expect("BUG") as isize),
+                        label_type: StrLabelType::ArgRef,
+                    };
+                    self.str_argument_labels
+                        .insert(arg.var_name.clone(), (labels, arg.clone()));
+                }
+            }
+        }
+
+        if let Some(name) = self.program_name.clone() {
+            self.callables.insert(name, arguments.into());
+        }
+
+        self.arguments = arguments.into();
     }
 
     // Program ステートメント
-    fn compile_program_name(&mut self, _name: &str) {
-        todo!();
+    fn compile_program_name(&mut self, name: &str) {
+        if self.program_name.is_none() {
+            self.program_name = Some(name.into());
+        }
     }
 
     // Extern Sub ステートメント
-    fn compile_extern_sub(&mut self, _name: &str, _arguments: &[parser::ArgumentInfo]) {
-        todo!();
+    fn compile_extern_sub(&mut self, name: &str, arguments: &[parser::ArgumentInfo]) {
+        assert!(!self.callables.contains_key(name));
+        self.callables.insert(name.into(), arguments.into());
     }
 
     // Exit Program ステートメント
@@ -909,6 +995,7 @@ impl Compiler {
     fn compile_mid(
         &mut self,
         var_name: &str,
+        var_is_ref: bool,
         offset: &parser::Expr,
         length: &Option<parser::Expr>,
         value: &parser::Expr,
@@ -917,6 +1004,23 @@ impl Compiler {
         assert!(matches!(value.return_type(), parser::ExprType::String));
 
         let partialcopy = self.load_subroutine(subroutine::Id::UtilCopyToOffsetStr);
+
+        let var_labels = if var_is_ref {
+            let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
+            assert_eq!(arg.var_name, var_name);
+            assert!(matches!(arg.var_type, parser::VarType::RefString));
+            labels.clone()
+        } else {
+            self.str_var_labels
+                .get(var_name)
+                .cloned()
+                .unwrap_or_else(|| {
+                    let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
+                    assert_eq!(arg.var_name, var_name);
+                    assert!(matches!(arg.var_type, parser::VarType::String));
+                    labels.clone()
+                })
+        };
 
         if let Some(length) = length {
             assert!(matches!(length.return_type(), parser::ExprType::Integer));
@@ -927,7 +1031,6 @@ impl Compiler {
                 length = length,
                 value = value
             ));
-            let var_labels = self.str_var_labels.get(var_name).cloned().expect("BUG");
             let value_labels = self.compile_str_expr(value);
             let offset_reg = self.compile_int_expr(offset);
             let length_reg = self.compile_int_expr(length);
@@ -969,24 +1072,14 @@ impl Compiler {
             };
 
             self.code(saves);
-            self.code(format!(
-                r#" {length_line1}
-                    {offset_line}
-                    {length_line2}
-                    LAD   GR5,{dstpos}
-                    LD    GR2,{dstlen}
-                    LAD   GR3,{srcpos}
-                    {ld_srclen}
-                    CALL  {copy}"#,
-                length_line1 = length_line1,
-                offset_line = offset_line,
-                length_line2 = length_line2,
-                dstpos = var_labels.pos,
-                dstlen = var_labels.len,
-                srcpos = value_labels.pos,
-                ld_srclen = value_labels.ld_len(casl2::Register::Gr4),
-                copy = partialcopy
-            ));
+            self.code(length_line1);
+            self.code(offset_line);
+            self.code(length_line2);
+            self.code(var_labels.lad_pos(casl2::Register::Gr5));
+            self.code(var_labels.ld_len(casl2::Register::Gr2));
+            self.code(value_labels.lad_pos(casl2::Register::Gr3));
+            self.code(value_labels.ld_len(casl2::Register::Gr4));
+            self.code(format!(r#" CALL  {copy}"#, copy = partialcopy));
             self.code(recovers);
 
             self.set_register_idle(length_reg);
@@ -999,7 +1092,6 @@ impl Compiler {
                 offset = offset,
                 value = value
             ));
-            let var_labels = self.str_var_labels.get(var_name).cloned().expect("BUG");
             let value_labels = self.compile_str_expr(value);
             let offset_reg = self.compile_int_expr(offset);
 
@@ -1019,19 +1111,14 @@ impl Compiler {
             };
 
             self.code(saves);
+            self.code(offset_line);
+            self.code(var_labels.lad_pos(casl2::Register::Gr5));
+            self.code(var_labels.ld_len(casl2::Register::Gr2));
+            self.code(value_labels.lad_pos(casl2::Register::Gr3));
+            self.code(value_labels.ld_len(casl2::Register::Gr4));
             self.code(format!(
-                r#" {offset_line}
-                    LAD   GR5,{dstpos}
-                    LD    GR2,{dstlen}
-                    LAD   GR3,{srcpos}
-                    {ld_srclen}
-                    LD    GR6,GR2
+                r#" LD    GR6,GR2
                     CALL  {copy}"#,
-                offset_line = offset_line,
-                dstpos = var_labels.pos,
-                dstlen = var_labels.len,
-                srcpos = value_labels.pos,
-                ld_srclen = value_labels.ld_len(casl2::Register::Gr4),
                 copy = partialcopy
             ));
             self.code(recovers);
@@ -1070,12 +1157,8 @@ impl Compiler {
         };
 
         self.code(saves);
-        self.code(format!(
-            r#" LAD  GR1,{pos}
-                {ld_len}"#,
-            pos = value_labels.pos,
-            ld_len = value_labels.ld_len(casl2::Register::Gr2)
-        ));
+        self.code(value_labels.lad_pos(casl2::Register::Gr1));
+        self.code(value_labels.ld_len(casl2::Register::Gr2));
 
         self.return_temp_str_var_label(value_labels);
 
@@ -1968,12 +2051,43 @@ impl Compiler {
         self.return_temp_str_var_label(value_label);
     }
 
+    // Assign Ref Integer ステートメント
+    // int_var = int_expr
+    fn compile_assign_ref_integer(&mut self, var_name: &str, value: &parser::Expr) {
+        self.comment(format!("{var} = {value}", var = var_name, value = value));
+        let value_reg = self.compile_int_expr(value);
+        let ref_reg = self.get_idle_register();
+
+        let (var_label, arg) = self.argument_labels.get(var_name).expect("BUG");
+        assert_eq!(arg.var_name, var_name);
+        assert!(matches!(arg.var_type, parser::VarType::RefInteger));
+
+        let src = format!(
+            r#" LD {refvar},{var}
+                ST {value},0,{refvar}"#,
+            refvar = ref_reg,
+            var = var_label,
+            value = value_reg
+        );
+        self.code(src);
+
+        self.set_register_idle(ref_reg);
+        self.set_register_idle(value_reg);
+    }
+
     // Assign Integer ステートメント
     // int_var = int_expr
     fn compile_assign_integer(&mut self, var_name: &str, value: &parser::Expr) {
         self.comment(format!("{var} = {value}", var = var_name, value = value));
         let reg = self.compile_int_expr(value);
-        let var_label = self.int_var_labels.get(var_name).expect("BUG");
+
+        let var_label = self.int_var_labels.get(var_name).unwrap_or_else(|| {
+            let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+            assert_eq!(arg.var_name, var_name);
+            assert!(matches!(arg.var_type, parser::VarType::Integer));
+            label
+        });
+
         let adr = casl2::Adr::label(var_label);
 
         // ST {reg},{var}
@@ -1989,16 +2103,17 @@ impl Compiler {
 
     // For ステートメント (Stepが定数)
     fn compile_for_with_literal_step(&mut self, for_stmt: &parser::Statement, step: i32) {
-        let (exit_id, counter, init, end, block) = if let parser::Statement::For {
+        let (exit_id, counter, is_ref, init, end, block) = if let parser::Statement::For {
             exit_id,
             counter,
+            counter_is_ref: is_ref,
             init,
             end,
-            step: _,
+            step: None,
             block,
         } = for_stmt
         {
-            (*exit_id, counter, init, end, block)
+            (*exit_id, counter, *is_ref, init, end, block)
         } else {
             unreachable!("BUG");
         };
@@ -2029,7 +2144,12 @@ impl Compiler {
         };
 
         // カウンタの準備
-        let counter_var = self.int_var_labels.get(counter).expect("BUG").clone();
+        let counter_var = if is_ref {
+            todo!();
+        } else {
+            self.int_var_labels.get(counter).expect("BUG").clone()
+            // argument_labels.get
+        };
 
         // calc {init} and assign to {counter}
         // 想定では GR7
@@ -2117,16 +2237,17 @@ impl Compiler {
 
     // For ステートメント
     fn compile_for(&mut self, for_stmt: &parser::Statement) {
-        let (exit_id, counter, init, end, step, block) = if let parser::Statement::For {
+        let (exit_id, counter, is_ref, init, end, step, block) = if let parser::Statement::For {
             exit_id,
             counter,
+            counter_is_ref: is_ref,
             init,
             end,
             step: Some(step),
             block,
         } = for_stmt
         {
-            (*exit_id, counter, init, end, step, block)
+            (*exit_id, counter, *is_ref, init, end, step, block)
         } else {
             unreachable!("BUG");
         };
@@ -2169,7 +2290,12 @@ impl Compiler {
         };
 
         // カウンタの準備
-        let counter_var = self.int_var_labels.get(counter).expect("BUG").clone();
+        let counter_var = if is_ref {
+            todo!();
+        } else {
+            self.int_var_labels.get(counter).expect("BUG").clone()
+            // argument_labels.get()
+        };
 
         // calc {init} and assign to {counter}
         // 想定では GR7
@@ -3127,7 +3253,7 @@ impl Compiler {
             parser::ExprType::Integer => subroutine::Id::FuncCStrArgInt,
             parser::ExprType::String
             | parser::ExprType::ParamList
-            | parser::ExprType::ReferenceOfVar => {
+            | parser::ExprType::ReferenceOfVar(..) => {
                 unreachable!("BUG")
             }
         };
@@ -3191,7 +3317,7 @@ impl Compiler {
             VarBoolean(var_name) => self.compile_variable_boolean(var_name),
             VarRefBoolean(..) => todo!(),
             VarInteger(var_name) => self.compile_variable_integer(var_name),
-            VarRefInteger(..) => todo!(),
+            VarRefInteger(var_name) => self.compile_variable_ref_integer(var_name),
             VarArrayOfBoolean(arr_name, index) => {
                 self.compile_variable_array_of_boolean(arr_name, index)
             }
@@ -3843,7 +3969,7 @@ impl Compiler {
                 self.set_register_used(reg);
                 reg
             }
-            parser::ExprType::ReferenceOfVar => todo!(),
+            parser::ExprType::ReferenceOfVar(..) => todo!(),
             parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
@@ -3912,7 +4038,7 @@ impl Compiler {
                 self.set_register_used(reg);
                 reg
             }
-            parser::ExprType::ReferenceOfVar => todo!(),
+            parser::ExprType::ReferenceOfVar(..) => todo!(),
             parser::ExprType::Boolean | parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
@@ -3981,7 +4107,7 @@ impl Compiler {
                 self.set_register_used(reg);
                 reg
             }
-            parser::ExprType::ReferenceOfVar => todo!(),
+            parser::ExprType::ReferenceOfVar(..) => todo!(),
             parser::ExprType::Boolean | parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
@@ -4049,7 +4175,7 @@ impl Compiler {
                 self.set_register_used(reg);
                 reg
             }
-            parser::ExprType::ReferenceOfVar => todo!(),
+            parser::ExprType::ReferenceOfVar(..) => todo!(),
             parser::ExprType::Boolean | parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
@@ -4117,7 +4243,7 @@ impl Compiler {
                 self.set_register_used(reg);
                 reg
             }
-            parser::ExprType::ReferenceOfVar => todo!(),
+            parser::ExprType::ReferenceOfVar(..) => todo!(),
             parser::ExprType::Boolean | parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
@@ -4199,7 +4325,7 @@ impl Compiler {
                 self.set_register_used(ret_reg);
                 ret_reg
             }
-            parser::ExprType::ReferenceOfVar => todo!(),
+            parser::ExprType::ReferenceOfVar(..) => todo!(),
             parser::ExprType::ParamList => unreachable!("BUG"),
         }
     }
@@ -4507,7 +4633,14 @@ impl Compiler {
     // 整数変数の読み込み
     fn compile_variable_integer(&mut self, var_name: &str) -> casl2::Register {
         let reg = self.get_idle_register();
-        let var_label = self.int_var_labels.get(var_name).expect("BUG");
+
+        let var_label = self.int_var_labels.get(var_name).unwrap_or_else(|| {
+            let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+            assert_eq!(arg.var_name, var_name);
+            assert!(matches!(arg.var_type, parser::VarType::Integer));
+            label
+        });
+
         let adr = casl2::Adr::label(var_label);
 
         // LD REG,VAR
@@ -4517,6 +4650,28 @@ impl Compiler {
             adr,
             x: None,
         });
+
+        reg
+    }
+
+    // (式展開の処理の一部)
+    // 整数変数(参照型)の読み込み
+    fn compile_variable_ref_integer(&mut self, var_name: &str) -> casl2::Register {
+        let reg = self.get_idle_register();
+
+        let (var_label, arg) = self.argument_labels.get(var_name).expect("BUG");
+        assert_eq!(arg.var_name, var_name);
+        assert!(matches!(arg.var_type, parser::VarType::RefInteger));
+
+        // LD REG,VAR
+        // LD REG,0,REG
+        let src = format!(
+            r#" LD {reg},{var}
+                LD {reg},0,{reg}"#,
+            reg = reg,
+            var = var_label
+        );
+        self.code(src);
 
         reg
     }
@@ -4848,7 +5003,7 @@ impl Compiler {
             }
             parser::ExprType::Integer
             | parser::ExprType::ParamList
-            | parser::ExprType::ReferenceOfVar => unreachable!("BUG"),
+            | parser::ExprType::ReferenceOfVar(..) => unreachable!("BUG"),
         }
     }
 

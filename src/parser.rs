@@ -1048,10 +1048,10 @@ impl Parser {
 
         list.reverse();
 
-        let var_name = if let Some(Expr::VarString(var_name)) = list.pop() {
-            var_name
-        } else {
-            return Err(self.syntax_error("invalid Mid statement".into()));
+        let (var_name, var_is_ref) = match list.pop() {
+            Some(Expr::VarString(var_name)) => (var_name, false),
+            Some(Expr::VarRefString(var_name)) => (var_name, true),
+            _ => return Err(self.syntax_error("invalid Mid statement".into())),
         };
 
         let offset = match list.pop() {
@@ -1073,6 +1073,7 @@ impl Parser {
             if matches!(value.return_type(), ExprType::String) {
                 self.add_statement(Statement::Mid {
                     var_name,
+                    var_is_ref,
                     offset,
                     length,
                     value,
@@ -1848,6 +1849,7 @@ impl Parser {
         if let Some(Statement::ProvisionalFor {
             exit_id,
             counter,
+            counter_is_ref,
             init,
             end,
             step,
@@ -1860,6 +1862,7 @@ impl Parser {
             self.add_statement(Statement::For {
                 exit_id,
                 counter,
+                counter_is_ref,
                 init,
                 end,
                 step,
@@ -1890,9 +1893,11 @@ impl Parser {
             return Err(self.syntax_error("invalid counter in For statement".into()));
         }
 
-        if !matches!(self.variables.get(name), Some(VarType::Integer)) {
-            return Err(self.syntax_error("invalid For statement".into()));
-        }
+        let counter_is_ref = match self.variables.get(name) {
+            Some(VarType::Integer) => false,
+            Some(VarType::RefInteger) => true,
+            _ => return Err(self.syntax_error("invalid For statement".into())),
+        };
 
         let to_position = rest
             .iter()
@@ -1938,6 +1943,7 @@ impl Parser {
         self.provisionals.push(Statement::ProvisionalFor {
             exit_id,
             counter: name.clone(),
+            counter_is_ref,
             init,
             end,
             step,
@@ -2012,12 +2018,12 @@ impl Parser {
         match pos_and_tokens {
             // プリミティブ変数への入力
             [(pos, Token::Name(name))] => match self.variables.get(name) {
-                Some(VarType::Integer) => {
+                Some(VarType::Integer) | Some(VarType::RefInteger) => {
                     self.add_statement(Statement::InputInteger {
                         var_name: name.clone(),
                     });
                 }
-                Some(VarType::String) => {
+                Some(VarType::String) | Some(VarType::RefString) => {
                     self.add_statement(Statement::InputString {
                         var_name: name.clone(),
                     });
@@ -2034,7 +2040,10 @@ impl Parser {
             // 整数配列の指定位置への入力
             [(pos, Token::Name(name)), (_, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
             {
-                if !matches!(self.variables.get(name), Some(VarType::ArrayOfInteger(_))) {
+                if !matches!(
+                    self.variables.get(name),
+                    Some(VarType::ArrayOfInteger(_)) | Some(VarType::RefArrayOfInteger(_))
+                ) {
                     return Err(
                         self.syntax_error_pos(*pos, "invalid Variable in Input statement".into())
                     );
@@ -2098,8 +2107,11 @@ impl Parser {
             }
             // プリミティブ変数の出力
             [(_, Token::Name(name))] => match self.variables.get(name) {
-                Some(VarType::Boolean) => {}
-                Some(VarType::Integer) => {}
+                Some(VarType::Boolean)
+                | Some(VarType::RefBoolean)
+                | Some(VarType::Integer)
+                | Some(VarType::RefInteger)
+                | Some(VarType::RefString) => {}
                 Some(VarType::String) => {
                     self.add_statement(Statement::PrintVarString {
                         var_name: name.clone(),
@@ -2116,7 +2128,7 @@ impl Parser {
             ExprType::Boolean => self.add_statement(Statement::PrintExprBoolan { value: expr }),
             ExprType::Integer => self.add_statement(Statement::PrintExprInteger { value: expr }),
             ExprType::String => self.add_statement(Statement::PrintExprString { value: expr }),
-            ExprType::ParamList | ExprType::ReferenceOfVar => {
+            ExprType::ParamList | ExprType::ReferenceOfVar(..) => {
                 return Err(self.syntax_error("invalid Expression in Print statement".into()))
             }
         }
@@ -2218,10 +2230,22 @@ impl Parser {
                         Box::new(Expr::VarBoolean(name.clone())),
                     ))
                 }
+                Some(VarType::RefBoolean) if op.can_be_unary_boolean() => {
+                    return Ok(Expr::UnaryOperatorBoolean(
+                        *op,
+                        Box::new(Expr::VarRefBoolean(name.clone())),
+                    ))
+                }
                 Some(VarType::Integer) if op.can_be_unary_integer() => {
                     return Ok(Expr::UnaryOperatorInteger(
                         *op,
                         Box::new(Expr::VarInteger(name.clone())),
+                    ))
+                }
+                Some(VarType::RefInteger) if op.can_be_unary_integer() => {
+                    return Ok(Expr::UnaryOperatorInteger(
+                        *op,
+                        Box::new(Expr::VarRefInteger(name.clone())),
                     ))
                 }
                 Some(_) => return Err(self.syntax_error_pos(*pos, "invalid Expression".into())),
@@ -2650,6 +2674,7 @@ pub enum Statement {
     },
     Mid {
         var_name: String,
+        var_is_ref: bool,
         offset: Expr,
         length: Option<Expr>,
         value: Expr,
@@ -2695,6 +2720,7 @@ pub enum Statement {
     For {
         exit_id: usize,
         counter: String,
+        counter_is_ref: bool,
         init: Expr,
         end: Expr,
         step: Option<Expr>,
@@ -2703,6 +2729,7 @@ pub enum Statement {
     ProvisionalFor {
         exit_id: usize,
         counter: String,
+        counter_is_ref: bool,
         init: Expr,
         end: Expr,
         step: Option<Expr>,
@@ -2821,7 +2848,7 @@ pub enum ExprType {
     Integer,
     String,
     ParamList,
-    ReferenceOfVar,
+    ReferenceOfVar(VarType),
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -2968,7 +2995,7 @@ impl Expr {
 
             ParamList(..) => ExprType::ParamList,
 
-            ReferenceOfVar(..) => ExprType::ReferenceOfVar,
+            ReferenceOfVar(_, var_type) => ExprType::ReferenceOfVar(*var_type),
         }
     }
 }
