@@ -740,11 +740,11 @@ impl Compiler {
     fn compile(&mut self, stmt: &parser::Statement) {
         use parser::Statement::*;
         match stmt {
-            ProgramName { .. } => todo!(),
-            Argument { .. } => todo!(),
-            Call { .. } => todo!(),
+            ProgramName { name } => self.compile_program_name(name),
+            Argument { arguments } => self.compile_argument(arguments),
+            Call { name, arguments } => self.compile_call_exterun_sub(name, arguments),
             ExitProgram => self.compile_exit_program(),
-            ExternSub { .. } => todo!(),
+            ExternSub { name, arguments } => self.compile_extern_sub(name, arguments),
             AssignAddInto { var_name, value } => self.compile_assign_add_into(var_name, value),
             AssignRefAddInto { .. } => todo!(),
             AssignAddIntoElement {
@@ -871,6 +871,26 @@ impl Compiler {
             | ProvisionalCaseString { .. }
             | ProvisionalCaseElse => unreachable!("BUG"),
         }
+    }
+
+    // Call ステートメント
+    fn compile_call_exterun_sub(&mut self, _name: &str, _arguments: &[(String, parser::Expr)]) {
+        todo!();
+    }
+
+    // Argument ステートメント
+    fn compile_argument(&mut self, _arguments: &[parser::ArgumentInfo]) {
+        todo!();
+    }
+
+    // Program ステートメント
+    fn compile_program_name(&mut self, _name: &str) {
+        todo!();
+    }
+
+    // Extern Sub ステートメント
+    fn compile_extern_sub(&mut self, _name: &str, _arguments: &[parser::ArgumentInfo]) {
+        todo!();
     }
 
     // Exit Program ステートメント
