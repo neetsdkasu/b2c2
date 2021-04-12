@@ -2026,13 +2026,13 @@ impl Compiler {
 
         let src = format!(
             r#" LAD   GR1,{dstpos}
-                    LAD   GR2,{dstlen}
-                    LAD   GR3,{srcpos}
-                    {ld_srclen}
-                    CALL  {copystr}"#,
+                LAD   GR2,{dstlen}
+                {lad_srcpos}
+                {ld_srclen}
+                CALL  {copystr}"#,
             dstpos = var_label.pos,
             dstlen = var_label.len,
-            srcpos = value_label.pos,
+            lad_srcpos = value_label.lad_pos(casl2::Register::Gr3),
             ld_srclen = value_label.ld_len(casl2::Register::Gr4),
             copystr = copystr
         );
@@ -2109,7 +2109,7 @@ impl Compiler {
             counter_is_ref: is_ref,
             init,
             end,
-            step: None,
+            step: _,
             block,
         } = for_stmt
         {
@@ -2908,8 +2908,14 @@ impl Compiler {
             BinaryOperatorString(op, lhs, rhs) => self.compile_bin_op_string(*op, lhs, rhs),
             FunctionString(func, param) => self.compile_function_string(*func, param),
             LitString(lit_str) => self.get_lit_str_label_if_exists(lit_str),
-            VarString(var_name) => self.str_var_labels.get(var_name).cloned().expect("BUG"),
-            VarRefString(..) => todo!(),
+            VarString(var_name) => {
+                self.str_var_labels.get(var_name).cloned().expect("BUG")
+                // str_argument_labels
+            }
+            VarRefString(..) => {
+                todo!()
+                // str_argument_labels
+            }
 
             // 戻り値が文字列ではないもの
             BinaryOperatorBoolean(..)
