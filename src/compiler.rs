@@ -807,19 +807,27 @@ impl Compiler {
                 index,
                 value,
             } => self.compile_assign_integer_element(var_name, index, value),
-            AssignRefIntegerElement { .. } => todo!(),
+            AssignRefIntegerElement {
+                var_name,
+                index,
+                value,
+            } => self.compile_assign_ref_integer_element(var_name, index, value),
             AssignCharacterElement {
                 var_name,
                 index,
                 value,
             } => self.compile_assign_character_element(var_name, index, value),
-            AssignRefCharacterElement { .. } => todo!(),
+            AssignRefCharacterElement {
+                var_name,
+                index,
+                value,
+            } => self.compile_assign_ref_character_element(var_name, index, value),
             AssignInteger { var_name, value } => self.compile_assign_integer(var_name, value),
             AssignRefInteger { var_name, value } => {
                 self.compile_assign_ref_integer(var_name, value)
             }
             AssignString { var_name, value } => self.compile_assign_string(var_name, value),
-            AssignRefString { .. } => todo!(),
+            AssignRefString { var_name, value } => self.compile_assign_ref_string(var_name, value),
             AssignSubInto { var_name, value } => self.compile_assign_sub_into(var_name, value),
             AssignRefSubInto { .. } => todo!(),
             AssignSubIntoElement {
@@ -1999,6 +2007,100 @@ impl Compiler {
         self.set_register_idle(index_reg);
     }
 
+    // Assign Ref Integer Element ステートメント
+    // ref_int_arr(index) = int_expr
+    fn compile_assign_ref_integer_element(
+        &mut self,
+        var_name: &str,
+        index: &parser::Expr,
+        value: &parser::Expr,
+    ) {
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+        assert!(matches!(value.return_type(), parser::ExprType::Integer));
+
+        self.comment(format!(
+            "{var}( {index} ) = {value}",
+            var = var_name,
+            index = index,
+            value = value
+        ));
+
+        let (arr_label, arr_size) = {
+            let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+            assert_eq!(arg.var_name, var_name);
+            if let parser::VarType::RefArrayOfInteger(size) = arg.var_type {
+                (label.clone(), size)
+            } else {
+                unreachable!("BUG");
+            }
+        };
+        assert!(arr_size > 0);
+
+        // indexがリテラルの場合
+        if let parser::Expr::LitInteger(index) = index {
+            let index = *index as i16;
+            let index = (index.max(0) as usize).min(arr_size - 1);
+            // おそらくGR7
+            let value_reg = self.compile_int_expr(value);
+            // おそらくGR6
+            let reg = self.get_idle_register();
+            assert_ne!(value_reg, reg);
+            self.code(format!(
+                r#" LD    {reg},{arr}
+                        ST    {value},{index},{reg}"#,
+                reg = reg,
+                index = index,
+                arr = arr_label,
+                value = value_reg
+            ));
+            self.set_register_idle(reg);
+            self.set_register_idle(value_reg);
+            return;
+        }
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+
+        let index_reg = self.compile_int_expr(index);
+
+        // 想定では、
+        //  index_reg = GR7
+        //  他のレジスタ未使用
+        //  になっているはず…
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD    GR1,{index}
+                LAD   GR2,{size}
+                CALL  {fit}"#,
+            index = index_reg,
+            size = arr_size,
+            fit = safe_index
+        ));
+        self.code(recovers);
+
+        self.code(format!(" LD {index},GR0", index = index_reg));
+
+        // 想定では GR6
+        let value_reg = self.compile_int_expr(value);
+
+        self.restore_register(index_reg);
+
+        self.code(format!(
+            r#" ADDL  {index},{arr}
+                ST    {value},0,{index}"#,
+            value = value_reg,
+            arr = arr_label,
+            index = index_reg
+        ));
+
+        self.set_register_idle(value_reg);
+        self.set_register_idle(index_reg);
+    }
+
     // Assign Character Element ステートメント
     // str_var(index) = int_expr
     fn compile_assign_character_element(
@@ -2065,6 +2167,80 @@ impl Compiler {
 
         self.code(format!(
             r#" ST {value},{arr},{index}"#,
+            value = value_reg,
+            arr = str_labels.pos,
+            index = casl2::IndexRegister::try_from(index_reg).expect("BUG")
+        ));
+
+        self.set_register_idle(value_reg);
+        self.set_register_idle(index_reg);
+    }
+
+    // Assign Ref Character Element ステートメント
+    // ref_str_var(index) = int_expr
+    fn compile_assign_ref_character_element(
+        &mut self,
+        var_name: &str,
+        index: &parser::Expr,
+        value: &parser::Expr,
+    ) {
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+        assert!(matches!(value.return_type(), parser::ExprType::Integer));
+
+        self.comment(format!(
+            "{var}( {index} ) = {value}",
+            var = var_name,
+            index = index,
+            value = value
+        ));
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+
+        let (str_labels, arg) = self
+            .str_argument_labels
+            .get(var_name)
+            .cloned()
+            .expect("BUG");
+        assert_eq!(arg.var_name, var_name);
+        assert!(matches!(arg.var_type, parser::VarType::RefString));
+        assert!(matches!(str_labels.label_type, StrLabelType::ArgRef));
+
+        let index_reg = self.compile_int_expr(index);
+
+        // 想定では、
+        //  index_reg = GR7
+        //  他のレジスタ未使用
+        //  になっているはず…
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD    GR1,{index}
+                LD    GR2,{len}
+                LD    GR2,0,GR2
+                CALL  {fit}"#,
+            index = index_reg,
+            len = str_labels.len,
+            fit = safe_index
+        ));
+        self.code(recovers);
+
+        self.code(format!(" LD {index},GR0", index = index_reg));
+
+        // 想定では GR6
+        let value_reg = self.compile_int_expr(value);
+
+        self.restore_register(index_reg);
+
+        // 仮に文字列長が0の文字列変数であったとしても
+        // index=0は文字列変数のバッファ予約領域なので書き込んでも無問題
+
+        self.code(format!(
+            r#" ADDL  {index},{arr}
+                ST    {value},0,{index}"#,
             value = value_reg,
             arr = str_labels.pos,
             index = casl2::IndexRegister::try_from(index_reg).expect("BUG")
@@ -2143,8 +2319,47 @@ impl Compiler {
         self.return_temp_str_var_label(value_label);
     }
 
+    // Assign Ref String ステートメント
+    // ref_str_var = str_expr
+    fn compile_assign_ref_string(&mut self, var_name: &str, value: &parser::Expr) {
+        self.comment(format!("{var} = {value}", var = var_name, value = value));
+
+        let value_label = self.compile_str_expr(value);
+        let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
+        let (var_labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
+        assert_eq!(arg.var_name, var_name);
+        assert!(matches!(arg.var_type, parser::VarType::RefString));
+        assert!(matches!(var_labels.label_type, StrLabelType::ArgRef));
+
+        let src = format!(
+            r#" LD    GR1,{dstpos}
+                LD    GR2,{dstlen}
+                {lad_srcpos}
+                {ld_srclen}
+                CALL  {copystr}"#,
+            dstpos = var_labels.pos,
+            dstlen = var_labels.len,
+            lad_srcpos = value_label.lad_pos(casl2::Register::Gr3),
+            ld_srclen = value_label.ld_len(casl2::Register::Gr4),
+            copystr = copystr
+        );
+
+        // 想定では、
+        //  全てのレジスタ未使用
+        //  になっているはず…
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+        };
+        self.code(saves);
+        self.code(src);
+        self.code(recovers);
+
+        self.return_temp_str_var_label(value_label);
+    }
+
     // Assign Ref Integer ステートメント
-    // int_var = int_expr
+    // ref_int_var = int_expr
     fn compile_assign_ref_integer(&mut self, var_name: &str, value: &parser::Expr) {
         self.comment(format!("{var} = {value}", var = var_name, value = value));
         let value_reg = self.compile_int_expr(value);
@@ -3702,7 +3917,9 @@ impl Compiler {
             BinaryOperatorInteger(op, lhs, rhs) => self.compile_bin_op_integer(*op, lhs, rhs),
             CharOfLitString(lit_str, index) => self.compile_character_of_literal(lit_str, index),
             CharOfVarString(var_name, index) => self.compile_character_of_variable(var_name, index),
-            CharOfVarRefString(..) => todo!(),
+            CharOfVarRefString(var_name, index) => {
+                self.compile_character_of_ref_variable(var_name, index)
+            }
             FunctionBoolean(func, param) => self.compile_function_boolean(*func, param),
             FunctionInteger(func, param) => self.compile_function_integer(*func, param),
             LitBoolean(lit_bool) => self.compile_literal_boolean(*lit_bool),
@@ -3721,7 +3938,9 @@ impl Compiler {
             VarArrayOfInteger(arr_name, index) => {
                 self.compile_variable_array_of_integer(arr_name, index)
             }
-            VarRefArrayOfInteger(..) => todo!(),
+            VarRefArrayOfInteger(arr_name, index) => {
+                self.compile_variable_ref_array_of_integer(arr_name, index)
+            }
 
             // 戻り値が整数でも真理値でもないもの
             BinaryOperatorString(..)
@@ -4115,6 +4334,61 @@ impl Compiler {
     }
 
     // (式展開の処理の一部)
+    // 文字列変数(参照型)の文字を取り出す
+    fn compile_character_of_ref_variable(
+        &mut self,
+        var_name: &str,
+        index: &parser::Expr,
+    ) -> casl2::Register {
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+
+        let load_elem = self.load_subroutine(subroutine::Id::UtilLoadElement);
+
+        let index_reg = self.compile_int_expr(index);
+
+        let (str_labels, arg) = self
+            .str_argument_labels
+            .get(var_name)
+            .cloned()
+            .expect("BUG");
+        assert_eq!(arg.var_name, var_name);
+        assert!(matches!(arg.var_type, parser::VarType::RefString));
+        assert!(matches!(str_labels.label_type, StrLabelType::ArgRef));
+
+        // レジスタ退避
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            if matches!(index_reg, Gr1) {
+                self.get_save_registers_src(&[Gr2, Gr3])
+            } else {
+                self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+            }
+        };
+
+        let index_line = if matches!(index_reg, casl2::Register::Gr1) {
+            "".to_string()
+        } else {
+            format!(" LD GR1,{index}", index = index_reg)
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" {index_line}
+                {ld_gr2_len}
+                {lad_gr3_pos}
+                CALL  {load}"#,
+            index_line = index_line,
+            ld_gr2_len = str_labels.ld_len(casl2::Register::Gr2),
+            lad_gr3_pos = str_labels.lad_pos(casl2::Register::Gr3),
+            load = load_elem
+        ));
+        self.code(recovers);
+        self.code(format!(r#" LD {index},GR0"#, index = index_reg));
+
+        index_reg
+    }
+
+    // (式展開の処理の一部)
     // 真理値配列の要素を取り出す
     fn compile_variable_array_of_boolean(
         &mut self,
@@ -4273,6 +4547,82 @@ impl Compiler {
         self.code(format!(
             r#" LD    {index},GR0
                 LD    {index},{arr},{index}"#,
+            index = index_reg,
+            arr = arr_label
+        ));
+
+        index_reg
+    }
+
+    // (式展開の処理の一部)
+    // 整数配列(参照型)の要素を取り出す
+    fn compile_variable_ref_array_of_integer(
+        &mut self,
+        arr_name: &str,
+        index: &parser::Expr,
+    ) -> casl2::Register {
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+
+        let (arr_label, arr_size) = {
+            let (label, arg) = self.argument_labels.get(arr_name).expect("BUG");
+            assert_eq!(arg.var_name, arr_name);
+            if let parser::VarType::RefArrayOfInteger(size) = arg.var_type {
+                (label.clone(), size)
+            } else {
+                unreachable!("BUG");
+            }
+        };
+
+        assert!(arr_size > 0);
+
+        // インデックスがリテラル整数で指定…
+        if let parser::Expr::LitInteger(index) = index {
+            let index = ((*index).max(0) as usize).min(arr_size - 1);
+            let reg = self.get_idle_register();
+            self.code(format!(
+                r#" LD  {reg},{arr}
+                    LD  {reg},{index},{reg}"#,
+                reg = reg,
+                index = index,
+                arr = arr_label
+            ));
+            return reg;
+        }
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+
+        let index_reg = self.compile_int_expr(index);
+
+        // レジスタ退避
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            if matches!(index_reg, Gr1) {
+                self.get_save_registers_src(&[Gr2])
+            } else {
+                self.get_save_registers_src(&[Gr1, Gr2])
+            }
+        };
+
+        let index_line = if matches!(index_reg, casl2::Register::Gr1) {
+            "".to_string()
+        } else {
+            format!(" LD GR1,{index}", index = index_reg)
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" {index_line}
+                LAD   GR2,{size}
+                CALL  {fit}"#,
+            index_line = index_line,
+            size = arr_size,
+            fit = safe_index
+        ));
+        self.code(recovers);
+        self.code(format!(
+            r#" LD    {index},GR0
+                ADDL  {index},{arr}
+                LD    {index},0,{index}"#,
             index = index_reg,
             arr = arr_label
         ));
