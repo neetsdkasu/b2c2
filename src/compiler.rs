@@ -2895,8 +2895,6 @@ impl Compiler {
 
         self.set_register_idle(index_reg); // GR7 解放のはず
         self.return_temp_str_var_label(s_labels);
-
-        todo!();
     }
 
     // Input <ref_int_var> ステートメント
@@ -2904,7 +2902,9 @@ impl Compiler {
     fn compile_input_ref_integer(&mut self, var_name: &str) {
         let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
         let s_labels = self.get_temp_str_var_label();
-        let var_label = self.int_var_labels.get(var_name).cloned().expect("BUG");
+        let (var_label, arg) = self.argument_labels.get(var_name).cloned().expect("BUG");
+        assert_eq!(arg.var_name, var_name);
+        assert!(matches!(arg.var_type, parser::VarType::RefInteger));
         let label = self.get_new_jump_label();
 
         self.has_eof = true;
@@ -2928,7 +2928,8 @@ impl Compiler {
                 ST    GR2,EOF
                 XOR   GR2,GR2
 {ok}            CALL  {cint}
-                ST    GR0,{var}"#,
+                LD    GR1,{var}
+                ST    GR0,0,GR1"#,
             pos = s_labels.pos,
             len = s_labels.len,
             ok = label,
@@ -2938,32 +2939,56 @@ impl Compiler {
         self.code(recovers);
 
         self.return_temp_str_var_label(s_labels);
-
-        todo!();
     }
 
     // Input <ref_str_var> ステートメント
     // 文字列変数(参照型)へのコンソール入力
     fn compile_input_ref_string(&mut self, var_name: &str) {
-        let StrLabels { len, pos, .. } = self.str_var_labels.get(var_name).cloned().expect("BUG");
+        let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
+
+        let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
+        assert_eq!(arg.var_name, var_name);
+        assert!(matches!(arg.var_type, parser::VarType::RefString));
+        assert!(matches!(labels.label_type, StrLabelType::ArgRef));
+
+        let StrLabels { len, pos, .. } = labels.clone();
+
+        let temp_labels = self.get_temp_str_var_label();
+
         let label = self.get_new_jump_label();
+
         self.has_eof = true;
+
         self.comment(format!("Input {}", var_name));
-        // IN {var_pos},{var_len}
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+        };
+
+        self.code(saves);
         self.code(format!(
             r#" IN   {pos},{len}
-                LD   GR0,{len}
+                LD   GR4,{len}
                 JPL  {ok}
                 JZE  {ok}
-                ST   GR0,EOF
-                XOR  GR0,GR0
-                ST   GR0,{len}
-{ok}            NOP"#,
-            pos = pos,
-            len = len,
-            ok = label
+                ST   GR4,EOF
+                XOR  GR4,GR4
+{ok}            LD   GR1,{strpos}
+                LD   GR2,{strlen}
+                LAD  GR3,{pos}
+                CALL {copy}
+"#,
+            pos = temp_labels.pos,
+            len = temp_labels.len,
+            ok = label,
+            strpos = pos,
+            strlen = len,
+            copy = copystr
         ));
-        todo!();
+        self.code(recovers);
+
+        self.return_temp_str_var_label(temp_labels);
     }
 
     // Print <lit_bool> ステートメント
@@ -3005,7 +3030,17 @@ impl Compiler {
     // Print <str_var>ステートメント
     // 文字列変数の画面出力
     fn compile_print_var_string(&mut self, var_name: &str) {
-        let StrLabels { len, pos, .. } = self.str_var_labels.get(var_name).cloned().expect("BUG");
+        let StrLabels { len, pos, .. } =
+            self.str_var_labels
+                .get(var_name)
+                .cloned()
+                .unwrap_or_else(|| {
+                    let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
+                    assert_eq!(arg.var_name, var_name);
+                    assert!(matches!(arg.var_type, parser::VarType::String));
+                    assert!(matches!(labels.label_type, StrLabelType::ArgVal));
+                    labels.clone()
+                });
         self.comment(format!("Print {}", var_name));
         self.code(casl2::Command::Out {
             pos: pos.into(),
@@ -3061,14 +3096,41 @@ impl Compiler {
 
         let labels = self.compile_str_expr(value);
 
-        let labels = if let StrLabels {
-            label_type: StrLabelType::Lit(s),
-            ..
-        } = labels
-        {
-            self.get_lit_str_labels(&s)
-        } else {
-            labels
+        let labels = match &labels {
+            StrLabels {
+                label_type: StrLabelType::Lit(s),
+                ..
+            } => self.get_lit_str_labels(&s),
+            StrLabels {
+                pos,
+                len,
+                label_type: StrLabelType::ArgRef,
+            } => {
+                let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
+                let temp_labels = self.get_temp_str_var_label();
+                let (saves, recovers) = {
+                    use casl2::Register::*;
+                    self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+                };
+                self.code(saves);
+                self.code(format!(
+                    r#" LAD   GR1,{tmppos}
+                        LAD   GR2,{tmplen}
+                        LD    GR3,{pos}
+                        LD    GR4,{len}
+                        LD    GR4,0,GR4
+                        CALL  {copy}
+                    "#,
+                    tmppos = temp_labels.pos,
+                    tmplen = temp_labels.len,
+                    pos = pos,
+                    len = len,
+                    copy = copystr
+                ));
+                self.code(recovers);
+                temp_labels
+            }
+            _ => labels,
         };
 
         self.code(format!(
@@ -3125,12 +3187,23 @@ impl Compiler {
             FunctionString(func, param) => self.compile_function_string(*func, param),
             LitString(lit_str) => self.get_lit_str_label_if_exists(lit_str),
             VarString(var_name) => {
-                self.str_var_labels.get(var_name).cloned().expect("BUG")
-                // str_argument_labels
+                self.str_var_labels
+                    .get(var_name)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
+                        assert_eq!(&arg.var_name, var_name);
+                        assert!(matches!(arg.var_type, parser::VarType::String));
+                        assert!(matches!(labels.label_type, StrLabelType::ArgVal));
+                        labels.clone()
+                    })
             }
-            VarRefString(..) => {
-                todo!()
-                // str_argument_labels
+            VarRefString(var_name) => {
+                let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
+                assert_eq!(&arg.var_name, var_name);
+                assert!(matches!(arg.var_type, parser::VarType::RefString));
+                assert!(matches!(labels.label_type, StrLabelType::ArgRef));
+                labels.clone()
             }
 
             // 戻り値が文字列ではないもの
@@ -3205,12 +3278,12 @@ impl Compiler {
             self.code(format!(
                 r#" LAD   GR1,{tmppos}
                     LAD   GR2,{tmplen}
-                    LAD   GR3,{srcpos}
+                    {lad_srcpos}
                     {ld_srclen}
                     CALL  {copy}"#,
                 tmppos = temp_labels.pos,
                 tmplen = temp_labels.len,
-                srcpos = lhs_labels.pos,
+                lad_srcpos = lhs_labels.lad_pos(casl2::Register::Gr3),
                 ld_srclen = lhs_labels.ld_len(casl2::Register::Gr4),
                 copy = copy
             ));
@@ -3223,12 +3296,12 @@ impl Compiler {
         self.code(format!(
             r#" LAD   GR1,{lhspos}
                 LAD   GR2,{lhslen}
-                LAD   GR3,{rhspos}
+                {lad_rhspos}
                 {ld_rhslen}
                 CALL  {concat}"#,
             lhspos = lhs_labels.pos,
             lhslen = lhs_labels.len,
-            rhspos = rhs_labels.pos,
+            lad_rhspos = rhs_labels.lad_pos(casl2::Register::Gr3),
             ld_rhslen = rhs_labels.ld_len(casl2::Register::Gr4),
             concat = concat
         ));
@@ -3333,8 +3406,8 @@ impl Compiler {
                     {offset_line}
                     {length_line2}
                     LAD   GR5,{dstpos}
-                    LAD   GR3,{srcpos}
-                    {ld_srclen}
+                    {lad_gr3_srcpos}
+                    {ld_gr4_srclen}
                     LD    GR2,GR4
                     CALL  {copy}
                     ST    GR0,{dstlen}"#,
@@ -3343,8 +3416,8 @@ impl Compiler {
                 length_line2 = length_line2,
                 dstpos = dst_labels.pos,
                 dstlen = dst_labels.len,
-                srcpos = src_labels.pos,
-                ld_srclen = src_labels.ld_len(casl2::Register::Gr4),
+                lad_gr3_srcpos = src_labels.lad_pos(casl2::Register::Gr3),
+                ld_gr4_srclen = src_labels.ld_len(casl2::Register::Gr4),
                 copy = partialcopy
             ));
             self.code(recovers);
@@ -3369,8 +3442,8 @@ impl Compiler {
             self.code(format!(
                 r#" {offset_line}
                     LAD   GR5,{dstpos}
-                    LAD   GR3,{srcpos}
-                    {ld_srclen}
+                    {lad_gr3_srcpos}
+                    {ld_gr4_srclen}
                     LD    GR2,GR4
                     LD    GR6,GR4
                     CALL  {copy}
@@ -3378,8 +3451,8 @@ impl Compiler {
                 offset_line = offset_line,
                 dstpos = dst_labels.pos,
                 dstlen = dst_labels.len,
-                srcpos = src_labels.pos,
-                ld_srclen = src_labels.ld_len(casl2::Register::Gr4),
+                lad_gr3_srcpos = src_labels.lad_pos(casl2::Register::Gr3),
+                ld_gr4_srclen = src_labels.ld_len(casl2::Register::Gr4),
                 copy = partialcopy
             ));
             self.code(recovers);
@@ -3916,12 +3989,12 @@ impl Compiler {
         self.code(saves);
         self.code(format!(
             r#" {index_line}
-                LD    GR2,{len}
-                LAD   GR3,{pos}
+                {ld_gr2_len}
+                {lad_gr3_pos}
                 CALL  {load}"#,
             index_line = index_line,
-            len = str_labels.len,
-            pos = str_labels.pos,
+            ld_gr2_len = str_labels.ld_len(casl2::Register::Gr2),
+            lad_gr3_pos = str_labels.lad_pos(casl2::Register::Gr3),
             load = load_elem
         ));
         self.code(recovers);
