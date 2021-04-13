@@ -2018,13 +2018,23 @@ impl Parser {
         match pos_and_tokens {
             // プリミティブ変数への入力
             [(pos, Token::Name(name))] => match self.variables.get(name) {
-                Some(VarType::Integer) | Some(VarType::RefInteger) => {
+                Some(VarType::Integer) => {
                     self.add_statement(Statement::InputInteger {
                         var_name: name.clone(),
                     });
                 }
-                Some(VarType::String) | Some(VarType::RefString) => {
+                Some(VarType::RefInteger) => {
+                    self.add_statement(Statement::InputRefInteger {
+                        var_name: name.clone(),
+                    });
+                }
+                Some(VarType::String) => {
                     self.add_statement(Statement::InputString {
+                        var_name: name.clone(),
+                    });
+                }
+                Some(VarType::RefString) => {
+                    self.add_statement(Statement::InputRefString {
                         var_name: name.clone(),
                     });
                 }
@@ -2040,24 +2050,31 @@ impl Parser {
             // 整数配列の指定位置への入力
             [(pos, Token::Name(name)), (_, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
             {
-                if !matches!(
-                    self.variables.get(name),
-                    Some(VarType::ArrayOfInteger(_)) | Some(VarType::RefArrayOfInteger(_))
-                ) {
-                    return Err(
-                        self.syntax_error_pos(*pos, "invalid Variable in Input statement".into())
-                    );
-                }
+                let is_ref = match self.variables.get(name) {
+                    Some(VarType::ArrayOfInteger(_)) => false,
+                    Some(VarType::RefArrayOfInteger(_)) => true,
+                    _ => {
+                        return Err(self
+                            .syntax_error_pos(*pos, "invalid Variable in Input statement".into()))
+                    }
+                };
                 let param = self.parse_expr(inner)?;
                 if !matches!(param.return_type(), ExprType::Integer) {
                     return Err(
                         self.syntax_error_pos(*pos, "invalid Variable in Input statement".into())
                     );
                 }
-                self.add_statement(Statement::InputElementInteger {
-                    var_name: name.clone(),
-                    index: param,
-                });
+                if is_ref {
+                    self.add_statement(Statement::InputRefElementInteger {
+                        var_name: name.clone(),
+                        index: param,
+                    });
+                } else {
+                    self.add_statement(Statement::InputElementInteger {
+                        var_name: name.clone(),
+                        index: param,
+                    });
+                }
             }
             _ => return Err(self.syntax_error("invalid Input statement".into())),
         }
@@ -2797,6 +2814,16 @@ pub enum Statement {
         var_name: String,
     },
     InputString {
+        var_name: String,
+    },
+    InputRefElementInteger {
+        var_name: String,
+        index: Expr,
+    },
+    InputRefInteger {
+        var_name: String,
+    },
+    InputRefString {
         var_name: String,
     },
     PrintLitBoolean {

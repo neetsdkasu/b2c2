@@ -888,6 +888,11 @@ impl Compiler {
             }
             InputInteger { var_name } => self.compile_input_integer(var_name),
             InputString { var_name } => self.compile_input_string(var_name),
+            InputRefElementInteger { var_name, index } => {
+                self.compile_input_ref_element_integer(var_name, index)
+            }
+            InputRefInteger { var_name } => self.compile_input_ref_integer(var_name),
+            InputRefString { var_name } => self.compile_input_ref_string(var_name),
             PrintLitBoolean { value } => self.compile_print_lit_boolean(*value),
             PrintLitInteger { value } => self.compile_print_lit_integer(*value),
             PrintLitString { value } => self.compile_print_lit_string(value),
@@ -2593,7 +2598,19 @@ impl Compiler {
         self.has_eof = true;
         let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
 
-        let (arr_label, arr_size) = self.int_arr_labels.get(var_name).cloned().expect("BUG");
+        let (arr_label, arr_size) =
+            self.int_arr_labels
+                .get(var_name)
+                .cloned()
+                .unwrap_or_else(|| {
+                    let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+                    assert_eq!(arg.var_name, var_name);
+                    if let parser::VarType::ArrayOfInteger(size) = arg.var_type {
+                        (label.clone(), size)
+                    } else {
+                        unreachable!("BUG");
+                    }
+                });
         assert!(arr_size > 0);
 
         // indexがリテラルの場合
@@ -2691,7 +2708,16 @@ impl Compiler {
     fn compile_input_integer(&mut self, var_name: &str) {
         let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
         let s_labels = self.get_temp_str_var_label();
-        let var_label = self.int_var_labels.get(var_name).cloned().expect("BUG");
+        let var_label = self
+            .int_var_labels
+            .get(var_name)
+            .cloned()
+            .unwrap_or_else(|| {
+                let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+                assert_eq!(arg.var_name, var_name);
+                assert!(matches!(arg.var_type, parser::VarType::Integer));
+                label.clone()
+            });
         let label = self.get_new_jump_label();
 
         self.has_eof = true;
@@ -2730,6 +2756,195 @@ impl Compiler {
     // Input <str_var> ステートメント
     // 文字列変数へのコンソール入力
     fn compile_input_string(&mut self, var_name: &str) {
+        let StrLabels { len, pos, .. } =
+            self.str_var_labels
+                .get(var_name)
+                .cloned()
+                .unwrap_or_else(|| {
+                    let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
+                    assert_eq!(arg.var_name, var_name);
+                    assert!(matches!(arg.var_type, parser::VarType::String));
+                    assert!(matches!(labels.label_type, StrLabelType::ArgVal));
+                    labels.clone()
+                });
+        let label = self.get_new_jump_label();
+        self.has_eof = true;
+        self.comment(format!("Input {}", var_name));
+        // IN {var_pos},{var_len}
+        self.code(format!(
+            r#" IN   {pos},{len}
+                LD   GR0,{len}
+                JPL  {ok}
+                JZE  {ok}
+                ST   GR0,EOF
+                XOR  GR0,GR0
+                ST   GR0,{len}
+{ok}            NOP"#,
+            pos = pos,
+            len = len,
+            ok = label
+        ));
+    }
+
+    // Input <ref_int_arr>( <index> ) ステートメント
+    // 整数配列(参照型)の要素へのコンソール入力
+    fn compile_input_ref_element_integer(&mut self, var_name: &str, index: &parser::Expr) {
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+
+        self.comment(format!(
+            "Input {arr}( {index} )",
+            arr = var_name,
+            index = index
+        ));
+
+        self.has_eof = true;
+        let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
+
+        let (arr_label, arg) = self.argument_labels.get(var_name).cloned().expect("BUG");
+        assert_eq!(arg.var_name, var_name);
+        let arr_size = if let parser::VarType::RefArrayOfInteger(size) = arg.var_type {
+            size
+        } else {
+            unreachable!("BUG");
+        };
+
+        assert!(arr_size > 0);
+
+        // indexがリテラルの場合
+        if let parser::Expr::LitInteger(index) = index {
+            let index = *index as i16;
+            let index = (index.max(0) as usize).min(arr_size - 1);
+            let s_labels = self.get_temp_str_var_label();
+            let ok_label = self.get_new_jump_label();
+            // レジスタ退避
+            let (saves, recovers) = {
+                use casl2::Register::*;
+                self.get_save_registers_src(&[Gr1, Gr2])
+            };
+            self.code(saves);
+            self.code(format!(
+                r#" IN    {pos},{len}
+                    LAD   GR1,{pos}
+                    LD    GR2,{len}
+                    JPL   {ok}
+                    JZE   {ok}
+                    ST    GR2,EOF
+                    XOR   GR2,GR2
+{ok}                CALL  {cint}"#,
+                pos = s_labels.pos,
+                len = s_labels.len,
+                cint = cint_label,
+                ok = ok_label
+            ));
+            self.code(format!(
+                r#" LD    GR1,{arr}
+                    ST    GR0,{index},GR1"#,
+                index = index,
+                arr = arr_label
+            ));
+            self.code(recovers);
+            self.return_temp_str_var_label(s_labels);
+            return;
+        }
+
+        // 想定では GR7
+        let index_reg = self.compile_int_expr(index);
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+        let s_labels = self.get_temp_str_var_label();
+        let ok_label = self.get_new_jump_label();
+
+        // 想定では、
+        //  index_reg = GR7
+        //  他のレジスタ未使用
+        //  になっているはず…
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+        };
+
+        // index_regがGR1またはGR2の場合にGR3にfit後のindexを保持は必要
+        // index_regがGR1でもGR2でも無い場合でもindexにGR3を利用しててもデメリットは無いと思われる
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD    GR1,{index}
+                LAD   GR2,{size}
+                CALL  {fit}
+                LD    GR3,GR0
+                IN    {pos},{len}
+                LAD   GR1,{pos}
+                LD    GR2,{len}
+                JPL   {ok}
+                JZE   {ok}
+                ST    GR2,EOF
+                XOR   GR2,GR2
+{ok}            CALL  {cint}
+                ADDL  GR3,{arr}
+                ST    GR0,0,GR3"#,
+            index = index_reg,
+            size = arr_size,
+            fit = safe_index,
+            pos = s_labels.pos,
+            len = s_labels.len,
+            ok = ok_label,
+            cint = cint_label,
+            arr = arr_label
+        ));
+        self.code(recovers);
+
+        self.set_register_idle(index_reg); // GR7 解放のはず
+        self.return_temp_str_var_label(s_labels);
+
+        todo!();
+    }
+
+    // Input <ref_int_var> ステートメント
+    // 整数変数(参照型)へのコンソール入力
+    fn compile_input_ref_integer(&mut self, var_name: &str) {
+        let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
+        let s_labels = self.get_temp_str_var_label();
+        let var_label = self.int_var_labels.get(var_name).cloned().expect("BUG");
+        let label = self.get_new_jump_label();
+
+        self.has_eof = true;
+
+        // 想定では、
+        //  全てのレジスタ未使用
+        //  になっているはず…
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2])
+        };
+
+        self.comment(format!("Input {}", var_name));
+        self.code(saves);
+        self.code(format!(
+            r#" IN    {pos},{len}
+                LAD   GR1,{pos}
+                LD    GR2,{len}
+                JPL   {ok}
+                JZE   {ok}
+                ST    GR2,EOF
+                XOR   GR2,GR2
+{ok}            CALL  {cint}
+                ST    GR0,{var}"#,
+            pos = s_labels.pos,
+            len = s_labels.len,
+            ok = label,
+            cint = cint_label,
+            var = var_label
+        ));
+        self.code(recovers);
+
+        self.return_temp_str_var_label(s_labels);
+
+        todo!();
+    }
+
+    // Input <ref_str_var> ステートメント
+    // 文字列変数(参照型)へのコンソール入力
+    fn compile_input_ref_string(&mut self, var_name: &str) {
         let StrLabels { len, pos, .. } = self.str_var_labels.get(var_name).cloned().expect("BUG");
         let label = self.get_new_jump_label();
         self.has_eof = true;
@@ -2748,6 +2963,7 @@ impl Compiler {
             len = len,
             ok = label
         ));
+        todo!();
     }
 
     // Print <lit_bool> ステートメント
