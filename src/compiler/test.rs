@@ -312,6 +312,7 @@ fn compiler_compile_dim_works() {
         r#"
 TEST   START
        RPUSH
+                                   ; Init Variables
        LAD    GR1,B2
        XOR    GR2,GR2
        LAD    GR3,705
@@ -481,6 +482,7 @@ fn compiler_compile_print_var_string_works() {
         r#"
 TEST   START
        RPUSH
+                                   ; Init Variables
        LAD    GR1,SL1
        XOR    GR2,GR2
        LAD    GR3,771
@@ -535,6 +537,7 @@ fn compiler_compile_input_string_works() {
         r#"
 TEST   START
        RPUSH
+                                   ; Init Variables
        LAD    GR1,SL1
        XOR    GR2,GR2
        LAD    GR3,772
@@ -612,6 +615,7 @@ fn compiler_compile_input_integer_works() {
         r#"
 TEST   START
        RPUSH
+                                   ; Init Variables
        LAD    GR1,I1
        XOR    GR2,GR2
        LAD    GR3,2
@@ -674,6 +678,7 @@ fn for_statement_without_step_works() {
         casl2::parse(
             r#"TEST  START
                      RPUSH
+                                   ; Init Variable
                      XOR    GR0,GR0
                      ST     GR0,I1
                                    ; For i = 1 To 10 Step 1
@@ -720,6 +725,7 @@ fn for_statement_positive_step_works() {
         casl2::parse(
             r#"TEST  START
                      RPUSH
+                                   ; Init Variable
                      XOR    GR0,GR0
                      ST     GR0,I1
                                    ; For i = 1 To 10 Step 1
@@ -766,6 +772,7 @@ fn for_statement_negative_step_works() {
         casl2::parse(
             r#"TEST  START
                      RPUSH
+                                   ; Init Variable
                      XOR    GR0,GR0
                      ST     GR0,I1
                                    ; For i = 24 To 8 Step -2
@@ -813,6 +820,7 @@ fn for_statement_expr_step_works() {
     let mut right_statements = casl2::parse(&format!(
         r#"TEST      START
                      RPUSH
+                                   ; Init Variables
                      LAD    GR1,I1
                      XOR    GR2,GR2
                      LAD    GR3,2
@@ -880,6 +888,7 @@ fn expr_add_literal_int_rhs_works() {
         casl2::parse(
             r#"TEST  START
                      RPUSH
+                                   ; Init Variable
                      XOR    GR0,GR0
                      ST     GR0,I1
                                    ; x = (11 + 22)
@@ -916,6 +925,7 @@ fn expr_add_variable_rhs_works() {
     let mut right_statements = casl2::parse(&format!(
         r#"TEST      START
                      RPUSH
+                                   ; Init Variables
                      LAD    GR1,I1
                      XOR    GR2,GR2
                      LAD    GR3,2

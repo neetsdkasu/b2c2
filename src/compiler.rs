@@ -195,6 +195,18 @@ struct StrLabels {
     label_type: StrLabelType,
 }
 
+// 配列参照
+// (一時的な配列は一時的な文字列変数の領域を借用する)
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+enum ArrayLabel {
+    TempArrayOfBoolean(StrLabels, usize),
+    TempArrayOfInteger(StrLabels, usize),
+    VarArrayOfBoolean(String, usize),
+    VarArrayOfInteger(String, usize),
+    VarRefArrayOfBoolean(String, usize),
+    VarRefArrayOfInteger(String, usize),
+}
+
 impl StrLabels {
     fn lad_pos(&self, reg: casl2::Register) -> String {
         match &self.label_type {
@@ -693,29 +705,99 @@ impl Compiler {
 
         temp_statements.code(casl2::Command::Rpush);
 
-        // TODO
-        for _arg in arguments.iter() {
-            todo!();
+        for arg in arguments.iter() {
+            temp_statements.comment(format!("Argument {}", arg.var_name));
+            match arg.var_type {
+                parser::VarType::Boolean
+                | parser::VarType::RefBoolean
+                | parser::VarType::Integer
+                | parser::VarType::RefInteger
+                | parser::VarType::RefArrayOfBoolean(_)
+                | parser::VarType::ArrayOfBoolean(_)
+                | parser::VarType::ArrayOfInteger(_)
+                | parser::VarType::RefArrayOfInteger(_) => {
+                    let (label, _) = argument_labels.get(&arg.var_name).expect("BUG");
+                    temp_statements.code(format!(
+                        r#" ST {reg},{label}"#,
+                        reg = arg.register1,
+                        label = label
+                    ));
+                }
+                parser::VarType::String | parser::VarType::RefString => {
+                    let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
+                    temp_statements.code(format!(
+                        r#" ST {reglen},{len}
+                            ST {regpos},{pos}"#,
+                        reglen = arg.register1,
+                        len = labels.len,
+                        regpos = arg.register2.expect("BUG"),
+                        pos = labels.pos
+                    ));
+                }
+            }
+        }
+
+        for arg in arguments.iter() {
+            match arg.var_type {
+                parser::VarType::Boolean
+                | parser::VarType::RefBoolean
+                | parser::VarType::Integer
+                | parser::VarType::RefInteger
+                | parser::VarType::RefArrayOfBoolean(_)
+                | parser::VarType::RefArrayOfInteger(_)
+                | parser::VarType::RefString => {}
+
+                parser::VarType::ArrayOfBoolean(size) | parser::VarType::ArrayOfInteger(size) => {
+                    temp_statements.comment(format!("Copy Into {}", arg.var_name));
+                    let (label, _) = argument_labels.get(&arg.var_name).expect("BUG");
+                    temp_statements.code(format!(
+                        r#" LAD   GR1,{label}
+                            LAD   GR2,{label}
+                            LD    GR3,{label}
+                            LAD   GR4,{size}
+                            CALL  {copy}"#,
+                        label = label,
+                        size = size,
+                        copy = subroutine::Id::UtilCopyStr.label()
+                    ));
+                }
+                parser::VarType::String => {
+                    temp_statements.comment(format!("Copy Into {}", arg.var_name));
+                    let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
+                    temp_statements.code(format!(
+                        r#" LAD   GR1,{pos}
+                            LAD   GR2,{len}
+                            LD    GR3,{pos}
+                            LD    GR4,{len}
+                            CALL  {copy}"#,
+                        pos = labels.pos,
+                        len = labels.len,
+                        copy = subroutine::Id::UtilCopyStr.label()
+                    ));
+                }
+            }
         }
 
         match first_var_label {
             Some(label) if var_total_size == 1 => {
+                temp_statements.comment("Init Variable");
                 temp_statements.extend(
                     casl2::parse(&format!(
                         r#" XOR   GR0,GR0
-                        ST    GR0,{label}"#,
+                            ST    GR0,{label}"#,
                         label = label
                     ))
                     .unwrap(),
                 );
             }
             Some(label) => {
+                temp_statements.comment("Init Variables");
                 temp_statements.extend(
                     casl2::parse(&format!(
                         r#" LAD   GR1,{start}
-                        XOR   GR2,GR2
-                        LAD   GR3,{size}
-                        CALL  {fill}"#,
+                            XOR   GR2,GR2
+                            LAD   GR3,{size}
+                            CALL  {fill}"#,
                         start = label,
                         size = var_total_size,
                         fill = subroutine::Id::UtilFill.label()
@@ -931,12 +1013,142 @@ impl Compiler {
     }
 
     // Call ステートメント
-    fn compile_call_exterun_sub(&mut self, _name: &str, _arguments: &[(String, parser::Expr)]) {
-        todo!();
+    fn compile_call_exterun_sub(&mut self, name: &str, arguments: &[(String, parser::Expr)]) {
+        use casl2::IndexRegister;
+        use parser::{ExprType, VarType};
+
+        let argument_def = self.callables.get(name).cloned().expect("BUG");
+        assert_eq!(argument_def.len(), arguments.len());
+
+        let mut reg_and_label = Vec::<((IndexRegister, bool), (String, bool))>::new();
+        let mut temp_int_labels = Vec::<String>::new();
+        let mut str_labels = Vec::<StrLabels>::new();
+
+        self.comment(format!("Call {}", name));
+
+        for (arg_name, value) in arguments.iter() {
+            self.comment(format!("{} = {}", arg_name, value));
+
+            let arg = argument_def
+                .iter()
+                .find(|arg| &arg.var_name == arg_name)
+                .expect("BUG");
+
+            match value.return_type() {
+                ExprType::Boolean => todo!(),
+                ExprType::Integer => {
+                    let is_byref = match arg.var_type {
+                        VarType::Integer => false,
+                        VarType::RefInteger => true,
+                        _ => unreachable!("BUG"),
+                    };
+                    // TODO: 変数ダイレクトだったりだと一時変数が不要なので修正必要
+                    let value_reg = self.compile_int_expr(value);
+                    let temp_label = self.get_temp_int_var_label();
+                    self.code(format!(
+                        r#" ST {reg},{temp}"#,
+                        reg = value_reg,
+                        temp = temp_label
+                    ));
+                    self.set_register_idle(value_reg);
+                    temp_int_labels.push(temp_label.clone());
+                    reg_and_label.push(((arg.register1, is_byref), (temp_label, false)));
+                }
+                ExprType::String => {
+                    let is_byref = match arg.var_type {
+                        VarType::String => false,
+                        VarType::RefString => true,
+                        _ => unreachable!("BUG"),
+                    };
+                    let labels = self.compile_str_expr(value);
+                    let reg1 = arg.register1;
+                    let reg2 = arg.register2.expect("BUG");
+                    let val_is_ref = matches!(labels.label_type, StrLabelType::ArgRef);
+                    reg_and_label.push(((reg1, is_byref), (labels.len.clone(), val_is_ref)));
+                    reg_and_label.push(((reg2, true), (labels.pos.clone(), val_is_ref)));
+                    str_labels.push(labels);
+                }
+                ExprType::ReferenceOfVar(VarType::ArrayOfBoolean(_size)) => todo!(),
+                ExprType::ReferenceOfVar(VarType::RefArrayOfBoolean(_size)) => todo!(),
+                ExprType::ReferenceOfVar(VarType::ArrayOfInteger(size1))
+                | ExprType::ReferenceOfVar(VarType::RefArrayOfInteger(size1)) => {
+                    match arg.var_type {
+                        VarType::ArrayOfInteger(size2) | VarType::RefArrayOfInteger(size2)
+                            if size1 == size2 => {}
+                        _ => unreachable!("BUG"),
+                    }
+                    let label = self.compile_ref_arr_expr(value);
+                    match label {
+                        ArrayLabel::TempArrayOfInteger(..) => todo!(),
+                        ArrayLabel::VarArrayOfInteger(label, size3) if size1 == size3 => {
+                            reg_and_label.push(((arg.register1, true), (label, false)));
+                        }
+                        ArrayLabel::VarRefArrayOfInteger(label, size3) if size1 == size3 => {
+                            reg_and_label.push(((arg.register1, true), (label, true)));
+                        }
+                        _ => unreachable!("BUG"),
+                    }
+                }
+
+                ExprType::ReferenceOfVar(..) | ExprType::ParamList => unreachable!("BUG"),
+            }
+        }
+
+        if !arguments.is_empty() {
+            self.comment(format!("Set Arguments For {}", name));
+        }
+
+        let regs: Vec<casl2::Register> = reg_and_label
+            .iter()
+            .map(|((reg, _), _)| (*reg).into())
+            .collect();
+
+        let (saves, recovers) = self.get_save_registers_src(&regs);
+
+        self.code(saves);
+        for ((reg, is_byref), (label, val_is_ref)) in reg_and_label.iter() {
+            if *is_byref {
+                if *val_is_ref {
+                    self.code(format!(r#" LD {reg},{label}"#, reg = reg, label = label));
+                } else {
+                    self.code(format!(r#" LAD {reg},{label}"#, reg = reg, label = label));
+                }
+            } else if *val_is_ref {
+                self.code(format!(
+                    r#" LD  {reg},{label}
+                        LD  {reg},0,{reg}"#,
+                    reg = reg,
+                    label = label
+                ));
+            } else {
+                self.code(format!(r#" LD  {reg},{label}"#, reg = reg, label = label));
+            }
+        }
+        self.code(format!(r#" CALL {prog}"#, prog = name));
+        self.code(recovers);
+
+        for label in temp_int_labels.into_iter() {
+            self.return_temp_int_var_label(label);
+        }
+        for labels in str_labels.into_iter() {
+            self.return_temp_str_var_label(labels);
+        }
     }
 
     // Argument ステートメント
     fn compile_argument(&mut self, arguments: &[parser::ArgumentInfo]) {
+        let load_copystr = arguments.iter().any(|arg| {
+            matches!(
+                arg.var_type,
+                parser::VarType::ArrayOfBoolean(_)
+                    | parser::VarType::ArrayOfInteger(_)
+                    | parser::VarType::String
+            )
+        });
+        if load_copystr {
+            self.load_subroutine(subroutine::Id::UtilCopyStr);
+        }
+
         for arg in arguments.iter() {
             match arg.var_type {
                 parser::VarType::Boolean
@@ -5874,6 +6086,102 @@ impl Compiler {
 
         self.set_register_idle(rhs_reg);
         lhs_reg
+    }
+
+    // 式の展開 (戻り値が配列参照)
+    fn compile_ref_arr_expr(&mut self, expr: &parser::Expr) -> ArrayLabel {
+        use parser::Expr::*;
+        match expr {
+            ReferenceOfVar(var_name, parser::VarType::ArrayOfBoolean(size)) => {
+                let (arr_label, arr_size) = self
+                    .bool_arr_labels
+                    .get(var_name)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+                        assert_eq!(&arg.var_name, var_name);
+                        if let parser::VarType::ArrayOfBoolean(size2) = arg.var_type {
+                            (label.clone(), size2)
+                        } else {
+                            unreachable!("BUG");
+                        }
+                    });
+                assert_eq!(arr_size, *size);
+                ArrayLabel::VarArrayOfBoolean(arr_label, arr_size)
+            }
+            ReferenceOfVar(var_name, parser::VarType::ArrayOfInteger(size)) => {
+                let (arr_label, arr_size) = self
+                    .int_arr_labels
+                    .get(var_name)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+                        assert_eq!(&arg.var_name, var_name);
+                        if let parser::VarType::ArrayOfInteger(size2) = arg.var_type {
+                            (label.clone(), size2)
+                        } else {
+                            unreachable!("BUG");
+                        }
+                    });
+                assert_eq!(arr_size, *size);
+                ArrayLabel::VarArrayOfInteger(arr_label, arr_size)
+            }
+            ReferenceOfVar(var_name, parser::VarType::RefArrayOfBoolean(size)) => {
+                let (arr_label, arr_size) = {
+                    let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+                    assert_eq!(&arg.var_name, var_name);
+                    if let parser::VarType::RefArrayOfBoolean(size2) = arg.var_type {
+                        (label.clone(), size2)
+                    } else {
+                        unreachable!("BUG");
+                    }
+                };
+                assert_eq!(arr_size, *size);
+                ArrayLabel::VarRefArrayOfBoolean(arr_label, arr_size)
+            }
+            ReferenceOfVar(var_name, parser::VarType::RefArrayOfInteger(size)) => {
+                let (arr_label, arr_size) = {
+                    let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+                    assert_eq!(&arg.var_name, var_name);
+                    if let parser::VarType::RefArrayOfInteger(size2) = arg.var_type {
+                        (label.clone(), size2)
+                    } else {
+                        unreachable!("BUG");
+                    }
+                };
+                assert_eq!(arr_size, *size);
+                ArrayLabel::VarRefArrayOfInteger(arr_label, arr_size)
+            }
+
+            // 戻り値が配列参照ではないもの
+            ReferenceOfVar(..)
+            | BinaryOperatorBoolean(..)
+            | BinaryOperatorInteger(..)
+            | CharOfLitString(..)
+            | CharOfVarString(..)
+            | CharOfVarRefString(..)
+            | FunctionBoolean(..)
+            | FunctionInteger(..)
+            | LitBoolean(..)
+            | LitInteger(..)
+            | LitCharacter(..)
+            | UnaryOperatorInteger(..)
+            | UnaryOperatorBoolean(..)
+            | VarBoolean(..)
+            | VarRefBoolean(..)
+            | VarInteger(..)
+            | VarRefInteger(..)
+            | VarArrayOfBoolean(..)
+            | VarRefArrayOfBoolean(..)
+            | VarArrayOfInteger(..)
+            | VarRefArrayOfInteger(..)
+            | BinaryOperatorString(..)
+            | FunctionString(..)
+            | LitString(..)
+            | VarString(..)
+            | VarRefString(..)
+            | ParamList(_) => unreachable!("BUG"),
+        }
     }
 }
 
