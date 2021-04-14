@@ -1014,7 +1014,9 @@ impl Compiler {
                 value,
             } => self.compile_assign_ref_add_into_element(var_name, index, value),
             AssignBoolean { var_name, value } => self.compile_assign_boolean(var_name, value),
-            AssignRefBoolean { .. } => todo!(),
+            AssignRefBoolean { var_name, value } => {
+                self.compile_assign_ref_boolean(var_name, value)
+            }
             AssignBooleanElement {
                 var_name,
                 index,
@@ -2640,6 +2642,30 @@ impl Compiler {
         });
 
         self.set_register_idle(reg);
+    }
+
+    // Assign Ref Boolean ステートメント
+    // Ref bool_var = bool_expr
+    fn compile_assign_ref_boolean(&mut self, var_name: &str, value: &parser::Expr) {
+        assert!(matches!(value.return_type(), parser::ExprType::Boolean));
+
+        self.comment(format!("{var} = {value}", var = var_name, value = value));
+
+        let value_reg = self.compile_int_expr(value);
+        let var_label = self.get_ref_bool_var_label(var_name);
+        let temp_reg = self.get_idle_register();
+        assert_ne!(value_reg, temp_reg);
+
+        self.code(format!(
+            r#" LD  {temp},{var}
+                ST  {value},0,{temp}"#,
+            temp = temp_reg,
+            var = var_label,
+            value = value_reg
+        ));
+
+        self.set_register_idle(temp_reg);
+        self.set_register_idle(value_reg);
     }
 
     // Assign String ステートメント
