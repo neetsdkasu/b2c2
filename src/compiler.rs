@@ -1847,6 +1847,7 @@ impl Compiler {
 
     // Continue {Do/For}
     fn compile_continue_loop(&mut self, exit_id: usize, keyword: &str) {
+        assert!(matches!(keyword, "Do" | "For"));
         let loop_label = self.get_loop_label(exit_id);
         self.comment(format!("Continue {}", keyword));
         // JUMP {loop}
@@ -1859,6 +1860,7 @@ impl Compiler {
 
     // Exit {Do/For/Select}
     fn compile_exit_block(&mut self, exit_id: usize, keyword: &str) {
+        assert!(matches!(keyword, "Do" | "For" | "Select"));
         let exit_label = self.get_exit_label(exit_id);
         self.comment(format!("Exit {}", keyword));
         // JUMP {exit}
