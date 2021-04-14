@@ -539,6 +539,129 @@ impl Compiler {
         (saves, recovers)
     }
 
+    // 整数変数のラベル取得
+    fn get_int_var_label(&self, var_name: &str) -> String {
+        self.int_var_labels
+            .get(var_name)
+            .cloned()
+            .unwrap_or_else(|| {
+                let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+                assert_eq!(arg.var_name, var_name);
+                assert!(matches!(arg.var_type, parser::VarType::Integer));
+                label.clone()
+            })
+    }
+
+    // 整数変数(参照型)のラベル取得
+    fn get_ref_int_var_label(&self, var_name: &str) -> String {
+        let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+        assert_eq!(arg.var_name, var_name);
+        assert!(matches!(arg.var_type, parser::VarType::RefInteger));
+        label.clone()
+    }
+
+    // 真理値変数のラベル取得
+    fn get_bool_var_label(&self, var_name: &str) -> String {
+        self.bool_var_labels
+            .get(var_name)
+            .cloned()
+            .unwrap_or_else(|| {
+                let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+                assert_eq!(arg.var_name, var_name);
+                assert!(matches!(arg.var_type, parser::VarType::Boolean));
+                label.clone()
+            })
+    }
+
+    // 真理値変数(参照型)のラベル取得
+    fn get_ref_bool_var_label(&self, var_name: &str) -> String {
+        let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+        assert_eq!(arg.var_name, var_name);
+        assert!(matches!(arg.var_type, parser::VarType::RefBoolean));
+        label.clone()
+    }
+
+    // 文字列変数のラベル取得
+    fn get_str_var_labels(&self, var_name: &str) -> StrLabels {
+        self.str_var_labels
+            .get(var_name)
+            .cloned()
+            .unwrap_or_else(|| {
+                let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
+                assert_eq!(arg.var_name, var_name);
+                assert!(matches!(arg.var_type, parser::VarType::String));
+                assert!(matches!(labels.label_type, StrLabelType::ArgVal));
+                labels.clone()
+            })
+    }
+
+    // 文字列変数(参照型)のラベル取得
+    fn get_ref_str_var_labels(&self, var_name: &str) -> StrLabels {
+        let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
+        assert_eq!(arg.var_name, var_name);
+        assert!(matches!(arg.var_type, parser::VarType::RefString));
+        assert!(matches!(labels.label_type, StrLabelType::ArgRef));
+        labels.clone()
+    }
+
+    // 真理値配列のラベル取得
+    fn get_bool_arr_label(&self, var_name: &str) -> (String, usize) {
+        self.bool_arr_labels
+            .get(var_name)
+            .cloned()
+            .unwrap_or_else(|| {
+                let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+                assert_eq!(arg.var_name, var_name);
+                if let parser::VarType::ArrayOfBoolean(size) = arg.var_type {
+                    assert!(size > 0);
+                    (label.clone(), size)
+                } else {
+                    unreachable!("BUG");
+                }
+            })
+    }
+
+    // 真理値配列(参照型)のラベル取得
+    fn get_ref_bool_arr_label(&self, var_name: &str) -> (String, usize) {
+        let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+        assert_eq!(arg.var_name, var_name);
+        if let parser::VarType::RefArrayOfBoolean(size) = arg.var_type {
+            assert!(size > 0);
+            (label.clone(), size)
+        } else {
+            unreachable!("BUG");
+        }
+    }
+
+    // 整数配列のラベル取得
+    fn get_int_arr_label(&self, var_name: &str) -> (String, usize) {
+        self.int_arr_labels
+            .get(var_name)
+            .cloned()
+            .unwrap_or_else(|| {
+                let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+                assert_eq!(arg.var_name, var_name);
+                if let parser::VarType::ArrayOfInteger(size) = arg.var_type {
+                    assert!(size > 0);
+                    (label.clone(), size)
+                } else {
+                    unreachable!("BUG");
+                }
+            })
+    }
+
+    // 整数配列(参照型)のラベル取得
+    fn get_ref_int_arr_label(&self, var_name: &str) -> (String, usize) {
+        let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+        assert_eq!(arg.var_name, var_name);
+        if let parser::VarType::RefArrayOfInteger(size) = arg.var_type {
+            assert!(size > 0);
+            (label.clone(), size)
+        } else {
+            unreachable!("BUG");
+        }
+    }
+
     // コンパイル最終工程
     fn finish(mut self) -> Vec<casl2::Statement> {
         if self.var_total_size > 1 || (self.var_total_size == 1 && self.has_eof) {
@@ -565,11 +688,12 @@ impl Compiler {
             ..
         } = self;
 
-        // RET ステートメント
+        // プログラム開始時のレジスタの状態の復帰
         statements.labeled("EXIT", casl2::Command::Rpop);
+        // プログラムの終了
         statements.code(casl2::Command::Ret);
 
-        // 引数 ARG*
+        // 引数の値を保持する領域の設定 ARG*
         for arg in arguments.iter() {
             statements.comment(arg.to_string());
             match arg.var_type {
@@ -599,7 +723,7 @@ impl Compiler {
             }
         }
 
-        // 初期化が必要な領域の最初のラベル
+        // 初期化が必要な変数領域の最初のラベル
         let mut first_var_label: Option<String> = None;
 
         // 真理値変数 B**
@@ -678,8 +802,10 @@ impl Compiler {
             statements.labeled("EOF", casl2::Command::Ds { size: 1 });
         }
 
+        // プログラム冒頭のコードをまとめる用
         let mut temp_statements = Vec::<casl2::Statement>::new();
 
+        // プログラムの開始点(START)の設定
         if let Some(name) = program_name {
             temp_statements.code(casl2::Statement::Code {
                 label: Some(name.into()),
@@ -703,8 +829,10 @@ impl Compiler {
             });
         }
 
+        // プログラム開始時のレジスタの状態の保存
         temp_statements.code(casl2::Command::Rpush);
 
+        // 引数であるレジスタの値の保存
         for arg in arguments.iter() {
             temp_statements.comment(format!("Argument {}", arg.var_name));
             match arg.var_type {
@@ -737,6 +865,7 @@ impl Compiler {
             }
         }
 
+        // ByValの配列/文字列の引数の中身コピー処理
         for arg in arguments.iter() {
             match arg.var_type {
                 parser::VarType::Boolean
@@ -778,6 +907,7 @@ impl Compiler {
             }
         }
 
+        // 変数領域の初期化処理のコード
         match first_var_label {
             Some(label) if var_total_size == 1 => {
                 temp_statements.comment("Init Variable");
@@ -808,6 +938,7 @@ impl Compiler {
             _ => {}
         }
 
+        // プログラム冒頭のコードをマージ
         temp_statements.extend(statements);
         let mut statements = temp_statements;
 
@@ -853,7 +984,7 @@ impl Compiler {
             statements.code(code);
         }
 
-        // END ステートメント
+        // END ステートメントの挿入 (CASL2ソースコード末尾)
         statements.code(casl2::Command::End);
 
         statements
@@ -1048,26 +1179,11 @@ impl Compiler {
                     // TODO: ByRefのとき変数ダイレクト編集できるようにしないとダメじゃん
                     match value {
                         Expr::VarInteger(var_name) => {
-                            let label =
-                                self.int_var_labels
-                                    .get(var_name)
-                                    .cloned()
-                                    .unwrap_or_else(|| {
-                                        let (label, arg) =
-                                            self.argument_labels.get(var_name).expect("BUG");
-                                        assert_eq!(&arg.var_name, var_name);
-                                        assert!(matches!(arg.var_type, VarType::Integer));
-                                        label.clone()
-                                    });
+                            let label = self.get_int_var_label(var_name);
                             reg_and_label.push(((arg.register1, is_byref), (label, false)));
                         }
                         Expr::VarRefInteger(var_name) => {
-                            let label = {
-                                let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-                                assert_eq!(&arg.var_name, var_name);
-                                assert!(matches!(arg.var_type, VarType::RefInteger));
-                                label.clone()
-                            };
+                            let label = self.get_ref_int_var_label(var_name);
                             reg_and_label.push(((arg.register1, is_byref), (label, true)))
                         }
                         Expr::VarArrayOfInteger(_var_name, _index) => todo!(),
@@ -1263,20 +1379,9 @@ impl Compiler {
         let partialcopy = self.load_subroutine(subroutine::Id::UtilCopyToOffsetStr);
 
         let var_labels = if var_is_ref {
-            let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
-            assert_eq!(arg.var_name, var_name);
-            assert!(matches!(arg.var_type, parser::VarType::RefString));
-            labels.clone()
+            self.get_ref_str_var_labels(var_name)
         } else {
-            self.str_var_labels
-                .get(var_name)
-                .cloned()
-                .unwrap_or_else(|| {
-                    let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
-                    assert_eq!(arg.var_name, var_name);
-                    assert!(matches!(arg.var_type, parser::VarType::String));
-                    labels.clone()
-                })
+            self.get_str_var_labels(var_name)
         };
 
         if let Some(length) = length {
@@ -1766,20 +1871,7 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) =
-            self.int_arr_labels
-                .get(var_name)
-                .cloned()
-                .unwrap_or_else(|| {
-                    let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-                    assert_eq!(arg.var_name, var_name);
-                    if let parser::VarType::ArrayOfInteger(size) = arg.var_type {
-                        (label.clone(), size)
-                    } else {
-                        unreachable!("BUG");
-                    }
-                });
-        assert!(arr_size > 0);
+        let (arr_label, arr_size) = self.get_int_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
@@ -1876,16 +1968,7 @@ impl Compiler {
 
         self.comment(format!("{var} -= {value}", var = var_name, value = value));
 
-        let var_label = self
-            .int_var_labels
-            .get(var_name)
-            .cloned()
-            .unwrap_or_else(|| {
-                let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-                assert_eq!(arg.var_name, var_name);
-                assert!(matches!(arg.var_type, parser::VarType::Integer));
-                label.clone()
-            });
+        let var_label = self.get_int_var_label(var_name);
 
         let value_reg = self.compile_int_expr(value);
 
@@ -1922,20 +2005,7 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) =
-            self.int_arr_labels
-                .get(var_name)
-                .cloned()
-                .unwrap_or_else(|| {
-                    let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-                    assert_eq!(arg.var_name, var_name);
-                    if let parser::VarType::ArrayOfInteger(size) = arg.var_type {
-                        (label.clone(), size)
-                    } else {
-                        unreachable!("BUG");
-                    }
-                });
-        assert!(arr_size > 0);
+        let (arr_label, arr_size) = self.get_int_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
@@ -2020,16 +2090,7 @@ impl Compiler {
 
         let value_reg = self.compile_int_expr(value);
 
-        let var_label = self
-            .int_var_labels
-            .get(var_name)
-            .cloned()
-            .unwrap_or_else(|| {
-                let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-                assert_eq!(arg.var_name, var_name);
-                assert!(matches!(arg.var_type, parser::VarType::Integer));
-                label.clone()
-            });
+        let var_label = self.get_int_var_label(var_name);
 
         self.code(format!(
             r#" ADDA  {reg},{var}
@@ -2050,12 +2111,7 @@ impl Compiler {
 
         let value_reg = self.compile_int_expr(value);
 
-        let var_label = {
-            let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-            assert_eq!(arg.var_name, var_name);
-            assert!(matches!(arg.var_type, parser::VarType::RefInteger));
-            label.clone()
-        };
+        let var_label = self.get_ref_int_var_label(var_name);
 
         let temp_reg = self.get_idle_register();
 
@@ -2090,20 +2146,7 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) =
-            self.bool_arr_labels
-                .get(var_name)
-                .cloned()
-                .unwrap_or_else(|| {
-                    let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-                    assert_eq!(arg.var_name, var_name);
-                    if let parser::VarType::ArrayOfBoolean(size) = arg.var_type {
-                        (label.clone(), size)
-                    } else {
-                        unreachable!("BUG");
-                    }
-                });
-        assert!(arr_size > 0);
+        let (arr_label, arr_size) = self.get_bool_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
@@ -2195,20 +2238,7 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) =
-            self.int_arr_labels
-                .get(var_name)
-                .cloned()
-                .unwrap_or_else(|| {
-                    let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-                    assert_eq!(arg.var_name, var_name);
-                    if let parser::VarType::ArrayOfInteger(size) = arg.var_type {
-                        (label.clone(), size)
-                    } else {
-                        unreachable!("BUG");
-                    }
-                });
-        assert!(arr_size > 0);
+        let (arr_label, arr_size) = self.get_int_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
@@ -2300,15 +2330,7 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) = {
-            let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-            assert_eq!(arg.var_name, var_name);
-            if let parser::VarType::RefArrayOfInteger(size) = arg.var_type {
-                (label.clone(), size)
-            } else {
-                unreachable!("BUG");
-            }
-        };
+        let (arr_label, arr_size) = self.get_ref_int_arr_label(var_name);
         assert!(arr_size > 0);
 
         // indexがリテラルの場合
@@ -2322,7 +2344,7 @@ impl Compiler {
             assert_ne!(value_reg, reg);
             self.code(format!(
                 r#" LD    {reg},{arr}
-                        ST    {value},{index},{reg}"#,
+                    ST    {value},{index},{reg}"#,
                 reg = reg,
                 index = index,
                 arr = arr_label,
@@ -2396,17 +2418,7 @@ impl Compiler {
 
         let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
 
-        let str_labels = self
-            .str_var_labels
-            .get(var_name)
-            .cloned()
-            .unwrap_or_else(|| {
-                let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
-                assert_eq!(arg.var_name, var_name);
-                assert!(matches!(arg.var_type, parser::VarType::String));
-                assert!(matches!(labels.label_type, StrLabelType::ArgVal));
-                labels.clone()
-            });
+        let str_labels = self.get_str_var_labels(var_name);
 
         let index_reg = self.compile_int_expr(index);
 
@@ -2471,14 +2483,7 @@ impl Compiler {
 
         let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
 
-        let (str_labels, arg) = self
-            .str_argument_labels
-            .get(var_name)
-            .cloned()
-            .expect("BUG");
-        assert_eq!(arg.var_name, var_name);
-        assert!(matches!(arg.var_type, parser::VarType::RefString));
-        assert!(matches!(str_labels.label_type, StrLabelType::ArgRef));
+        let str_labels = self.get_ref_str_var_labels(var_name);
 
         let index_reg = self.compile_int_expr(index);
 
@@ -2533,13 +2538,8 @@ impl Compiler {
         self.comment(format!("{var} = {value}", var = var_name, value = value));
 
         let reg = self.compile_int_expr(value);
-        let var_label = self.bool_var_labels.get(var_name).unwrap_or_else(|| {
-            let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-            assert_eq!(arg.var_name, var_name);
-            assert!(matches!(arg.var_type, parser::VarType::Boolean));
-            label
-        });
-        let adr = casl2::Adr::label(var_label);
+        let var_label = self.get_bool_var_label(var_name);
+        let adr = casl2::Adr::label(&var_label);
 
         // ST {reg},{var}
         self.code(casl2::Command::A {
@@ -2559,13 +2559,7 @@ impl Compiler {
 
         let value_label = self.compile_str_expr(value);
         let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
-        let var_label = self.str_var_labels.get(var_name).unwrap_or_else(|| {
-            let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
-            assert_eq!(arg.var_name, var_name);
-            assert!(matches!(arg.var_type, parser::VarType::String));
-            assert!(matches!(labels.label_type, StrLabelType::ArgVal));
-            labels
-        });
+        let var_label = self.get_str_var_labels(var_name);
 
         let src = format!(
             r#" LAD   GR1,{dstpos}
@@ -2601,10 +2595,7 @@ impl Compiler {
 
         let value_label = self.compile_str_expr(value);
         let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
-        let (var_labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
-        assert_eq!(arg.var_name, var_name);
-        assert!(matches!(arg.var_type, parser::VarType::RefString));
-        assert!(matches!(var_labels.label_type, StrLabelType::ArgRef));
+        let var_labels = self.get_ref_str_var_labels(var_name);
 
         let src = format!(
             r#" LD    GR1,{dstpos}
@@ -2640,9 +2631,7 @@ impl Compiler {
         let value_reg = self.compile_int_expr(value);
         let ref_reg = self.get_idle_register();
 
-        let (var_label, arg) = self.argument_labels.get(var_name).expect("BUG");
-        assert_eq!(arg.var_name, var_name);
-        assert!(matches!(arg.var_type, parser::VarType::RefInteger));
+        let var_label = self.get_ref_int_var_label(var_name);
 
         let src = format!(
             r#" LD {refvar},{var}
@@ -2663,14 +2652,9 @@ impl Compiler {
         self.comment(format!("{var} = {value}", var = var_name, value = value));
         let reg = self.compile_int_expr(value);
 
-        let var_label = self.int_var_labels.get(var_name).unwrap_or_else(|| {
-            let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-            assert_eq!(arg.var_name, var_name);
-            assert!(matches!(arg.var_type, parser::VarType::Integer));
-            label
-        });
+        let var_label = self.get_int_var_label(var_name);
 
-        let adr = casl2::Adr::label(var_label);
+        let adr = casl2::Adr::label(&var_label);
 
         // ST {reg},{var}
         self.code(casl2::Command::A {
@@ -2729,15 +2713,7 @@ impl Compiler {
         let counter_var = if is_ref {
             todo!();
         } else {
-            self.int_var_labels
-                .get(counter)
-                .cloned()
-                .unwrap_or_else(|| {
-                    let (label, arg) = self.argument_labels.get(counter).expect("BUG");
-                    assert_eq!(&arg.var_name, counter);
-                    assert!(matches!(arg.var_type, parser::VarType::Integer));
-                    label.clone()
-                })
+            self.get_int_var_label(counter)
         };
 
         // calc {init} and assign to {counter}
@@ -2882,15 +2858,7 @@ impl Compiler {
         let counter_var = if is_ref {
             todo!();
         } else {
-            self.int_var_labels
-                .get(counter)
-                .cloned()
-                .unwrap_or_else(|| {
-                    let (label, arg) = self.argument_labels.get(counter).expect("BUG");
-                    assert_eq!(&arg.var_name, counter);
-                    assert!(matches!(arg.var_type, parser::VarType::Integer));
-                    label.clone()
-                })
+            self.get_int_var_label(counter)
         };
 
         // calc {init} and assign to {counter}
@@ -3189,20 +3157,7 @@ impl Compiler {
         self.has_eof = true;
         let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
 
-        let (arr_label, arr_size) =
-            self.int_arr_labels
-                .get(var_name)
-                .cloned()
-                .unwrap_or_else(|| {
-                    let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-                    assert_eq!(arg.var_name, var_name);
-                    if let parser::VarType::ArrayOfInteger(size) = arg.var_type {
-                        (label.clone(), size)
-                    } else {
-                        unreachable!("BUG");
-                    }
-                });
-        assert!(arr_size > 0);
+        let (arr_label, arr_size) = self.get_int_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
@@ -3299,16 +3254,7 @@ impl Compiler {
     fn compile_input_integer(&mut self, var_name: &str) {
         let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
         let s_labels = self.get_temp_str_var_label();
-        let var_label = self
-            .int_var_labels
-            .get(var_name)
-            .cloned()
-            .unwrap_or_else(|| {
-                let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-                assert_eq!(arg.var_name, var_name);
-                assert!(matches!(arg.var_type, parser::VarType::Integer));
-                label.clone()
-            });
+        let var_label = self.get_int_var_label(var_name);
         let label = self.get_new_jump_label();
 
         self.has_eof = true;
@@ -3347,17 +3293,7 @@ impl Compiler {
     // Input <str_var> ステートメント
     // 文字列変数へのコンソール入力
     fn compile_input_string(&mut self, var_name: &str) {
-        let StrLabels { len, pos, .. } =
-            self.str_var_labels
-                .get(var_name)
-                .cloned()
-                .unwrap_or_else(|| {
-                    let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
-                    assert_eq!(arg.var_name, var_name);
-                    assert!(matches!(arg.var_type, parser::VarType::String));
-                    assert!(matches!(labels.label_type, StrLabelType::ArgVal));
-                    labels.clone()
-                });
+        let StrLabels { len, pos, .. } = self.get_str_var_labels(var_name);
         let label = self.get_new_jump_label();
         self.has_eof = true;
         self.comment(format!("Input {}", var_name));
@@ -3391,15 +3327,7 @@ impl Compiler {
         self.has_eof = true;
         let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
 
-        let (arr_label, arg) = self.argument_labels.get(var_name).cloned().expect("BUG");
-        assert_eq!(arg.var_name, var_name);
-        let arr_size = if let parser::VarType::RefArrayOfInteger(size) = arg.var_type {
-            size
-        } else {
-            unreachable!("BUG");
-        };
-
-        assert!(arr_size > 0);
+        let (arr_label, arr_size) = self.get_ref_int_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
@@ -3493,9 +3421,7 @@ impl Compiler {
     fn compile_input_ref_integer(&mut self, var_name: &str) {
         let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
         let s_labels = self.get_temp_str_var_label();
-        let (var_label, arg) = self.argument_labels.get(var_name).cloned().expect("BUG");
-        assert_eq!(arg.var_name, var_name);
-        assert!(matches!(arg.var_type, parser::VarType::RefInteger));
+        let var_label = self.get_ref_int_var_label(var_name);
         let label = self.get_new_jump_label();
 
         self.has_eof = true;
@@ -3537,12 +3463,7 @@ impl Compiler {
     fn compile_input_ref_string(&mut self, var_name: &str) {
         let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
 
-        let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
-        assert_eq!(arg.var_name, var_name);
-        assert!(matches!(arg.var_type, parser::VarType::RefString));
-        assert!(matches!(labels.label_type, StrLabelType::ArgRef));
-
-        let StrLabels { len, pos, .. } = labels.clone();
+        let StrLabels { len, pos, .. } = self.get_ref_str_var_labels(var_name);
 
         let temp_labels = self.get_temp_str_var_label();
 
@@ -3621,17 +3542,7 @@ impl Compiler {
     // Print <str_var>ステートメント
     // 文字列変数の画面出力
     fn compile_print_var_string(&mut self, var_name: &str) {
-        let StrLabels { len, pos, .. } =
-            self.str_var_labels
-                .get(var_name)
-                .cloned()
-                .unwrap_or_else(|| {
-                    let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
-                    assert_eq!(arg.var_name, var_name);
-                    assert!(matches!(arg.var_type, parser::VarType::String));
-                    assert!(matches!(labels.label_type, StrLabelType::ArgVal));
-                    labels.clone()
-                });
+        let StrLabels { len, pos, .. } = self.get_str_var_labels(var_name);
         self.comment(format!("Print {}", var_name));
         self.code(casl2::Command::Out {
             pos: pos.into(),
@@ -3777,25 +3688,8 @@ impl Compiler {
             BinaryOperatorString(op, lhs, rhs) => self.compile_bin_op_string(*op, lhs, rhs),
             FunctionString(func, param) => self.compile_function_string(*func, param),
             LitString(lit_str) => self.get_lit_str_label_if_exists(lit_str),
-            VarString(var_name) => {
-                self.str_var_labels
-                    .get(var_name)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
-                        assert_eq!(&arg.var_name, var_name);
-                        assert!(matches!(arg.var_type, parser::VarType::String));
-                        assert!(matches!(labels.label_type, StrLabelType::ArgVal));
-                        labels.clone()
-                    })
-            }
-            VarRefString(var_name) => {
-                let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
-                assert_eq!(&arg.var_name, var_name);
-                assert!(matches!(arg.var_type, parser::VarType::RefString));
-                assert!(matches!(labels.label_type, StrLabelType::ArgRef));
-                labels.clone()
-            }
+            VarString(var_name) => self.get_str_var_labels(var_name),
+            VarRefString(var_name) => self.get_ref_str_var_labels(var_name),
 
             // 戻り値が文字列ではないもの
             BinaryOperatorBoolean(..)
@@ -4435,17 +4329,7 @@ impl Compiler {
 
         let index_reg = self.compile_int_expr(index);
 
-        let str_labels = self
-            .str_var_labels
-            .get(var_name)
-            .cloned()
-            .unwrap_or_else(|| {
-                let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
-                assert_eq!(arg.var_name, var_name);
-                assert!(matches!(arg.var_type, parser::VarType::String));
-                assert!(matches!(labels.label_type, StrLabelType::ArgVal));
-                labels.clone()
-            });
+        let str_labels = self.get_str_var_labels(var_name);
 
         // レジスタ退避
         let (saves, recovers) = {
@@ -4621,14 +4505,7 @@ impl Compiler {
 
         let index_reg = self.compile_int_expr(index);
 
-        let (str_labels, arg) = self
-            .str_argument_labels
-            .get(var_name)
-            .cloned()
-            .expect("BUG");
-        assert_eq!(arg.var_name, var_name);
-        assert!(matches!(arg.var_type, parser::VarType::RefString));
-        assert!(matches!(str_labels.label_type, StrLabelType::ArgRef));
+        let str_labels = self.get_ref_str_var_labels(var_name);
 
         // レジスタ退避
         let (saves, recovers) = {
@@ -4672,21 +4549,7 @@ impl Compiler {
     ) -> casl2::Register {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
 
-        let (arr_label, arr_size) =
-            self.bool_arr_labels
-                .get(arr_name)
-                .cloned()
-                .unwrap_or_else(|| {
-                    let (label, arg) = self.argument_labels.get(arr_name).expect("BUG");
-                    assert_eq!(arg.var_name, arr_name);
-                    if let parser::VarType::ArrayOfBoolean(size) = arg.var_type {
-                        (label.clone(), size)
-                    } else {
-                        unreachable!("BUG");
-                    }
-                });
-
-        assert!(arr_size > 0);
+        let (arr_label, arr_size) = self.get_bool_arr_label(arr_name);
 
         // インデックスがリテラル整数で指定…
         if let parser::Expr::LitInteger(index) = index {
@@ -4755,21 +4618,7 @@ impl Compiler {
     ) -> casl2::Register {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
 
-        let (arr_label, arr_size) =
-            self.int_arr_labels
-                .get(arr_name)
-                .cloned()
-                .unwrap_or_else(|| {
-                    let (label, arg) = self.argument_labels.get(arr_name).expect("BUG");
-                    assert_eq!(arg.var_name, arr_name);
-                    if let parser::VarType::ArrayOfInteger(size) = arg.var_type {
-                        (label.clone(), size)
-                    } else {
-                        unreachable!("BUG");
-                    }
-                });
-
-        assert!(arr_size > 0);
+        let (arr_label, arr_size) = self.get_int_arr_label(arr_name);
 
         // インデックスがリテラル整数で指定…
         if let parser::Expr::LitInteger(index) = index {
@@ -4838,17 +4687,7 @@ impl Compiler {
     ) -> casl2::Register {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
 
-        let (arr_label, arr_size) = {
-            let (label, arg) = self.argument_labels.get(arr_name).expect("BUG");
-            assert_eq!(arg.var_name, arr_name);
-            if let parser::VarType::RefArrayOfInteger(size) = arg.var_type {
-                (label.clone(), size)
-            } else {
-                unreachable!("BUG");
-            }
-        };
-
-        assert!(arr_size > 0);
+        let (arr_label, arr_size) = self.get_ref_int_arr_label(arr_name);
 
         // インデックスがリテラル整数で指定…
         if let parser::Expr::LitInteger(index) = index {
@@ -5689,14 +5528,9 @@ impl Compiler {
     fn compile_variable_integer(&mut self, var_name: &str) -> casl2::Register {
         let reg = self.get_idle_register();
 
-        let var_label = self.int_var_labels.get(var_name).unwrap_or_else(|| {
-            let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-            assert_eq!(arg.var_name, var_name);
-            assert!(matches!(arg.var_type, parser::VarType::Integer));
-            label
-        });
+        let var_label = self.get_int_var_label(var_name);
 
-        let adr = casl2::Adr::label(var_label);
+        let adr = casl2::Adr::label(&var_label);
 
         // LD REG,VAR
         self.code(casl2::Command::A {
@@ -5714,9 +5548,7 @@ impl Compiler {
     fn compile_variable_ref_integer(&mut self, var_name: &str) -> casl2::Register {
         let reg = self.get_idle_register();
 
-        let (var_label, arg) = self.argument_labels.get(var_name).expect("BUG");
-        assert_eq!(arg.var_name, var_name);
-        assert!(matches!(arg.var_type, parser::VarType::RefInteger));
+        let var_label = self.get_ref_int_var_label(var_name);
 
         // LD REG,VAR
         // LD REG,0,REG
@@ -5760,13 +5592,8 @@ impl Compiler {
     // 真理値変数の読み込み
     fn compile_variable_boolean(&mut self, var_name: &str) -> casl2::Register {
         let reg = self.get_idle_register();
-        let var_label = self.bool_var_labels.get(var_name).unwrap_or_else(|| {
-            let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-            assert_eq!(arg.var_name, var_name);
-            assert!(matches!(arg.var_type, parser::VarType::Boolean));
-            label
-        });
-        let adr = casl2::Adr::label(var_label);
+        let var_label = self.get_bool_var_label(var_name);
+        let adr = casl2::Adr::label(&var_label);
 
         // LD REG,VAR
         self.code(casl2::Command::A {
@@ -6156,62 +5983,22 @@ impl Compiler {
         use parser::Expr::*;
         match expr {
             ReferenceOfVar(var_name, parser::VarType::ArrayOfBoolean(size)) => {
-                let (arr_label, arr_size) = self
-                    .bool_arr_labels
-                    .get(var_name)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-                        assert_eq!(&arg.var_name, var_name);
-                        if let parser::VarType::ArrayOfBoolean(size2) = arg.var_type {
-                            (label.clone(), size2)
-                        } else {
-                            unreachable!("BUG");
-                        }
-                    });
+                let (arr_label, arr_size) = self.get_bool_arr_label(var_name);
                 assert_eq!(arr_size, *size);
                 ArrayLabel::VarArrayOfBoolean(arr_label, arr_size)
             }
             ReferenceOfVar(var_name, parser::VarType::ArrayOfInteger(size)) => {
-                let (arr_label, arr_size) = self
-                    .int_arr_labels
-                    .get(var_name)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-                        assert_eq!(&arg.var_name, var_name);
-                        if let parser::VarType::ArrayOfInteger(size2) = arg.var_type {
-                            (label.clone(), size2)
-                        } else {
-                            unreachable!("BUG");
-                        }
-                    });
+                let (arr_label, arr_size) = self.get_int_arr_label(var_name);
                 assert_eq!(arr_size, *size);
                 ArrayLabel::VarArrayOfInteger(arr_label, arr_size)
             }
             ReferenceOfVar(var_name, parser::VarType::RefArrayOfBoolean(size)) => {
-                let (arr_label, arr_size) = {
-                    let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-                    assert_eq!(&arg.var_name, var_name);
-                    if let parser::VarType::RefArrayOfBoolean(size2) = arg.var_type {
-                        (label.clone(), size2)
-                    } else {
-                        unreachable!("BUG");
-                    }
-                };
+                let (arr_label, arr_size) = self.get_ref_bool_arr_label(var_name);
                 assert_eq!(arr_size, *size);
                 ArrayLabel::VarRefArrayOfBoolean(arr_label, arr_size)
             }
             ReferenceOfVar(var_name, parser::VarType::RefArrayOfInteger(size)) => {
-                let (arr_label, arr_size) = {
-                    let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
-                    assert_eq!(&arg.var_name, var_name);
-                    if let parser::VarType::RefArrayOfInteger(size2) = arg.var_type {
-                        (label.clone(), size2)
-                    } else {
-                        unreachable!("BUG");
-                    }
-                };
+                let (arr_label, arr_size) = self.get_ref_int_arr_label(var_name);
                 assert_eq!(arr_size, *size);
                 ArrayLabel::VarRefArrayOfInteger(arr_label, arr_size)
             }
