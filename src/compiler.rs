@@ -1054,7 +1054,9 @@ impl Compiler {
             AssignString { var_name, value } => self.compile_assign_string(var_name, value),
             AssignRefString { var_name, value } => self.compile_assign_ref_string(var_name, value),
             AssignSubInto { var_name, value } => self.compile_assign_sub_into(var_name, value),
-            AssignRefSubInto { .. } => todo!(),
+            AssignRefSubInto { var_name, value } => {
+                self.compile_assign_ref_sub_into(var_name, value)
+            }
             AssignSubIntoElement {
                 var_name,
                 index,
@@ -1994,6 +1996,39 @@ impl Compiler {
         ));
 
         self.set_register_idle(reg);
+        self.set_register_idle(value_reg);
+    }
+
+    // Assign Ref Sub Into ステートメント
+    // ref_int_var -= int_expr
+    fn compile_assign_ref_sub_into(&mut self, var_name: &str, value: &parser::Expr) {
+        assert!(matches!(value.return_type(), parser::ExprType::Integer));
+
+        self.comment(format!("{var} -= {value}", var = var_name, value = value));
+
+        let var_label = self.get_ref_int_var_label(var_name);
+
+        let value_reg = self.compile_int_expr(value);
+
+        let pos = self.get_idle_register();
+        assert_ne!(value_reg, pos);
+        let reg = self.get_idle_register();
+        assert_ne!(value_reg, reg);
+        assert_ne!(pos, reg);
+
+        self.code(format!(
+            r#" LD    {pos},{var}
+                LD    {reg},0,{pos}
+                SUBA  {reg},{value}
+                ST    {reg},0,{pos}"#,
+            pos = pos,
+            reg = reg,
+            var = var_label,
+            value = value_reg
+        ));
+
+        self.set_register_idle(reg);
+        self.set_register_idle(pos);
         self.set_register_idle(value_reg);
     }
 
