@@ -1015,7 +1015,7 @@ impl Compiler {
     // Call ステートメント
     fn compile_call_exterun_sub(&mut self, name: &str, arguments: &[(String, parser::Expr)]) {
         use casl2::IndexRegister;
-        use parser::{ExprType, VarType};
+        use parser::{Expr, ExprType, VarType};
 
         let argument_def = self.callables.get(name).cloned().expect("BUG");
         assert_eq!(argument_def.len(), arguments.len());
@@ -1027,12 +1027,13 @@ impl Compiler {
         self.comment(format!("Call {}", name));
 
         for (arg_name, value) in arguments.iter() {
-            self.comment(format!("{} = {}", arg_name, value));
-
             let arg = argument_def
                 .iter()
                 .find(|arg| &arg.var_name == arg_name)
                 .expect("BUG");
+
+            self.comment(format!("  {}", arg));
+            self.comment(format!("  {} = {}", arg_name, value));
 
             match value.return_type() {
                 ExprType::Boolean => todo!(),
@@ -1042,17 +1043,46 @@ impl Compiler {
                         VarType::RefInteger => true,
                         _ => unreachable!("BUG"),
                     };
-                    // TODO: 変数ダイレクトだったりだと一時変数が不要なので修正必要
-                    let value_reg = self.compile_int_expr(value);
-                    let temp_label = self.get_temp_int_var_label();
-                    self.code(format!(
-                        r#" ST {reg},{temp}"#,
-                        reg = value_reg,
-                        temp = temp_label
-                    ));
-                    self.set_register_idle(value_reg);
-                    temp_int_labels.push(temp_label.clone());
-                    reg_and_label.push(((arg.register1, is_byref), (temp_label, false)));
+                    // TODO: ByRefのとき変数ダイレクト編集できるようにしないとダメじゃん
+                    match value {
+                        Expr::VarInteger(var_name) => {
+                            let label =
+                                self.int_var_labels
+                                    .get(var_name)
+                                    .cloned()
+                                    .unwrap_or_else(|| {
+                                        let (label, arg) =
+                                            self.argument_labels.get(var_name).expect("BUG");
+                                        assert_eq!(&arg.var_name, var_name);
+                                        assert!(matches!(arg.var_type, VarType::Integer));
+                                        label.clone()
+                                    });
+                            reg_and_label.push(((arg.register1, is_byref), (label, false)));
+                        }
+                        Expr::VarRefInteger(var_name) => {
+                            let label = {
+                                let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+                                assert_eq!(&arg.var_name, var_name);
+                                assert!(matches!(arg.var_type, VarType::RefInteger));
+                                label.clone()
+                            };
+                            reg_and_label.push(((arg.register1, is_byref), (label, true)))
+                        }
+                        Expr::VarArrayOfInteger(_var_name, _index) => todo!(),
+                        Expr::VarRefArrayOfInteger(_var_name, _index) => todo!(),
+                        _ => {
+                            let value_reg = self.compile_int_expr(value);
+                            let temp_label = self.get_temp_int_var_label();
+                            self.code(format!(
+                                r#" ST {reg},{temp}"#,
+                                reg = value_reg,
+                                temp = temp_label
+                            ));
+                            self.set_register_idle(value_reg);
+                            temp_int_labels.push(temp_label.clone());
+                            reg_and_label.push(((arg.register1, is_byref), (temp_label, false)));
+                        }
+                    }
                 }
                 ExprType::String => {
                     let is_byref = match arg.var_type {
@@ -1095,7 +1125,7 @@ impl Compiler {
         }
 
         if !arguments.is_empty() {
-            self.comment(format!("Set Arguments For {}", name));
+            self.comment(format!("  Set Arguments And Call {}", name));
         }
 
         let regs: Vec<casl2::Register> = reg_and_label
