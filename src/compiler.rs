@@ -869,7 +869,9 @@ impl Compiler {
             ExitProgram => self.compile_exit_program(),
             ExternSub { name, arguments } => self.compile_extern_sub(name, arguments),
             AssignAddInto { var_name, value } => self.compile_assign_add_into(var_name, value),
-            AssignRefAddInto { .. } => todo!(),
+            AssignRefAddInto { var_name, value } => {
+                self.compile_assign_ref_add_into(var_name, value)
+            }
             AssignAddIntoElement {
                 var_name,
                 index,
@@ -2036,6 +2038,37 @@ impl Compiler {
             var = var_label
         ));
 
+        self.set_register_idle(value_reg);
+    }
+
+    // Assign Ref Add Into ステートメント
+    // ref_int_var += int_expr
+    fn compile_assign_ref_add_into(&mut self, var_name: &str, value: &parser::Expr) {
+        assert!(matches!(value.return_type(), parser::ExprType::Integer));
+
+        self.comment(format!("{var} += {value}", var = var_name, value = value));
+
+        let value_reg = self.compile_int_expr(value);
+
+        let var_label = {
+            let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+            assert_eq!(arg.var_name, var_name);
+            assert!(matches!(arg.var_type, parser::VarType::RefInteger));
+            label.clone()
+        };
+
+        let temp_reg = self.get_idle_register();
+
+        self.code(format!(
+            r#" LD    {temp},{var}
+                ADDA  {reg},0,{temp}
+                ST    {reg},0,{temp}"#,
+            temp = temp_reg,
+            reg = value_reg,
+            var = var_label
+        ));
+
+        self.set_register_idle(temp_reg);
         self.set_register_idle(value_reg);
     }
 
