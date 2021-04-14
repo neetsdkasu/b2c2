@@ -4701,7 +4701,9 @@ impl Compiler {
             VarArrayOfBoolean(arr_name, index) => {
                 self.compile_variable_array_of_boolean(arr_name, index)
             }
-            VarRefArrayOfBoolean(..) => todo!(),
+            VarRefArrayOfBoolean(arr_name, index) => {
+                self.compile_variable_ref_array_of_boolean(arr_name, index)
+            }
             VarArrayOfInteger(arr_name, index) => {
                 self.compile_variable_array_of_integer(arr_name, index)
             }
@@ -5200,6 +5202,72 @@ impl Compiler {
         self.code(format!(
             r#" LD    {index},GR0
                 LD    {index},{arr},{index}"#,
+            index = index_reg,
+            arr = arr_label
+        ));
+
+        index_reg
+    }
+
+    // (式展開の処理の一部)
+    // 真理値配列(参照型)の要素を取り出す
+    fn compile_variable_ref_array_of_boolean(
+        &mut self,
+        arr_name: &str,
+        index: &parser::Expr,
+    ) -> casl2::Register {
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+
+        let (arr_label, arr_size) = self.get_ref_bool_arr_label(arr_name);
+
+        // インデックスがリテラル整数で指定…
+        if let parser::Expr::LitInteger(index) = index {
+            let index = ((*index).max(0) as usize).min(arr_size - 1);
+            let reg = self.get_idle_register();
+            self.code(format!(
+                r#" LD  {reg},{arr}
+                    LD  {reg},{index},{reg}"#,
+                reg = reg,
+                index = index,
+                arr = arr_label
+            ));
+            return reg;
+        }
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+
+        let index_reg = self.compile_int_expr(index);
+
+        // レジスタ退避
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            if matches!(index_reg, Gr1) {
+                self.get_save_registers_src(&[Gr2])
+            } else {
+                self.get_save_registers_src(&[Gr1, Gr2])
+            }
+        };
+
+        let index_line = if matches!(index_reg, casl2::Register::Gr1) {
+            "".to_string()
+        } else {
+            format!(" LD GR1,{index}", index = index_reg)
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" {index_line}
+                LAD   GR2,{size}
+                CALL  {fit}"#,
+            index_line = index_line,
+            size = arr_size,
+            fit = safe_index
+        ));
+        self.code(recovers);
+        self.code(format!(
+            r#" LD    {index},{arr}
+                ADDL  {index},GR0
+                LD    {index},0,{index}"#,
             index = index_reg,
             arr = arr_label
         ));
