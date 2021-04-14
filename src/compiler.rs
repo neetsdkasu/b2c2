@@ -207,6 +207,69 @@ enum ArrayLabel {
     VarRefArrayOfInteger(String, usize),
 }
 
+impl ArrayLabel {
+    fn label(&self) -> String {
+        use ArrayLabel::*;
+        match self {
+            TempArrayOfBoolean(labels, _) | TempArrayOfInteger(labels, _) => labels.pos.clone(),
+            VarArrayOfBoolean(label, _)
+            | VarArrayOfInteger(label, _)
+            | VarRefArrayOfBoolean(label, _)
+            | VarRefArrayOfInteger(label, _) => label.clone(),
+        }
+    }
+
+    fn lad_pos(&self, reg: casl2::Register) -> String {
+        use ArrayLabel::*;
+        match self {
+            TempArrayOfBoolean(labels, _) | TempArrayOfInteger(labels, _) => {
+                format!(r#" LAD  {reg},{pos}"#, reg = reg, pos = labels.pos)
+            }
+            VarArrayOfBoolean(label, _) | VarArrayOfInteger(label, _) => {
+                format!(r#" LAD  {reg},{pos}"#, reg = reg, pos = label)
+            }
+            VarRefArrayOfBoolean(label, _) | VarRefArrayOfInteger(label, _) => {
+                format!(r#" LD   {reg},{pos}"#, reg = reg, pos = label)
+            }
+        }
+    }
+
+    fn size(&self) -> usize {
+        use ArrayLabel::*;
+        match self {
+            TempArrayOfBoolean(_, size)
+            | TempArrayOfInteger(_, size)
+            | VarArrayOfBoolean(_, size)
+            | VarArrayOfInteger(_, size)
+            | VarRefArrayOfBoolean(_, size)
+            | VarRefArrayOfInteger(_, size) => *size,
+        }
+    }
+
+    fn release(self) -> Option<StrLabels> {
+        use ArrayLabel::*;
+        match self {
+            TempArrayOfBoolean(labels, _) | TempArrayOfInteger(labels, _) => Some(labels),
+            VarArrayOfBoolean(..)
+            | VarArrayOfInteger(..)
+            | VarRefArrayOfBoolean(..)
+            | VarRefArrayOfInteger(..) => None,
+        }
+    }
+
+    fn element_type(&self) -> parser::ExprType {
+        use ArrayLabel::*;
+        match self {
+            TempArrayOfBoolean(..) | VarArrayOfBoolean(..) | VarRefArrayOfBoolean(..) => {
+                parser::ExprType::Boolean
+            }
+            TempArrayOfInteger(..) | VarArrayOfInteger(..) | VarRefArrayOfInteger(..) => {
+                parser::ExprType::Integer
+            }
+        }
+    }
+}
+
 impl StrLabels {
     fn lad_pos(&self, reg: casl2::Register) -> String {
         match &self.label_type {
@@ -5529,8 +5592,64 @@ impl Compiler {
                 self.set_register_used(reg);
                 reg
             }
-            parser::ExprType::ReferenceOfVar(..) => todo!(),
-            parser::ExprType::ParamList => unreachable!("BUG"),
+
+            parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfBoolean(size1))
+            | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfBoolean(size1))
+            | parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfInteger(size1))
+            | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfInteger(size1)) => {
+                match rhs.return_type() {
+                    parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfBoolean(size2))
+                    | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfBoolean(size2))
+                    | parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfInteger(size2))
+                    | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfInteger(size2))
+                        if size1 == size2 => {}
+                    _ => unreachable!("BUG"),
+                }
+                let reg = self.get_idle_register();
+                self.set_register_idle(reg);
+                let lhs_label = self.compile_ref_arr_expr(lhs);
+                assert_eq!(size1, lhs_label.size());
+                let rhs_label = self.compile_ref_arr_expr(rhs);
+                assert_eq!(size1, rhs_label.size());
+                assert_eq!(lhs_label.element_type(), rhs_label.element_type());
+                let cmpstr = self.load_subroutine(subroutine::Id::UtilCompareStr);
+                // レジスタ退避
+                let (saves, recovers) = {
+                    use casl2::Register::*;
+                    self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+                };
+                self.code(saves);
+                self.code(format!(
+                    r#" {lad_gr1_lhs}
+                        LAD   GR2,{len}
+                        {lad_gr3_rhs}
+                        LD    GR4,GR2
+                        CALL  {cmpstr}"#,
+                    lad_gr1_lhs = lhs_label.lad_pos(casl2::Register::Gr1),
+                    lad_gr3_rhs = rhs_label.lad_pos(casl2::Register::Gr3),
+                    len = size1,
+                    cmpstr = cmpstr
+                ));
+                self.code(recovers);
+                self.code(format!(
+                    r#" SLL   GR0,15
+                        SRA   GR0,15
+                        LD    {reg},GR0"#,
+                    reg = reg
+                ));
+                if let Some(labels) = lhs_label.release() {
+                    self.return_temp_str_var_label(labels);
+                }
+                if let Some(labels) = rhs_label.release() {
+                    self.return_temp_str_var_label(labels);
+                }
+                self.set_register_used(reg);
+                reg
+            }
+
+            parser::ExprType::ReferenceOfVar(..) | parser::ExprType::ParamList => {
+                unreachable!("BUG")
+            }
         }
     }
 
