@@ -1062,7 +1062,11 @@ impl Compiler {
                 index,
                 value,
             } => self.compile_assign_sub_into_element(var_name, index, value),
-            AssignRefSubIntoElement { .. } => todo!(),
+            AssignRefSubIntoElement {
+                var_name,
+                index,
+                value,
+            } => self.compile_assign_ref_sub_into_element(var_name, index, value),
             ContinueDo { exit_id } => self.compile_continue_loop(*exit_id, "Do"),
             ContinueFor { exit_id } => self.compile_continue_loop(*exit_id, "For"),
             Dim { var_name, var_type } => self.compile_dim(var_name, var_type),
@@ -1962,6 +1966,104 @@ impl Compiler {
             r#" LD    {reg},{arr},{index}
                 SUBA  {reg},{value}
                 ST    {reg},{arr},{index}"#,
+            reg = reg,
+            value = value_reg,
+            arr = arr_label,
+            index = index_reg
+        ));
+
+        self.set_register_idle(reg);
+        self.set_register_idle(value_reg);
+        self.set_register_idle(index_reg);
+    }
+
+    // Assign Ref Sub Into Element ステートメント
+    // ref_int_arr(index) -= int_expr
+    fn compile_assign_ref_sub_into_element(
+        &mut self,
+        var_name: &str,
+        index: &parser::Expr,
+        value: &parser::Expr,
+    ) {
+        assert!(matches!(index.return_type(), parser::ExprType::Integer));
+        assert!(matches!(value.return_type(), parser::ExprType::Integer));
+
+        self.comment(format!(
+            "{var}( {index} ) -= {value}",
+            var = var_name,
+            index = index,
+            value = value
+        ));
+
+        let (arr_label, arr_size) = self.get_ref_int_arr_label(var_name);
+
+        // indexがリテラルの場合
+        if let parser::Expr::LitInteger(index) = index {
+            let index = *index as i16;
+            let index = (index.max(0) as usize).min(arr_size - 1);
+            // おそらくGR7
+            let value_reg = self.compile_int_expr(value);
+            // おそらくGR6
+            let temp_reg = self.get_idle_register();
+            assert_ne!(value_reg, temp_reg);
+            // おそらくGR5
+            let arr_reg = self.get_idle_register();
+            assert_ne!(value_reg, arr_reg);
+            assert_ne!(temp_reg, arr_reg);
+            self.code(format!(
+                r#" LD    {arr_reg},{arr}
+                    LD    {reg},{index},{arr_reg}
+                    SUBA  {reg},{value}
+                    ST    {reg},{index},{arr_reg}"#,
+                arr_reg = arr_reg,
+                index = index,
+                reg = temp_reg,
+                arr = arr_label,
+                value = value_reg
+            ));
+            self.set_register_idle(arr_reg);
+            self.set_register_idle(temp_reg);
+            self.set_register_idle(value_reg);
+            return;
+        }
+
+        let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+
+        let index_reg = self.compile_int_expr(index);
+
+        // 想定では、
+        //  index_reg = GR7
+        //  他のレジスタ未使用
+        //  になっているはず…
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD   GR1,{index}
+                LAD  GR2,{size}
+                CALL {fit}"#,
+            index = index_reg,
+            size = arr_size,
+            fit = safe_index
+        ));
+        self.code(recovers);
+        self.code(format!(" LD {index},GR0", index = index_reg));
+
+        // 想定では GR6
+        let value_reg = self.compile_int_expr(value);
+
+        self.restore_register(index_reg);
+
+        let reg = self.get_idle_register();
+
+        self.code(format!(
+            r#" ADDL  {index},{arr}
+                LD    {reg},0,{index}
+                SUBA  {reg},{value}
+                ST    {reg},0,{index}"#,
             reg = reg,
             value = value_reg,
             arr = arr_label,
