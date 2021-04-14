@@ -1404,65 +1404,56 @@ Print outStr
 
 #[test]
 fn with_arguments_works() {
-    let src = r#"
-Extern Sub FOO
-Extern Sub BAR With
-    ByRef xArray(10) As Integer To GR1
-    ByVal barList(10) As Integer To GR2
-    ByRef barText As String To GR3,GR4
-    ByVal barLine As String To GR5,GR6
-    ByRef zCount As Integer To GR7
+    let src1 = r#"
+Extern Sub FIZZ With
+    ByVal num As Integer To GR1
+    ByRef fizzBuzz As String To GR2,GR3
 End Sub
-Program BAZ
-    Argument
-        ByRef someNumber As Integer From GR1
-        ByRef someText As String From GR2,GR3
-        ByVal bazText As String From GR4,GR5
-        ByRef bazArray(10) As Integer From GR6
-        ByVal yesArray(10) As Integer From GR7
-    End Argument
-    Dim int1 As Integer
-    Dim str1 As String
-    Dim arr1(10) As Integer
-    int1 = someNumber
-    someNumber = 123
-    str1 = someText
-    someText = str1
-    someText(0) = "A"c
-    someText(1) = "A"c
-    someText(int1) = "A"c
-    int1 = someText(0) 
-    int1 = someText(1) 
-    int1 = someText(int1) 
-    int1 = bazArray(0)
-    int1 = bazArray(1)
-    int1 = bazArray(int1)
-    bazArray(0) = int1
-    bazArray(1) = int1
-    bazArray(int1) = int1
-    Call FOO
-    Call BAR (arr1, arr1, str1, str1, int1)
-    Call BAR With
-        xArray = arr1
-        barList = arr1
-        barText = str1
-        barLine = str1
-        zCount = int1
-    End Call
+Program MAIN
+    Dim i As Integer
+    Dim s As String
+    Dim t As String
+    t = ""
+    For i = 1 To 20
+        Call FIZZ (i, s)
+        t = t & s & ", "
+    Next i
+    Print t
 End Program
 "#;
 
-    let mut cursor = std::io::Cursor::new(src);
+    let src2 = r#"
+Program FIZZ
+    Argument
+        ByVal num As Integer From GR1
+        ByRef fizzBuzz As String From GR2,GR3
+    End Argument
+    Select Case num Mod 15
+    Case 0
+        fizzBuzz = "FizzBuzz"
+    Case 3, 6, 9, 12
+        fizzBuzz = "FIZZ"
+    Case 5, 10
+        fizzBuzz = "BUZZ"
+    Case Else
+        fizzBuzz = CStr(num)
+    End Select
+End Program
+"#;
 
-    let code = parser::parse(&mut cursor).unwrap().unwrap();
+    for src in [src1, src2].iter() {
+        let mut cursor = std::io::Cursor::new(src);
 
-    let statements = compile(None, &code[..]).unwrap();
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
 
-    statements.iter().for_each(|line| {
-        eprintln!("{}", line);
-    });
+        let statements = compile(None, &code[..]).unwrap();
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
 
-    assert!(!statements.is_empty()); // dummy assert
+        eprintln!("{}", crate::stat::analyze(&statements));
+
+        assert!(!statements.is_empty()); // dummy assert
+    }
 }

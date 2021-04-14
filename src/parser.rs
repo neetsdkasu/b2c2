@@ -3088,43 +3088,43 @@ impl std::fmt::Display for ArgumentInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self.var_type {
             VarType::Boolean => {
-                format!("ByVal {} As Boolean With {}", self.var_name, self.register1)
+                format!("ByVal {} As Boolean [{}]", self.var_name, self.register1)
             }
             VarType::Integer => {
-                format!("ByVal {} As Integer With {}", self.var_name, self.register1)
+                format!("ByVal {} As Integer [{}]", self.var_name, self.register1)
             }
             VarType::String => format!(
-                "ByVal {} As String With {},{}",
+                "ByVal {} As String [{},{}]",
                 self.var_name,
                 self.register1,
                 self.register2.expect("BUG")
             ),
             VarType::ArrayOfBoolean(size) => format!(
-                "ByVal {}({}) As Boolean With {}",
+                "ByVal {}({}) As Boolean [{}]",
                 self.var_name, size, self.register1
             ),
             VarType::ArrayOfInteger(size) => format!(
-                "ByVal {}({}) As Integer With {}",
+                "ByVal {}({}) As Integer [{}]",
                 self.var_name, size, self.register1
             ),
             VarType::RefBoolean => {
-                format!("ByRef {} As Boolean With {}", self.var_name, self.register1)
+                format!("ByRef {} As Boolean [{}]", self.var_name, self.register1)
             }
             VarType::RefInteger => {
-                format!("ByRef {} As Integer With {}", self.var_name, self.register1)
+                format!("ByRef {} As Integer [{}]", self.var_name, self.register1)
             }
             VarType::RefString => format!(
-                "ByRef {} As String With {},{}",
+                "ByRef {} As String [{},{}]",
                 self.var_name,
                 self.register1,
                 self.register2.expect("BUG")
             ),
             VarType::RefArrayOfBoolean(size) => format!(
-                "ByRef {}({}) As Boolean With {}",
+                "ByRef {}({}) As Boolean [{}]",
                 self.var_name, size, self.register1
             ),
             VarType::RefArrayOfInteger(size) => format!(
-                "ByRef {}({}) As Integer With {}",
+                "ByRef {}({}) As Integer [{}]",
                 self.var_name, size, self.register1
             ),
         };
