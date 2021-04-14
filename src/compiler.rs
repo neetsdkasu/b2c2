@@ -3219,7 +3219,7 @@ impl Compiler {
 
         // カウンタの準備
         let counter_var = if is_ref {
-            todo!();
+            self.get_ref_int_var_label(counter)
         } else {
             self.get_int_var_label(counter)
         };
@@ -3227,12 +3227,23 @@ impl Compiler {
         // calc {init} and assign to {counter}
         // 想定では GR7
         let init_reg = self.compile_int_expr(init);
-        self.code(casl2::Command::A {
-            code: casl2::A::St,
-            r: init_reg,
-            adr: casl2::Adr::label(&counter_var),
-            x: None,
-        });
+        if is_ref {
+            let reg = self.get_idle_register();
+            self.code(format!(
+                r#" LD  {reg},{var}
+                    ST  {init},0,{reg}"#,
+                reg = reg,
+                var = counter_var,
+                init = init_reg
+            ));
+            self.set_register_idle(reg);
+        } else {
+            self.code(format!(
+                r#" ST {init},{var}"#,
+                init = init_reg,
+                var = counter_var
+            ));
+        }
         self.set_register_idle(init_reg); // GR7 解放のはず
 
         // ラベルの準備
@@ -3253,16 +3264,20 @@ impl Compiler {
         if let Some(end_var) = end_var.as_ref() {
             self.code(format!(
                 r#" LD    GR1,{counter}
+                    {ld_counter_if_ref}
                     CPA   GR1,{end}"#,
                 counter = counter_var,
-                end = end_var
+                end = end_var,
+                ld_counter_if_ref = if is_ref { "LD GR1,0,GR1" } else { "" }
             ));
         } else if let parser::Expr::LitInteger(end) = end {
             self.code(format!(
                 r#" LD    GR1,{counter}
+                    {ld_counter_if_ref}
                     CPA   GR1,={end}"#,
                 counter = counter_var,
-                end = *end as i16
+                end = *end as i16,
+                ld_counter_if_ref = if is_ref { "LD GR1,0,GR1" } else { "" }
             ));
         } else {
             unreachable!("BUG");
@@ -3282,24 +3297,37 @@ impl Compiler {
 
         // ループ末尾 (カウンタの更新など)
 
-        // 想定では、
-        //  全てのレジスタ未使用
-        //  になっているはず…
-        let (saves, recovers) =
-            self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
-
         self.comment(format!("Next {counter}", counter = counter));
 
         self.code(format!("{next} NOP", next = loop_label));
-        self.code(saves);
-        self.code(format!(
-            r#" LD    GR1,{counter}
-                LAD   GR1,{step},GR1
-                ST    GR1,{counter}"#,
-            counter = counter_var,
-            step = step
-        ));
-        self.code(recovers);
+        if is_ref {
+            let (saves, recovers) = {
+                use casl2::Register::*;
+                self.get_save_registers_src(&[Gr1, Gr2])
+            };
+            self.code(saves);
+            self.code(format!(
+                r#" LD    GR1,{counter}
+                    LD    GR2,0,GR1
+                    LAD   GR2,{step},GR2
+                    ST    GR2,0,GR1"#,
+                counter = counter_var,
+                step = step
+            ));
+            self.code(recovers);
+        } else {
+            let (saves, recovers) =
+                self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
+            self.code(saves);
+            self.code(format!(
+                r#" LD    GR1,{counter}
+                    LAD   GR1,{step},GR1
+                    ST    GR1,{counter}"#,
+                counter = counter_var,
+                step = step
+            ));
+            self.code(recovers);
+        }
         self.code(format!(" JUMP {cond}", cond = condition_label));
         self.code(format!("{exit} NOP", exit = exit_label));
 
@@ -3364,7 +3392,7 @@ impl Compiler {
 
         // カウンタの準備
         let counter_var = if is_ref {
-            todo!();
+            self.get_ref_int_var_label(counter)
         } else {
             self.get_int_var_label(counter)
         };
@@ -3372,12 +3400,23 @@ impl Compiler {
         // calc {init} and assign to {counter}
         // 想定では GR7
         let init_reg = self.compile_int_expr(init);
-        self.code(casl2::Command::A {
-            code: casl2::A::St,
-            r: init_reg,
-            adr: casl2::Adr::label(&counter_var),
-            x: None,
-        });
+        if is_ref {
+            let reg = self.get_idle_register();
+            self.code(format!(
+                r#" LD  {reg},{var}
+                    ST  {init},0,{reg}"#,
+                reg = reg,
+                var = counter_var,
+                init = init_reg
+            ));
+            self.set_register_idle(reg);
+        } else {
+            self.code(format!(
+                r#" ST {init},{var}"#,
+                init = init_reg,
+                var = counter_var
+            ));
+        }
         self.set_register_idle(init_reg); // GR7 解放のはず
 
         // ラベルの準備
@@ -3398,37 +3437,77 @@ impl Compiler {
         self.code(format!("{cond} NOP", cond = condition_label));
         self.code(saves);
         if let Some(end_var) = end_var.as_ref() {
-            self.code(format!(
-                r#" LD    GR1,{step}
-                    JMI   {nega}
-                    LD    GR1,{counter}
-                    CPA   GR1,{end}
-                    JUMP  {block}
-{nega}              LD    GR1,{end}
-                    CPA   GR1,{counter}
-{block}             NOP"#,
-                counter = counter_var,
-                step = step_var,
-                nega = negastep_label,
-                end = end_var,
-                block = blockhead_label
-            ));
+            if is_ref {
+                self.code(format!(
+                    r#" LD    GR1,{step}
+                        JMI   {nega}
+                        LD    GR1,{counter}
+                        LD    GR1,0,GR1
+                        CPA   GR1,{end}
+                        JUMP  {block}
+{nega}                  LD    GR0,{end}
+                        LD    GR1,{counter}
+                        CPA   GR0,0,GR1
+{block}                 NOP"#,
+                    counter = counter_var,
+                    step = step_var,
+                    nega = negastep_label,
+                    end = end_var,
+                    block = blockhead_label
+                ));
+            } else {
+                self.code(format!(
+                    r#" LD    GR1,{step}
+                        JMI   {nega}
+                        LD    GR1,{counter}
+                        CPA   GR1,{end}
+                        JUMP  {block}
+{nega}                  LD    GR1,{end}
+                        CPA   GR1,{counter}
+{block}                 NOP"#,
+                    counter = counter_var,
+                    step = step_var,
+                    nega = negastep_label,
+                    end = end_var,
+                    block = blockhead_label
+                ));
+            }
         } else if let parser::Expr::LitInteger(end) = end {
-            self.code(format!(
-                r#" LD    GR1,{step}
-                    JMI   {nega}
-                    LD    GR1,{counter}
-                    CPA   GR1,={end}
-                    JUMP  {block}
-{nega}              LAD    GR1,{end}
-                    CPA   GR1,{counter}
-{block}             NOP"#,
-                counter = counter_var,
-                step = step_var,
-                nega = negastep_label,
-                end = *end as i16,
-                block = blockhead_label
-            ));
+            if is_ref {
+                self.code(format!(
+                    r#" LD    GR1,{step}
+                        JMI   {nega}
+                        LD    GR1,{counter}
+                        LD    GR1,0,GR1
+                        CPA   GR1,={end}
+                        JUMP  {block}
+{nega}                  LAD   GR0,{end}
+                        LD    GR1,{counter}
+                        CPA   GR0,0,GR1
+{block}                 NOP"#,
+                    counter = counter_var,
+                    step = step_var,
+                    nega = negastep_label,
+                    end = *end as i16,
+                    block = blockhead_label
+                ));
+            } else {
+                self.code(format!(
+                    r#" LD    GR1,{step}
+                        JMI   {nega}
+                        LD    GR1,{counter}
+                        CPA   GR1,={end}
+                        JUMP  {block}
+{nega}                  LAD   GR1,{end}
+                        CPA   GR1,{counter}
+{block}                 NOP"#,
+                    counter = counter_var,
+                    step = step_var,
+                    nega = negastep_label,
+                    end = *end as i16,
+                    block = blockhead_label
+                ));
+            }
         } else {
             unreachable!("BUG");
         }
@@ -3451,13 +3530,24 @@ impl Compiler {
         self.comment(format!("Next {counter}", counter = counter));
         self.code(format!("{next} NOP", next = loop_label));
         self.code(saves);
-        self.code(format!(
-            r#" LD    GR1,{counter}
-                ADDA  GR1,{step}
-                ST    GR1,{counter}"#,
-            counter = counter_var,
-            step = step_var
-        ));
+        if is_ref {
+            self.code(format!(
+                r#" LD    GR1,{counter}
+                    LD    GR0,0,GR1
+                    ADDA  GR0,{step}
+                    ST    GR0,0,GR1"#,
+                counter = counter_var,
+                step = step_var
+            ));
+        } else {
+            self.code(format!(
+                r#" LD    GR1,{counter}
+                    ADDA  GR1,{step}
+                    ST    GR1,{counter}"#,
+                counter = counter_var,
+                step = step_var
+            ));
+        }
         self.code(recovers);
         self.code(format!(" JUMP {cond}", cond = condition_label));
         self.code(format!("{exit} NOP", exit = exit_label));
