@@ -4695,7 +4695,7 @@ impl Compiler {
             UnaryOperatorInteger(op, value) => self.compile_unary_op_integer(*op, value),
             UnaryOperatorBoolean(op, value) => self.compile_unary_op_boolean(*op, value),
             VarBoolean(var_name) => self.compile_variable_boolean(var_name),
-            VarRefBoolean(..) => todo!(),
+            VarRefBoolean(var_name) => self.compile_variable_ref_boolean(var_name),
             VarInteger(var_name) => self.compile_variable_integer(var_name),
             VarRefInteger(var_name) => self.compile_variable_ref_integer(var_name),
             VarArrayOfBoolean(arr_name, index) => {
@@ -6200,6 +6200,22 @@ impl Compiler {
             adr,
             x: None,
         });
+
+        reg
+    }
+
+    // (式展開の処理の一部)
+    // 真理値変数(参照型)の読み込み
+    fn compile_variable_ref_boolean(&mut self, var_name: &str) -> casl2::Register {
+        let reg = self.get_idle_register();
+        let var_label = self.get_ref_bool_var_label(var_name);
+
+        self.code(format!(
+            r#" LD  {reg},{var}
+                LD  {reg},0,{reg}"#,
+            reg = reg,
+            var = var_label
+        ));
 
         reg
     }
