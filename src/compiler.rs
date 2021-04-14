@@ -1185,25 +1185,76 @@ impl Compiler {
             self.comment(format!("  {} = {}", arg_name, value));
 
             match value.return_type() {
-                ExprType::Boolean => todo!(),
-                ExprType::Integer => {
+                ExprType::Boolean => {
                     let is_byref = match arg.var_type {
-                        VarType::Integer => false,
-                        VarType::RefInteger => true,
+                        VarType::Boolean => false,
+                        VarType::RefBoolean => true,
                         _ => unreachable!("BUG"),
                     };
-                    // TODO: ByRefのとき変数ダイレクト編集できるようにしないとダメじゃん
                     match value {
-                        Expr::VarInteger(var_name) => {
-                            let label = self.get_int_var_label(var_name);
+                        Expr::VarBoolean(var_name) => {
+                            let label = self.get_bool_var_label(var_name);
                             reg_and_label.push(((arg.register1, is_byref), (label, false)));
                         }
-                        Expr::VarRefInteger(var_name) => {
-                            let label = self.get_ref_int_var_label(var_name);
+                        Expr::VarRefBoolean(var_name) => {
+                            let label = self.get_ref_bool_var_label(var_name);
                             reg_and_label.push(((arg.register1, is_byref), (label, true)))
                         }
-                        Expr::VarArrayOfInteger(_var_name, _index) => todo!(),
-                        Expr::VarRefArrayOfInteger(_var_name, _index) => todo!(),
+                        Expr::VarArrayOfBoolean(var_name, index) => {
+                            let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+                            let index_reg = self.compile_int_expr(index); // リテラルindexの配慮は面倒なのでしてない
+                            let (arr_label, arr_size) = self.get_bool_arr_label(var_name);
+                            let temp_label = self.get_temp_int_var_label();
+                            let (saves, recovers) = {
+                                use casl2::Register::*;
+                                self.get_save_registers_src(&[Gr1, Gr2])
+                            };
+                            self.code(saves);
+                            self.code(format!(
+                                r#" LD    GR1,{index}
+                                    LAD   GR2,{size}
+                                    CALL  {fit}
+                                    LAD   GR1,{arr}
+                                    ADDL  GR1,GR0
+                                    ST    GR1,{temp}"#,
+                                index = index_reg,
+                                size = arr_size,
+                                fit = safe_index,
+                                arr = arr_label,
+                                temp = temp_label
+                            ));
+                            self.code(recovers);
+                            self.set_register_idle(index_reg);
+                            temp_int_labels.push(temp_label.clone());
+                            reg_and_label.push(((arg.register1, is_byref), (temp_label, true)));
+                        }
+                        Expr::VarRefArrayOfBoolean(var_name, index) => {
+                            let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+                            let index_reg = self.compile_int_expr(index); // リテラルindexの配慮は面倒なのでしてない
+                            let (arr_label, arr_size) = self.get_ref_bool_arr_label(var_name);
+                            let temp_label = self.get_temp_int_var_label();
+                            let (saves, recovers) = {
+                                use casl2::Register::*;
+                                self.get_save_registers_src(&[Gr1, Gr2])
+                            };
+                            self.code(saves);
+                            self.code(format!(
+                                r#" LD    GR1,{index}
+                                    LAD   GR2,{size}
+                                    CALL  {fit}
+                                    ADDL  GR0,{arr}
+                                    ST    GR0,{temp}"#,
+                                index = index_reg,
+                                size = arr_size,
+                                fit = safe_index,
+                                arr = arr_label,
+                                temp = temp_label
+                            ));
+                            self.code(recovers);
+                            self.set_register_idle(index_reg);
+                            temp_int_labels.push(temp_label.clone());
+                            reg_and_label.push(((arg.register1, is_byref), (temp_label, true)));
+                        }
                         _ => {
                             let value_reg = self.compile_int_expr(value);
                             let temp_label = self.get_temp_int_var_label();
@@ -1218,6 +1269,92 @@ impl Compiler {
                         }
                     }
                 }
+
+                ExprType::Integer => {
+                    let is_byref = match arg.var_type {
+                        VarType::Integer => false,
+                        VarType::RefInteger => true,
+                        _ => unreachable!("BUG"),
+                    };
+                    match value {
+                        Expr::VarInteger(var_name) => {
+                            let label = self.get_int_var_label(var_name);
+                            reg_and_label.push(((arg.register1, is_byref), (label, false)));
+                        }
+                        Expr::VarRefInteger(var_name) => {
+                            let label = self.get_ref_int_var_label(var_name);
+                            reg_and_label.push(((arg.register1, is_byref), (label, true)))
+                        }
+                        Expr::VarArrayOfInteger(var_name, index) => {
+                            let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+                            let index_reg = self.compile_int_expr(index); // リテラルindexの配慮は面倒なのでしてない
+                            let (arr_label, arr_size) = self.get_int_arr_label(var_name);
+                            let temp_label = self.get_temp_int_var_label();
+                            let (saves, recovers) = {
+                                use casl2::Register::*;
+                                self.get_save_registers_src(&[Gr1, Gr2])
+                            };
+                            self.code(saves);
+                            self.code(format!(
+                                r#" LD    GR1,{index}
+                                    LAD   GR2,{size}
+                                    CALL  {fit}
+                                    LAD   GR1,{arr}
+                                    ADDL  GR1,GR0
+                                    ST    GR1,{temp}"#,
+                                index = index_reg,
+                                size = arr_size,
+                                fit = safe_index,
+                                arr = arr_label,
+                                temp = temp_label
+                            ));
+                            self.code(recovers);
+                            self.set_register_idle(index_reg);
+                            temp_int_labels.push(temp_label.clone());
+                            reg_and_label.push(((arg.register1, is_byref), (temp_label, true)));
+                        }
+                        Expr::VarRefArrayOfInteger(var_name, index) => {
+                            let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+                            let index_reg = self.compile_int_expr(index); // リテラルindexの配慮は面倒なのでしてない
+                            let (arr_label, arr_size) = self.get_ref_int_arr_label(var_name);
+                            let temp_label = self.get_temp_int_var_label();
+                            let (saves, recovers) = {
+                                use casl2::Register::*;
+                                self.get_save_registers_src(&[Gr1, Gr2])
+                            };
+                            self.code(saves);
+                            self.code(format!(
+                                r#" LD    GR1,{index}
+                                    LAD   GR2,{size}
+                                    CALL  {fit}
+                                    ADDL  GR0,{arr}
+                                    ST    GR0,{temp}"#,
+                                index = index_reg,
+                                size = arr_size,
+                                fit = safe_index,
+                                arr = arr_label,
+                                temp = temp_label
+                            ));
+                            self.code(recovers);
+                            self.set_register_idle(index_reg);
+                            temp_int_labels.push(temp_label.clone());
+                            reg_and_label.push(((arg.register1, is_byref), (temp_label, true)));
+                        }
+                        _ => {
+                            let value_reg = self.compile_int_expr(value);
+                            let temp_label = self.get_temp_int_var_label();
+                            self.code(format!(
+                                r#" ST {reg},{temp}"#,
+                                reg = value_reg,
+                                temp = temp_label
+                            ));
+                            self.set_register_idle(value_reg);
+                            temp_int_labels.push(temp_label.clone());
+                            reg_and_label.push(((arg.register1, is_byref), (temp_label, false)));
+                        }
+                    }
+                }
+
                 ExprType::String => {
                     let is_byref = match arg.var_type {
                         VarType::String => false,
@@ -1232,8 +1369,31 @@ impl Compiler {
                     reg_and_label.push(((reg2, true), (labels.pos.clone(), val_is_ref)));
                     str_labels.push(labels);
                 }
-                ExprType::ReferenceOfVar(VarType::ArrayOfBoolean(_size)) => todo!(),
-                ExprType::ReferenceOfVar(VarType::RefArrayOfBoolean(_size)) => todo!(),
+
+                ExprType::ReferenceOfVar(VarType::ArrayOfBoolean(size1))
+                | ExprType::ReferenceOfVar(VarType::RefArrayOfBoolean(size1)) => {
+                    match arg.var_type {
+                        VarType::ArrayOfBoolean(size2) | VarType::RefArrayOfBoolean(size2)
+                            if size1 == size2 => {}
+                        _ => unreachable!("BUG"),
+                    }
+                    let label = self.compile_ref_arr_expr(value);
+                    match label {
+                        ArrayLabel::TempArrayOfBoolean(labels, size3) if size1 == size3 => {
+                            reg_and_label
+                                .push(((arg.register1, true), (labels.pos.clone(), false)));
+                            str_labels.push(labels);
+                        }
+                        ArrayLabel::VarArrayOfBoolean(label, size3) if size1 == size3 => {
+                            reg_and_label.push(((arg.register1, true), (label, false)));
+                        }
+                        ArrayLabel::VarRefArrayOfBoolean(label, size3) if size1 == size3 => {
+                            reg_and_label.push(((arg.register1, true), (label, true)));
+                        }
+                        _ => unreachable!("BUG"),
+                    }
+                }
+
                 ExprType::ReferenceOfVar(VarType::ArrayOfInteger(size1))
                 | ExprType::ReferenceOfVar(VarType::RefArrayOfInteger(size1)) => {
                     match arg.var_type {
@@ -1243,7 +1403,11 @@ impl Compiler {
                     }
                     let label = self.compile_ref_arr_expr(value);
                     match label {
-                        ArrayLabel::TempArrayOfInteger(..) => todo!(),
+                        ArrayLabel::TempArrayOfInteger(labels, size3) if size1 == size3 => {
+                            reg_and_label
+                                .push(((arg.register1, true), (labels.pos.clone(), false)));
+                            str_labels.push(labels);
+                        }
                         ArrayLabel::VarArrayOfInteger(label, size3) if size1 == size3 => {
                             reg_and_label.push(((arg.register1, true), (label, false)));
                         }
@@ -1270,14 +1434,14 @@ impl Compiler {
         let (saves, recovers) = self.get_save_registers_src(&regs);
 
         self.code(saves);
-        for ((reg, is_byref), (label, val_is_ref)) in reg_and_label.iter() {
-            if *is_byref {
-                if *val_is_ref {
+        for ((reg, is_byref), (label, val_is_ref)) in reg_and_label {
+            if is_byref {
+                if val_is_ref {
                     self.code(format!(r#" LD {reg},{label}"#, reg = reg, label = label));
                 } else {
                     self.code(format!(r#" LAD {reg},{label}"#, reg = reg, label = label));
                 }
-            } else if *val_is_ref {
+            } else if val_is_ref {
                 self.code(format!(
                     r#" LD  {reg},{label}
                         LD  {reg},0,{reg}"#,
