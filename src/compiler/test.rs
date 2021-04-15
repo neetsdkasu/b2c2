@@ -261,12 +261,19 @@ fn it_works() {
         Call PROC2()
         Call PROC2 With
         End Call
-        Call PROC3(True, bool1, 12*34, int1)
+        Call PROC3(bool1, bool1, int1, int1)
         Call PROC3 With
-            arg1 = Not bool1
-            arg2 = False
-            arg3 = intArr1(3)
-            arg4 = 12*34
+            arg1 = bool1
+            arg2 = bool1
+            arg3 = int1
+            arg4 = int1
+        End Call
+        Call PROC3(boolArr1(int1), boolArr1(int1), intArr1(int1), intArr1(int1))
+        Call PROC3 With
+            arg1 = boolArr1(int1)
+            arg2 = boolArr1(int1)
+            arg3 = intArr1(int1)
+            arg4 = intArr1(int1)
         End Call
         Call PROC3(True, True, 1, 1)
         Call PROC3 With
