@@ -1,5 +1,5 @@
 use crate::casl2::IndexRegister;
-use crate::compiler::is_valid_program_name;
+use crate::compiler::{is_valid_program_name, MAX_ARRAY_SIZE};
 use crate::tokenizer::*;
 use crate::SyntaxError;
 use std::collections::HashMap;
@@ -8,8 +8,6 @@ use std::io::{self, BufRead};
 
 #[cfg(test)]
 mod test;
-
-const MAX_ARRAY_SIZE: usize = 256;
 
 pub fn parse<R: BufRead>(reader: R) -> io::Result<Result<Vec<Statement>, SyntaxError>> {
     let mut parser = Parser::new();
@@ -2482,6 +2480,52 @@ impl Parser {
                 }
             }
 
+            // 関数 Array ( 引数 )
+            [(_, Token::Function(Function::Array)), (pos, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
+            {
+                let param = self.parse_expr(inner)?;
+                match &param {
+                    Expr::ParamList(list) if (1..=MAX_ARRAY_SIZE).contains(&list.len()) => {
+                        let size = list.len();
+                        if list
+                            .iter()
+                            .all(|expr| matches!(expr.return_type(), ExprType::Boolean))
+                        {
+                            return Ok(Expr::FunctionBooleanArray(
+                                size,
+                                Function::Array,
+                                Box::new(param),
+                            ));
+                        } else if list
+                            .iter()
+                            .all(|expr| matches!(expr.return_type(), ExprType::Integer))
+                        {
+                            return Ok(Expr::FunctionIntegerArray(
+                                size,
+                                Function::Array,
+                                Box::new(param),
+                            ));
+                        }
+                    }
+                    _ if matches!(param.return_type(), ExprType::Boolean) => {
+                        return Ok(Expr::FunctionBooleanArray(
+                            1,
+                            Function::Array,
+                            Box::new(param),
+                        ));
+                    }
+                    _ if matches!(param.return_type(), ExprType::Integer) => {
+                        return Ok(Expr::FunctionIntegerArray(
+                            1,
+                            Function::Array,
+                            Box::new(param),
+                        ));
+                    }
+                    _ => {}
+                }
+                Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+            }
+
             // 関数 ( 引数 )
             [(_, Token::Function(function)), (pos, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
             {
@@ -2946,6 +2990,8 @@ pub enum Expr {
     FunctionBoolean(Function, Box<Expr>),
     FunctionInteger(Function, Box<Expr>),
     FunctionString(Function, Box<Expr>),
+    FunctionBooleanArray(usize, Function, Box<Expr>),
+    FunctionIntegerArray(usize, Function, Box<Expr>),
     LitBoolean(bool),
     LitInteger(i32),
     LitString(String),
@@ -3133,6 +3179,14 @@ impl Expr {
 
             ParamList(..) => ExprType::ParamList,
 
+            FunctionBooleanArray(size, ..) => {
+                ExprType::ReferenceOfVar(VarType::ArrayOfBoolean(*size))
+            }
+
+            FunctionIntegerArray(size, ..) => {
+                ExprType::ReferenceOfVar(VarType::ArrayOfInteger(*size))
+            }
+
             ReferenceOfVar(_, var_type) => ExprType::ReferenceOfVar(*var_type),
         }
     }
@@ -3145,6 +3199,7 @@ impl Function {
             CBool | Eof => ExprType::Boolean,
             Abs | Asc | CInt | Len | Max | Min => ExprType::Integer,
             Chr | CStr | Mid | Space => ExprType::String,
+            Array => unreachable!("BUG"),
         }
     }
 
@@ -3191,6 +3246,18 @@ impl Function {
 
             // 引数は文字列1個
             Asc | Len => matches!(param.return_type(), ExprType::String),
+
+            Array => {
+                if let Expr::ParamList(list) = param {
+                    list.iter()
+                        .all(|expr| matches!(expr.return_type(), ExprType::Integer))
+                        || list
+                            .iter()
+                            .all(|expr| matches!(expr.return_type(), ExprType::Boolean))
+                } else {
+                    matches!(param.return_type(), ExprType::Boolean | ExprType::Integer)
+                }
+            }
         }
     }
 }
@@ -3303,6 +3370,8 @@ impl std::fmt::Display for Expr {
             FunctionBoolean(func, param)
             | FunctionInteger(func, param)
             | FunctionString(func, param)
+            | FunctionBooleanArray(_, func, param)
+            | FunctionIntegerArray(_, func, param)
                 if matches!(
                     param.as_ref(),
                     BinaryOperatorBoolean(..)
@@ -3314,7 +3383,9 @@ impl std::fmt::Display for Expr {
             }
             FunctionBoolean(func, param)
             | FunctionInteger(func, param)
-            | FunctionString(func, param) => {
+            | FunctionString(func, param)
+            | FunctionBooleanArray(_, func, param)
+            | FunctionIntegerArray(_, func, param) => {
                 format!("{}({})", func.to_string(), param.to_string()).fmt(f)
             }
             LitBoolean(lit) => (if *lit { "True" } else { "False" }).fmt(f),

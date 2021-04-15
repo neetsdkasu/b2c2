@@ -12,6 +12,8 @@ mod subroutine;
 #[cfg(test)]
 mod test;
 
+pub const MAX_ARRAY_SIZE: usize = 256;
+
 type CompileError = String;
 
 // 正しい src が来ることを前提とする (不正な src の判定は面倒くさい)
@@ -676,7 +678,7 @@ impl Compiler {
                 let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
                 assert_eq!(arg.var_name, var_name);
                 if let parser::VarType::ArrayOfBoolean(size) = arg.var_type {
-                    assert!(size > 0);
+                    assert!((1..=MAX_ARRAY_SIZE).contains(&size));
                     (label.clone(), size)
                 } else {
                     unreachable!("BUG");
@@ -689,7 +691,7 @@ impl Compiler {
         let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
         assert_eq!(arg.var_name, var_name);
         if let parser::VarType::RefArrayOfBoolean(size) = arg.var_type {
-            assert!(size > 0);
+            assert!((1..=MAX_ARRAY_SIZE).contains(&size));
             (label.clone(), size)
         } else {
             unreachable!("BUG");
@@ -705,7 +707,7 @@ impl Compiler {
                 let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
                 assert_eq!(arg.var_name, var_name);
                 if let parser::VarType::ArrayOfInteger(size) = arg.var_type {
-                    assert!(size > 0);
+                    assert!((1..=MAX_ARRAY_SIZE).contains(&size));
                     (label.clone(), size)
                 } else {
                     unreachable!("BUG");
@@ -718,7 +720,7 @@ impl Compiler {
         let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
         assert_eq!(arg.var_name, var_name);
         if let parser::VarType::RefArrayOfInteger(size) = arg.var_type {
-            assert!(size > 0);
+            assert!((1..=MAX_ARRAY_SIZE).contains(&size));
             (label.clone(), size)
         } else {
             unreachable!("BUG");
@@ -4603,6 +4605,8 @@ impl Compiler {
             | CharOfVarRefString(..)
             | FunctionBoolean(..)
             | FunctionInteger(..)
+            | FunctionBooleanArray(..)
+            | FunctionIntegerArray(..)
             | LitBoolean(..)
             | LitInteger(..)
             | LitCharacter(..)
@@ -4715,7 +4719,7 @@ impl Compiler {
             Space => self.call_function_space(param),
 
             // 戻り値が文字列ではないもの
-            Abs | Asc | CInt | Eof | Len | Max | Min | CBool => unreachable!("BUG"),
+            Abs | Array | Asc | CInt | Eof | Len | Max | Min | CBool => unreachable!("BUG"),
         }
     }
 
@@ -5020,6 +5024,8 @@ impl Compiler {
             // 戻り値が整数でも真理値でもないもの
             BinaryOperatorString(..)
             | FunctionString(..)
+            | FunctionBooleanArray(..)
+            | FunctionIntegerArray(..)
             | LitString(..)
             | VarString(..)
             | VarRefString(..)
@@ -5076,7 +5082,9 @@ impl Compiler {
             Eof => self.call_function_eof(param),
 
             // 戻り値が真理値ではないもの
-            Abs | Asc | Chr | CInt | Len | Max | Mid | Min | CStr | Space => unreachable!("BUG"),
+            Abs | Array | Asc | Chr | CInt | Len | Max | Mid | Min | CStr | Space => {
+                unreachable!("BUG")
+            }
         }
     }
 
@@ -6966,7 +6974,9 @@ impl Compiler {
             Len => self.call_function_len(param),
             Max => self.call_function_max(param),
             Min => self.call_function_min(param),
-            CBool | Chr | CStr | Eof | Mid | Space => unreachable!("BUG"),
+
+            // 戻り値が整数ではないもの
+            Array | CBool | Chr | CStr | Eof | Mid | Space => unreachable!("BUG"),
         }
     }
 
@@ -7321,6 +7331,12 @@ impl Compiler {
                 assert_eq!(arr_size, *size);
                 ArrayLabel::VarRefArrayOfInteger(arr_label, arr_size)
             }
+            FunctionBooleanArray(size, func, value) => {
+                self.compile_function_boolean_array(*size, *func, value)
+            }
+            FunctionIntegerArray(size, func, value) => {
+                self.compile_function_integer_array(*size, *func, value)
+            }
 
             // 戻り値が配列参照ではないもの
             ReferenceOfVar(..)
@@ -7351,6 +7367,154 @@ impl Compiler {
             | VarRefString(..)
             | ParamList(_) => unreachable!("BUG"),
         }
+    }
+
+    // (式展開の処理の一部)
+    // 真理値配列が戻り値の関数
+    fn compile_function_boolean_array(
+        &mut self,
+        size: usize,
+        func: tokenizer::Function,
+        value: &parser::Expr,
+    ) -> ArrayLabel {
+        use tokenizer::Function::*;
+
+        assert!((1..=MAX_ARRAY_SIZE).contains(&size));
+
+        match func {
+            Array => self.call_function_array_with_boolean_array(size, value),
+
+            // 戻り値が真理値配列ではないもの
+            Abs | Asc | CBool | Chr | CInt | CStr | Eof | Len | Max | Mid | Min | Space => {
+                unreachable!("BUG")
+            }
+        }
+    }
+
+    // (式展開の処理の一部)
+    // Array (<bool_expr>, ...) の処理
+    fn call_function_array_with_boolean_array(
+        &mut self,
+        size: usize,
+        value: &parser::Expr,
+    ) -> ArrayLabel {
+        let labels = self.get_temp_str_var_label();
+
+        if matches!(value.return_type(), parser::ExprType::Boolean) {
+            assert_eq!(size, 1);
+            let reg = self.compile_int_expr(value);
+            self.code(format!(r#" ST {reg},{arr}"#, reg = reg, arr = labels.pos));
+            self.set_register_idle(reg);
+            return ArrayLabel::TempArrayOfBoolean(labels, size);
+        }
+
+        assert_ne!(size, 1);
+
+        let list = if let parser::Expr::ParamList(list) = value {
+            assert_eq!(size, list.len());
+            list
+        } else {
+            unreachable!("BUG");
+        };
+
+        let index_reg = self.get_idle_register();
+        self.code(format!(
+            r#" LAD {index},{arr}"#,
+            index = index_reg,
+            arr = labels.pos
+        ));
+
+        for (i, expr) in list.iter().enumerate() {
+            assert!(matches!(expr.return_type(), parser::ExprType::Boolean));
+            let reg = self.compile_int_expr(expr);
+            assert_ne!(reg, index_reg);
+            self.restore_register(index_reg);
+            self.code(format!(
+                r#" ST {reg},0,{index}"#,
+                reg = reg,
+                index = index_reg
+            ));
+            self.set_register_idle(reg);
+            if i + 1 < list.len() {
+                self.code(format!(r#" LAD {index},1,{index}"#, index = index_reg));
+            }
+        }
+
+        ArrayLabel::TempArrayOfBoolean(labels, size)
+    }
+
+    // (式展開の処理の一部)
+    // 整数配列が戻り値の関数
+    fn compile_function_integer_array(
+        &mut self,
+        size: usize,
+        func: tokenizer::Function,
+        value: &parser::Expr,
+    ) -> ArrayLabel {
+        use tokenizer::Function::*;
+
+        assert!((1..=MAX_ARRAY_SIZE).contains(&size));
+
+        match func {
+            Array => self.call_function_array_with_integer_array(size, value),
+
+            // 戻り値が整数配列ではないもの
+            Abs | Asc | CBool | Chr | CInt | CStr | Eof | Len | Max | Mid | Min | Space => {
+                unreachable!("BUG")
+            }
+        }
+    }
+
+    // (式展開の処理の一部)
+    // Array (<int_expr>, ...) の処理
+    fn call_function_array_with_integer_array(
+        &mut self,
+        size: usize,
+        value: &parser::Expr,
+    ) -> ArrayLabel {
+        let labels = self.get_temp_str_var_label();
+
+        if matches!(value.return_type(), parser::ExprType::Integer) {
+            assert_eq!(size, 1);
+            let reg = self.compile_int_expr(value);
+            self.code(format!(r#" ST {reg},{arr}"#, reg = reg, arr = labels.pos));
+            self.set_register_idle(reg);
+            return ArrayLabel::TempArrayOfInteger(labels, size);
+        }
+
+        assert_ne!(size, 1);
+
+        let list = if let parser::Expr::ParamList(list) = value {
+            assert_eq!(size, list.len());
+            list
+        } else {
+            unreachable!("BUG");
+        };
+
+        let index_reg = self.get_idle_register();
+        self.code(format!(
+            r#" LAD {index},{arr}"#,
+            index = index_reg,
+            arr = labels.pos
+        ));
+
+        for (i, expr) in list.iter().enumerate() {
+            assert!(matches!(expr.return_type(), parser::ExprType::Integer));
+            let reg = self.compile_int_expr(expr);
+            assert_ne!(reg, index_reg);
+            self.restore_register(index_reg);
+            self.code(format!(
+                r#" ST {reg},0,{index}"#,
+                reg = reg,
+                index = index_reg
+            ));
+            self.set_register_idle(reg);
+            if i + 1 < list.len() {
+                self.code(format!(r#" LAD {index},1,{index}"#, index = index_reg));
+            }
+        }
+
+        ArrayLabel::TempArrayOfInteger(labels, size)
     }
 }
 

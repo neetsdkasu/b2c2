@@ -365,6 +365,8 @@ fn it_works() {
         intArr2 = intArr3
         intArr2 = argIArr
         argIArr = intArr2
+        boolArr2 = Array(True, False, True, True)
+        intArr2 = Array(1, 2, 3, 4)
     End Program
         "#;
 

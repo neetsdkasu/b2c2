@@ -346,6 +346,7 @@ enumdef!(
     Function;
     FUNCTIONS;
     Abs,
+    Array,
     Asc,
     CBool,
     Chr,
