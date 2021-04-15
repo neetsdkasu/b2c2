@@ -282,6 +282,13 @@ fn it_works() {
             arg3 = 1
             arg4 = 1
         End Call
+        Call PROC3(True, True, str1(int1), str1(int1))
+        Call PROC3 With
+            arg1 = True
+            arg2 = True
+            arg3 = str1(int1)
+            arg4 = str1(int1)
+        End Call
         Call PROC3 With
             arg4 = 1
             arg1 = True
@@ -294,6 +301,13 @@ fn it_works() {
             arg2 = argBool
             arg3 = argInt
             arg4 = argInt
+        End Call
+        Call PROC3(argBool, argBool, argStr(int1), argStr(int1))
+        Call PROC3 With
+            arg1 = argBool
+            arg2 = argBool
+            arg3 = argStr(int1)
+            arg4 = argStr(int1)
         End Call
         Call PROC3(argBArr(int1+1), argBArr(int1+1), argIArr(int1+1), argIArr(int1+1))
         Call PROC3 With

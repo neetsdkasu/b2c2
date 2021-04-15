@@ -1403,6 +1403,61 @@ impl Compiler {
                             temp_int_labels.push(temp_label.clone());
                             reg_and_label.push(((arg.register1, is_byref), (temp_label, true)));
                         }
+                        Expr::CharOfVarString(var_name, index) => {
+                            let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+                            let index_reg = self.compile_int_expr(index); // リテラルindexの配慮は面倒なのでしてない
+                            let labels = self.get_str_var_labels(var_name);
+                            let temp_label = self.get_temp_int_var_label();
+                            let (saves, recovers) = {
+                                use casl2::Register::*;
+                                self.get_save_registers_src(&[Gr1, Gr2])
+                            };
+                            self.code(saves);
+                            self.code(format!(
+                                r#" LD    GR1,{index}
+                                    {ld_gr2_strlen}
+                                    CALL  {fit}
+                                    {lad_gr1_strpos}
+                                    ADDL  GR1,GR0
+                                    ST    GR1,{temp}"#,
+                                index = index_reg,
+                                ld_gr2_strlen = labels.ld_len(casl2::Register::Gr2),
+                                lad_gr1_strpos = labels.lad_pos(casl2::Register::Gr1),
+                                fit = safe_index,
+                                temp = temp_label
+                            ));
+                            self.code(recovers);
+                            self.set_register_idle(index_reg);
+                            temp_int_labels.push(temp_label.clone());
+                            reg_and_label.push(((arg.register1, is_byref), (temp_label, true)));
+                        }
+                        Expr::CharOfVarRefString(var_name, index) => {
+                            let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+                            let index_reg = self.compile_int_expr(index); // リテラルindexの配慮は面倒なのでしてない
+                            let labels = self.get_ref_str_var_labels(var_name);
+                            let temp_label = self.get_temp_int_var_label();
+                            let (saves, recovers) = {
+                                use casl2::Register::*;
+                                self.get_save_registers_src(&[Gr1, Gr2])
+                            };
+                            self.code(saves);
+                            self.code(format!(
+                                r#" LD    GR1,{index}
+                                    {ld_gr2_strlen}
+                                    CALL  {fit}
+                                    ADDL  GR0,{strpos}
+                                    ST    GR0,{temp}"#,
+                                index = index_reg,
+                                ld_gr2_strlen = labels.ld_len(casl2::Register::Gr2),
+                                strpos = labels.pos,
+                                fit = safe_index,
+                                temp = temp_label
+                            ));
+                            self.code(recovers);
+                            self.set_register_idle(index_reg);
+                            temp_int_labels.push(temp_label.clone());
+                            reg_and_label.push(((arg.register1, is_byref), (temp_label, true)));
+                        }
                         _ => {
                             let value_reg = self.compile_int_expr(value);
                             let temp_label = self.get_temp_int_var_label();
