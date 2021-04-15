@@ -5719,14 +5719,10 @@ impl Compiler {
                 reg
             }
 
-            parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfBoolean(size1))
-            | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfBoolean(size1))
-            | parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfInteger(size1))
+            parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfInteger(size1))
             | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfInteger(size1)) => {
                 match rhs.return_type() {
-                    parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfBoolean(size2))
-                    | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfBoolean(size2))
-                    | parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfInteger(size2))
+                    parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfInteger(size2))
                     | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfInteger(size2))
                         if size1 == size2 => {}
                     _ => unreachable!("BUG"),
@@ -5845,14 +5841,10 @@ impl Compiler {
                 reg
             }
 
-            parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfBoolean(size1))
-            | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfBoolean(size1))
-            | parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfInteger(size1))
+            parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfInteger(size1))
             | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfInteger(size1)) => {
                 match rhs.return_type() {
-                    parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfBoolean(size2))
-                    | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfBoolean(size2))
-                    | parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfInteger(size2))
+                    parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfInteger(size2))
                     | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfInteger(size2))
                         if size1 == size2 => {}
                     _ => unreachable!("BUG"),
@@ -5970,14 +5962,10 @@ impl Compiler {
                 reg
             }
 
-            parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfBoolean(size1))
-            | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfBoolean(size1))
-            | parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfInteger(size1))
+            parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfInteger(size1))
             | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfInteger(size1)) => {
                 match rhs.return_type() {
-                    parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfBoolean(size2))
-                    | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfBoolean(size2))
-                    | parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfInteger(size2))
+                    parser::ExprType::ReferenceOfVar(parser::VarType::ArrayOfInteger(size2))
                     | parser::ExprType::ReferenceOfVar(parser::VarType::RefArrayOfInteger(size2))
                         if size1 == size2 => {}
                     _ => unreachable!("BUG"),
