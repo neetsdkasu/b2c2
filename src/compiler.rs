@@ -1133,7 +1133,9 @@ impl Compiler {
             AssignBooleanArray { var_name, value } => {
                 self.compile_assign_boolean_array(var_name, value)
             }
-            AssignRefBooleanArray { .. } => todo!(),
+            AssignRefBooleanArray { var_name, value } => {
+                self.compile_assign_ref_boolean_array(var_name, value)
+            }
             AssignIntegerArray { .. } => todo!(),
             AssignRefIntegerArray { .. } => todo!(),
             ContinueDo { exit_id } => self.compile_continue_loop(*exit_id, "Do"),
@@ -1256,6 +1258,50 @@ impl Compiler {
         self.code(saves);
         self.code(format!(
             r#" LAD   GR1,{arr}
+                LAD   GR2,{temp}
+                {lad_gr3_srcpos}
+                LAD   GR4,{size}
+                CALL  {copy}"#,
+            arr = arr_label,
+            temp = temp,
+            lad_gr3_srcpos = bool_arr_label.lad_pos(casl2::Register::Gr3),
+            size = arr_size,
+            copy = copystr
+        ));
+        self.code(recovers);
+
+        if let Some(labels) = bool_arr_label.release() {
+            self.return_temp_str_var_label(labels);
+        }
+        self.return_temp_int_var_label(temp);
+    }
+
+    // Assign Ref Boolean Array
+    // ref_bool_arr = some_bool_arr
+    fn compile_assign_ref_boolean_array(&mut self, var_name: &str, value: &parser::Expr) {
+        let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
+
+        self.comment(format!("{} = {}", var_name, value));
+
+        let (arr_label, arr_size) = self.get_ref_bool_arr_label(var_name);
+
+        let bool_arr_label = self.compile_ref_arr_expr(value);
+        assert!(matches!(
+            bool_arr_label.element_type(),
+            parser::ExprType::Boolean
+        ));
+        assert_eq!(arr_size, bool_arr_label.size());
+
+        let temp = self.get_temp_int_var_label();
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LD    GR1,{arr}
                 LAD   GR2,{temp}
                 {lad_gr3_srcpos}
                 LAD   GR4,{size}
