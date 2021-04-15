@@ -240,6 +240,10 @@ impl Parser {
                         | VarType::RefBoolean
                         | VarType::RefInteger
                         | VarType::RefString
+                        | VarType::ArrayOfBoolean(..)
+                        | VarType::ArrayOfInteger(..)
+                        | VarType::RefArrayOfBoolean(..)
+                        | VarType::RefArrayOfInteger(..)
                 ) =>
             {
                 let expr = self.parse_expr(rest)?;
@@ -276,6 +280,42 @@ impl Parser {
                     }
                     ExprType::String if matches!(var_type, VarType::RefString) => {
                         self.add_statement(Statement::AssignRefString {
+                            var_name: name.into(),
+                            value: expr,
+                        });
+                    }
+                    ExprType::ReferenceOfVar(VarType::ArrayOfBoolean(size1))
+                    | ExprType::ReferenceOfVar(VarType::RefArrayOfBoolean(size1))
+                        if matches!(var_type, VarType::ArrayOfBoolean(size2) if size1 == size2) =>
+                    {
+                        self.add_statement(Statement::AssignBooleanArray {
+                            var_name: name.into(),
+                            value: expr,
+                        });
+                    }
+                    ExprType::ReferenceOfVar(VarType::ArrayOfBoolean(size1))
+                    | ExprType::ReferenceOfVar(VarType::RefArrayOfBoolean(size1))
+                        if matches!(var_type, VarType::RefArrayOfBoolean(size2) if size1 == size2) =>
+                    {
+                        self.add_statement(Statement::AssignRefBooleanArray {
+                            var_name: name.into(),
+                            value: expr,
+                        });
+                    }
+                    ExprType::ReferenceOfVar(VarType::ArrayOfInteger(size1))
+                    | ExprType::ReferenceOfVar(VarType::RefArrayOfInteger(size1))
+                        if matches!(var_type, VarType::ArrayOfInteger(size2) if size1 == size2) =>
+                    {
+                        self.add_statement(Statement::AssignIntegerArray {
+                            var_name: name.into(),
+                            value: expr,
+                        });
+                    }
+                    ExprType::ReferenceOfVar(VarType::ArrayOfInteger(size1))
+                    | ExprType::ReferenceOfVar(VarType::RefArrayOfInteger(size1))
+                        if matches!(var_type, VarType::RefArrayOfInteger(size2) if size1 == size2) =>
+                    {
+                        self.add_statement(Statement::AssignRefIntegerArray {
                             var_name: name.into(),
                             value: expr,
                         });
@@ -2678,6 +2718,22 @@ pub enum Statement {
     AssignRefSubIntoElement {
         var_name: String,
         index: Expr,
+        value: Expr,
+    },
+    AssignBooleanArray {
+        var_name: String,
+        value: Expr,
+    },
+    AssignRefBooleanArray {
+        var_name: String,
+        value: Expr,
+    },
+    AssignIntegerArray {
+        var_name: String,
+        value: Expr,
+    },
+    AssignRefIntegerArray {
+        var_name: String,
         value: Expr,
     },
     ContinueDo {

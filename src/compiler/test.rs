@@ -55,6 +55,8 @@ fn it_works() {
         Dim boolArr1(10) As Boolean
         Dim intArr2(3) As Integer
         Dim boolArr2(3) As Boolean
+        Dim intArr3(3) As Integer
+        Dim boolArr3(3) As Boolean
         Dim i As Integer
         Dim j As Integer
         Input int1
@@ -357,6 +359,12 @@ fn it_works() {
             arg1 = argStr
             arg2 = argStr
         End Call
+        boolArr2 = boolArr3
+        boolArr2 = argBArr
+        argBArr = boolArr2
+        intArr2 = intArr3
+        intArr2 = argIArr
+        argIArr = intArr2
     End Program
         "#;
 
