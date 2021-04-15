@@ -2875,7 +2875,7 @@ pub enum ExprType {
     Integer,
     String,
     ParamList,
-    ReferenceOfVar(VarType),
+    ReferenceOfVar(VarType), // 現状は配列タイプのみ
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -2909,6 +2909,58 @@ pub enum Expr {
     ParamList(Vec<Expr>),
 }
 
+impl ExprType {
+    fn match_for_bin_op(&self, other: &Self) -> bool {
+        match self {
+            Self::ReferenceOfVar(VarType::ArrayOfBoolean(size1))
+            | Self::ReferenceOfVar(VarType::RefArrayOfBoolean(size1)) => match other {
+                Self::ReferenceOfVar(VarType::ArrayOfBoolean(size2))
+                | Self::ReferenceOfVar(VarType::RefArrayOfBoolean(size2)) => size1 == size2,
+                _ => false,
+            },
+
+            Self::ReferenceOfVar(VarType::ArrayOfInteger(size1))
+            | Self::ReferenceOfVar(VarType::RefArrayOfInteger(size1)) => match other {
+                Self::ReferenceOfVar(VarType::ArrayOfInteger(size2))
+                | Self::ReferenceOfVar(VarType::RefArrayOfInteger(size2)) => size1 == size2,
+                _ => false,
+            },
+
+            Self::Boolean => matches!(other, Self::Boolean),
+            Self::Integer => matches!(other, Self::Integer),
+            Self::String => matches!(other, Self::String),
+
+            Self::ParamList | Self::ReferenceOfVar(..) => false,
+        }
+    }
+
+    fn is_bool_array(&self) -> bool {
+        match self {
+            Self::ReferenceOfVar(VarType::ArrayOfBoolean(_))
+            | Self::ReferenceOfVar(VarType::RefArrayOfBoolean(_)) => true,
+
+            Self::Boolean
+            | Self::Integer
+            | Self::String
+            | Self::ParamList
+            | Self::ReferenceOfVar(..) => false,
+        }
+    }
+
+    fn is_int_array(&self) -> bool {
+        match self {
+            Self::ReferenceOfVar(VarType::ArrayOfInteger(_))
+            | Self::ReferenceOfVar(VarType::RefArrayOfInteger(_)) => true,
+
+            Self::Boolean
+            | Self::Integer
+            | Self::String
+            | Self::ParamList
+            | Self::ReferenceOfVar(..) => false,
+        }
+    }
+}
+
 impl Expr {
     fn binary(op: Operator, lhs: Expr, rhs: Expr) -> Option<Expr> {
         // op == , => ParamList, lhsとrhsは型が不一致でもOK
@@ -2940,8 +2992,8 @@ impl Expr {
                 return Some(Expr::ParamList(v));
             }
 
-            // カンマ以外の演算子で左辺と右辺の型が異なるのはシンタックスエラー
-            _ if lhs.return_type() != rhs.return_type() => return None,
+            // カンマ以外の演算子で左辺と右辺の型が非互換なのはシンタックスエラー
+            _ if !lhs.return_type().match_for_bin_op(&rhs.return_type()) => return None,
 
             // 整数を受け取って整数を返すもの
             ShiftLeft | ShiftRight | Mul | Div | Mod | Add | Sub
@@ -2953,19 +3005,21 @@ impl Expr {
             // 文字列を受け取って文字列を返すもの
             Concat if matches!(lhs.return_type(), ExprType::String) => Expr::BinaryOperatorString,
 
-            // 整数または文字列を受け取って真理値を返すもの
+            // 整数または文字列または配列を受け取って真理値を返すもの
             LessOrEequal | GreaterOrEqual | LessThan | GreaterThan
-                if matches!(lhs.return_type(), ExprType::Integer | ExprType::String) =>
+                if matches!(lhs.return_type(), ExprType::Integer | ExprType::String)
+                    || lhs.return_type().is_int_array() =>
             {
                 Expr::BinaryOperatorBoolean
             }
 
-            // 真理値または整数または文字列を受け取って真理値を返すもの
+            // 真理値または整数または文字列または配列を受け取って真理値を返すもの
             Equal | NotEqual
-                if matches!(
-                    lhs.return_type(),
-                    ExprType::Boolean | ExprType::Integer | ExprType::String
-                ) =>
+                if matches!(lhs.return_type(), ExprType::Boolean)
+                    || matches!(lhs.return_type(), ExprType::Integer)
+                    || matches!(lhs.return_type(), ExprType::String)
+                    || lhs.return_type().is_bool_array()
+                    || lhs.return_type().is_int_array() =>
             {
                 Expr::BinaryOperatorBoolean
             }
