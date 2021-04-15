@@ -261,6 +261,13 @@ fn it_works() {
         Call PROC2()
         Call PROC2 With
         End Call
+        Call PROC3(True, False, 123, -123)
+        Call PROC3  (True, False, 123, -123)
+        Call PROC3  True, False, 123, -123
+        Call PROC3  (((True, False, 123, -123))) '　ParamList雑解釈その1
+        Call PROC3  (True, False), (123, -123)   '　ParamList雑解釈その2
+        Call PROC3  (True, False, 123), -123
+        Call PROC3  True, ((False, 123), -123)   ' ParamListの結合法則(笑)
         Call PROC3(bool1, bool1, int1, int1)
         Call PROC3 With
             arg1 = bool1
