@@ -1136,7 +1136,9 @@ impl Compiler {
             AssignRefBooleanArray { var_name, value } => {
                 self.compile_assign_ref_boolean_array(var_name, value)
             }
-            AssignIntegerArray { .. } => todo!(),
+            AssignIntegerArray { var_name, value } => {
+                self.compile_assign_integer_array(var_name, value)
+            }
             AssignRefIntegerArray { .. } => todo!(),
             ContinueDo { exit_id } => self.compile_continue_loop(*exit_id, "Do"),
             ContinueFor { exit_id } => self.compile_continue_loop(*exit_id, "For"),
@@ -1230,6 +1232,50 @@ impl Compiler {
             | ProvisionalCaseString { .. }
             | ProvisionalCaseElse => unreachable!("BUG"),
         }
+    }
+
+    // Assign Integer Array
+    // int_arr = some_int_arr
+    fn compile_assign_integer_array(&mut self, var_name: &str, value: &parser::Expr) {
+        let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
+
+        self.comment(format!("{} = {}", var_name, value));
+
+        let (arr_label, arr_size) = self.get_int_arr_label(var_name);
+
+        let int_arr_label = self.compile_ref_arr_expr(value);
+        assert!(matches!(
+            int_arr_label.element_type(),
+            parser::ExprType::Integer
+        ));
+        assert_eq!(arr_size, int_arr_label.size());
+
+        let temp = self.get_temp_int_var_label();
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" LAD   GR1,{arr}
+                LAD   GR2,{temp}
+                {lad_gr3_srcpos}
+                LAD   GR4,{size}
+                CALL  {copy}"#,
+            arr = arr_label,
+            temp = temp,
+            lad_gr3_srcpos = int_arr_label.lad_pos(casl2::Register::Gr3),
+            size = arr_size,
+            copy = copystr
+        ));
+        self.code(recovers);
+
+        if let Some(labels) = int_arr_label.release() {
+            self.return_temp_str_var_label(labels);
+        }
+        self.return_temp_int_var_label(temp);
     }
 
     // Assign Boolean Array
