@@ -5528,7 +5528,8 @@ impl Compiler {
         lhs: &parser::Expr,
         rhs: &parser::Expr,
     ) -> casl2::Register {
-        assert_eq!(lhs.return_type(), rhs.return_type());
+        assert!(lhs.return_type().match_for_bin_op(&rhs.return_type()));
+        assert!(rhs.return_type().match_for_bin_op(&lhs.return_type()));
 
         match lhs.return_type() {
             parser::ExprType::Boolean => {
@@ -5660,7 +5661,8 @@ impl Compiler {
         lhs: &parser::Expr,
         rhs: &parser::Expr,
     ) -> casl2::Register {
-        assert_eq!(lhs.return_type(), rhs.return_type());
+        assert!(lhs.return_type().match_for_bin_op(&rhs.return_type()));
+        assert!(rhs.return_type().match_for_bin_op(&lhs.return_type()));
 
         match lhs.return_type() {
             parser::ExprType::Integer => {
@@ -5782,7 +5784,8 @@ impl Compiler {
         lhs: &parser::Expr,
         rhs: &parser::Expr,
     ) -> casl2::Register {
-        assert_eq!(lhs.return_type(), rhs.return_type());
+        assert!(lhs.return_type().match_for_bin_op(&rhs.return_type()));
+        assert!(rhs.return_type().match_for_bin_op(&lhs.return_type()));
 
         match lhs.return_type() {
             parser::ExprType::Integer => {
@@ -5904,7 +5907,8 @@ impl Compiler {
         lhs: &parser::Expr,
         rhs: &parser::Expr,
     ) -> casl2::Register {
-        assert_eq!(lhs.return_type(), rhs.return_type());
+        assert!(lhs.return_type().match_for_bin_op(&rhs.return_type()));
+        assert!(rhs.return_type().match_for_bin_op(&lhs.return_type()));
 
         match lhs.return_type() {
             parser::ExprType::Integer => {
@@ -6024,7 +6028,8 @@ impl Compiler {
         lhs: &parser::Expr,
         rhs: &parser::Expr,
     ) -> casl2::Register {
-        assert_eq!(lhs.return_type(), rhs.return_type());
+        assert!(lhs.return_type().match_for_bin_op(&rhs.return_type()));
+        assert!(rhs.return_type().match_for_bin_op(&lhs.return_type()));
 
         match lhs.return_type() {
             parser::ExprType::Integer => {
@@ -6144,7 +6149,8 @@ impl Compiler {
         lhs: &parser::Expr,
         rhs: &parser::Expr,
     ) -> casl2::Register {
-        assert_eq!(lhs.return_type(), rhs.return_type());
+        assert!(lhs.return_type().match_for_bin_op(&rhs.return_type()));
+        assert!(rhs.return_type().match_for_bin_op(&lhs.return_type()));
 
         match lhs.return_type() {
             parser::ExprType::Boolean => {

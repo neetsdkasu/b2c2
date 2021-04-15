@@ -19,12 +19,42 @@ impl subroutine::Gen for Gen {
 #[test]
 fn it_works() {
     let src = r#"
-        Rem TEST PROGRAM
+    Rem TEST PROGRAM
+    Rem コンパイル通るかのチェックだけで、正しくコンパイルされてるかはチェックしていないという…
+    Extern Sub PROC1
+    Extern Sub PROC2 With
+    End Sub
+    Extern Sub PROC3 With
+        ByVal arg1 As Boolean To GR3
+        ByRef arg2 As Boolean To GR7
+        ByVal arg3 As Integer To GR1
+        ByRef arg4 As Integer To GR5
+    End Sub
+    Extern Sub PROC4 With
+        ByVal arg1(3) As Boolean To GR7
+        ByRef arg2(3) As Boolean To GR6
+        ByVal arg3(3) As Integer To GR5
+        ByRef arg4(3) As Integer To GR4
+    End Sub
+    Extern Sub PROC5 With
+        ByVal arg1 As String To GR1,GR4
+        ByRef arg2 As String To GR6,GR7
+    End Sub
+    Program TEST
+        Argument
+            ByRef argBool    As Boolean From GR1
+            ByRef argInt     As Integer From GR2
+            ByRef argStr     As String  From GR3,GR4
+            ByRef argBArr(3) As Boolean From GR5
+            ByRef argIArr(3) As Integer From GR6
+        End Argument
         Dim bool1 As Boolean
         Dim int1 As Integer
         Dim str1 As String
         Dim intArr1(10) As Integer
         Dim boolArr1(10) As Boolean
+        Dim intArr2(3) As Integer
+        Dim boolArr2(3) As Boolean
         Dim i As Integer
         Dim j As Integer
         Input int1
@@ -183,6 +213,123 @@ fn it_works() {
         End If
         int1 = Max((((123,45)))) ' これも合法ｗｗ、パラメータリスト・タプルのような感じになってるおｗｗ
         Exit Program
+        argBool = Not argBool
+        argInt = argInt * 3 + Len(argStr)
+        argInt += int1 + CInt(argStr)
+        argInt -= int1
+        argStr = argStr & "," & Mid(argStr, 1, 3)
+        argStr(1) = argStr(1) + 1
+        argStr(int1) = argStr(int1) + 1
+        argBArr(1) = Not argBArr(0)
+        argBArr(int1) = Not argBArr(int1)
+        argIArr(1) = 2 * argIArr(1)
+        argIArr(1) += 2 * argIArr(1)
+        argIArr(1) -= 2 * argIArr(1)
+        argIArr(int1) = 2 * argIArr(int1)
+        argIArr(int1) += 2 * argIArr(int1)
+        argIArr(int1) -= 2 * argIArr(int1)
+        For argInt = 1 To 5
+            Print argBool
+            Print argInt
+            Print argStr
+            Input argInt
+            Input argStr
+            Input argIArr(1)
+            Input argIArr(int1)
+        Next argInt
+        bool1 = (boolArr2 = boolArr2) Or (boolArr2 <> boolArr2)
+        bool1 = (argBArr  = argBArr ) Or (argBArr  <> argBArr )
+        bool1 = (boolArr2 = argBArr ) Or (boolArr2 <> argBArr )
+        bool1 = (argBArr  = boolArr2) Or (argBArr  <> boolArr2)
+        bool1 = (intArr2 = intArr2) Or (intArr2 <> intArr2)
+        bool1 = (argIArr = argIArr) Or (argIArr <> argIArr)
+        bool1 = (intArr2 = argIArr) Or (intArr2 <> argIArr)
+        bool1 = (argIArr = intArr2) Or (argIArr <> intArr2)
+        bool1 = (intArr2 >= intArr2) Or (intArr2 <= intArr2)
+        bool1 = (argIArr >= argIArr) Or (argIArr <= argIArr)
+        bool1 = (intArr2 >= argIArr) Or (intArr2 <= argIArr)
+        bool1 = (argIArr >= intArr2) Or (argIArr <= intArr2)
+        bool1 = (intArr2 > intArr2) Or (intArr2 < intArr2)
+        bool1 = (argIArr > argIArr) Or (argIArr < argIArr)
+        bool1 = (intArr2 > argIArr) Or (intArr2 < argIArr)
+        bool1 = (argIArr > intArr2) Or (argIArr < intArr2)
+        Call PROC1
+        Call PROC1()
+        Call PROC1 With
+        End Call
+        Call PROC2
+        Call PROC2()
+        Call PROC2 With
+        End Call
+        Call PROC3(True, bool1, 12*34, int1)
+        Call PROC3 With
+            arg1 = Not bool1
+            arg2 = False
+            arg3 = intArr1(3)
+            arg4 = 12*34
+        End Call
+        Call PROC3(True, True, 1, 1)
+        Call PROC3 With
+            arg1 = True
+            arg2 = True
+            arg3 = 1
+            arg4 = 1
+        End Call
+        Call PROC3 With
+            arg4 = 1
+            arg1 = True
+            arg3 = 1
+            arg2 = True
+        End Call
+        Call PROC3(argBool, argBool, argInt, argInt)
+        Call PROC3 With
+            arg1 = argBool
+            arg2 = argBool
+            arg3 = argInt
+            arg4 = argInt
+        End Call
+        Call PROC3(argBArr(int1+1), argBArr(int1+1), argIArr(int1+1), argIArr(int1+1))
+        Call PROC3 With
+            arg1 = argBArr(int1+1)
+            arg2 = argBArr(int1+1)
+            arg3 = argIArr(int1+1)
+            arg4 = argIArr(int1+1)
+        End Call
+        Call PROC4(boolArr2, boolArr2, intArr2, intArr2)
+        Call PROC4 With
+            arg1 = boolArr2
+            arg2 = boolArr2
+            arg3 = intArr2
+            arg4 = intArr2
+        End Call
+        Call PROC4(argBArr, argBArr, argIArr, argIArr)
+        Call PROC4 With
+            arg1 = argBArr
+            arg2 = argBArr
+            arg3 = argIArr
+            arg4 = argIArr
+        End Call
+        Call PROC5("ABC", "XYZ")
+        Call PROC5 With
+            arg1 = "ABC"
+            arg2 = "XYZ"
+        End Call
+        Call PROC5("ABC" & "123", "XYZ" & "123")
+        Call PROC5 With
+            arg1 = "ABC" & "123"
+            arg2 = "XYZ" & "123"
+        End Call
+        Call PROC5(str1, str1)
+        Call PROC5 With
+            arg1 = str1
+            arg2 = str1
+        End Call
+        Call PROC5(argStr, argStr)
+        Call PROC5 With
+            arg1 = argStr
+            arg2 = argStr
+        End Call
+    End Program
         "#;
 
     let mut cursor = std::io::Cursor::new(src);

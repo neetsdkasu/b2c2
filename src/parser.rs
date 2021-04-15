@@ -659,7 +659,8 @@ impl Parser {
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
         match pos_and_tokens {
-            [(pn, Token::Name(name))] => {
+            [(pn, Token::Name(name)), (_, Token::Operator(Operator::OpenBracket)), (_, Token::Operator(Operator::CloseBracket))]
+            | [(pn, Token::Name(name))] => {
                 if let Some(args) = self.callables.get(name) {
                     if !args.is_empty() {
                         return Err(self.syntax_error_pos(*pn, "invalid Call arguments".into()));
@@ -693,7 +694,7 @@ impl Parser {
                         for (arg, expr) in args.iter().zip(list) {
                             if !arg.is_valid_type(&expr) {
                                 return Err(self.syntax_error(format!(
-                                    "invalid Call argument: {}, {}",
+                                    "invalid Call argument type: {}, {}",
                                     arg.var_name, expr
                                 )));
                             }
@@ -704,7 +705,7 @@ impl Parser {
                         let arg = args.first().unwrap();
                         if !arg.is_valid_type(&param) {
                             return Err(self.syntax_error(format!(
-                                "invalid Call argument: {} {}",
+                                "invalid Call argument type: {} {}",
                                 arg.var_name, param
                             )));
                         }
@@ -2910,7 +2911,7 @@ pub enum Expr {
 }
 
 impl ExprType {
-    fn match_for_bin_op(&self, other: &Self) -> bool {
+    pub fn match_for_bin_op(&self, other: &Self) -> bool {
         match self {
             Self::ReferenceOfVar(VarType::ArrayOfBoolean(size1))
             | Self::ReferenceOfVar(VarType::RefArrayOfBoolean(size1)) => match other {
@@ -2934,7 +2935,7 @@ impl ExprType {
         }
     }
 
-    fn is_bool_array(&self) -> bool {
+    pub fn is_bool_array(&self) -> bool {
         match self {
             Self::ReferenceOfVar(VarType::ArrayOfBoolean(_))
             | Self::ReferenceOfVar(VarType::RefArrayOfBoolean(_)) => true,
@@ -2947,7 +2948,7 @@ impl ExprType {
         }
     }
 
-    fn is_int_array(&self) -> bool {
+    pub fn is_int_array(&self) -> bool {
         match self {
             Self::ReferenceOfVar(VarType::ArrayOfInteger(_))
             | Self::ReferenceOfVar(VarType::RefArrayOfInteger(_)) => true,
