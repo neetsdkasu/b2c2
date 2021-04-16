@@ -3339,7 +3339,14 @@ impl Function {
             }
 
             // 引数は文字列1個
-            Asc | Len => matches!(param.return_type(), ExprType::String),
+            Asc => matches!(param.return_type(), ExprType::String),
+
+            // 引数は文字列1個または配列
+            Len => {
+                matches!(param.return_type(), ExprType::String)
+                    || param.return_type().is_bool_array()
+                    || param.return_type().is_int_array()
+            }
 
             // 引数は整数配列か整数２個
             String => {

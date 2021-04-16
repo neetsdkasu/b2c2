@@ -380,6 +380,11 @@ fn it_works() {
         str1 = String(intArr1)
         str1 = String(Array("A"c, "B"c, "C"c, "D"c))
         str1 = String(10, "A"c)
+        int1 = Len(boolArr1)
+        int1 = Len(argBArr)
+        int1 = Len(intArr1)
+        int1 = Len(argIArr)
+        int1 = Len(Array(1,2,3,4))
     End Program
         "#;
 

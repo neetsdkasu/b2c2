@@ -7282,18 +7282,26 @@ impl Compiler {
     // (式展開の処理の一部)
     // Len(<string>) の処理
     fn call_function_len(&mut self, param: &parser::Expr) -> casl2::Register {
-        assert!(matches!(param.return_type(), parser::ExprType::String));
+        use parser::{ExprType, VarType};
 
         let reg = self.get_idle_register();
-        self.set_register_idle(reg);
 
-        let str_labels = self.compile_str_expr(param);
-
-        self.set_register_used(reg);
-
-        self.code(str_labels.ld_len(reg));
-
-        self.return_temp_str_var_label(str_labels);
+        match param.return_type() {
+            ExprType::ReferenceOfVar(VarType::ArrayOfBoolean(size))
+            | ExprType::ReferenceOfVar(VarType::RefArrayOfBoolean(size))
+            | ExprType::ReferenceOfVar(VarType::ArrayOfInteger(size))
+            | ExprType::ReferenceOfVar(VarType::RefArrayOfInteger(size)) => {
+                self.code(format!(r#" LAD {reg},{size}"#, reg = reg, size = size));
+            }
+            ExprType::String => {
+                self.set_register_idle(reg);
+                let str_labels = self.compile_str_expr(param);
+                self.set_register_used(reg);
+                self.code(str_labels.ld_len(reg));
+                self.return_temp_str_var_label(str_labels);
+            }
+            _ => unreachable!("BUG"),
+        }
 
         reg
     }
