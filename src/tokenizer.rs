@@ -358,6 +358,7 @@ enumdef!(
     Mid,
     Min,
     Space,
+    SubArray,
 );
 
 enumdef!(

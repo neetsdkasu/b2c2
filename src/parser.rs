@@ -2526,6 +2526,53 @@ impl Parser {
                 Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
             }
 
+            // 関数 SubArray ( 引数 )
+            [(_, Token::Function(Function::SubArray)), (pos, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
+            {
+                let param = self.parse_expr(inner)?;
+                if let Expr::ParamList(list) = &param {
+                    match list.as_slice() {
+                        [Expr::FunctionBooleanArray(size, ..), offset, Expr::LitInteger(len)]
+                        | [Expr::ReferenceOfVar(_, VarType::ArrayOfBoolean(size)), offset, Expr::LitInteger(len)]
+                        | [Expr::ReferenceOfVar(_, VarType::RefArrayOfBoolean(size)), offset, Expr::LitInteger(len)] => {
+                            if (1..=*size as i32).contains(len)
+                                && matches!(offset.return_type(), ExprType::Integer)
+                            {
+                                let size = *len as usize;
+                                return Ok(Expr::FunctionBooleanArray(
+                                    size,
+                                    Function::SubArray,
+                                    Box::new(param),
+                                ));
+                            }
+                        }
+                        [Expr::FunctionIntegerArray(size, ..), offset, Expr::LitInteger(len)]
+                        | [Expr::ReferenceOfVar(_, VarType::ArrayOfInteger(size)), offset, Expr::LitInteger(len)]
+                        | [Expr::ReferenceOfVar(_, VarType::RefArrayOfInteger(size)), offset, Expr::LitInteger(len)] => {
+                            if (1..=*size as i32).contains(len)
+                                && matches!(offset.return_type(), ExprType::Integer)
+                            {
+                                let size = *len as usize;
+                                return Ok(Expr::FunctionIntegerArray(
+                                    size,
+                                    Function::SubArray,
+                                    Box::new(param),
+                                ));
+                            }
+                        }
+                        [expr, offset, Expr::LitInteger(_)]
+                            if matches!(offset.return_type(), ExprType::Integer)
+                                && (expr.return_type().is_bool_array()
+                                    || expr.return_type().is_int_array()) =>
+                        {
+                            unreachable!("BUG")
+                        }
+                        _ => {}
+                    }
+                }
+                Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+            }
+
             // 関数 ( 引数 )
             [(_, Token::Function(function)), (pos, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
             {
@@ -3004,11 +3051,11 @@ pub enum Expr {
     VarRefBoolean(String),
     VarRefInteger(String),
     VarRefString(String),
-    VarArrayOfBoolean(String, Box<Expr>),
-    VarArrayOfInteger(String, Box<Expr>),
-    VarRefArrayOfBoolean(String, Box<Expr>),
-    VarRefArrayOfInteger(String, Box<Expr>),
-    ReferenceOfVar(String, VarType),
+    VarArrayOfBoolean(String, Box<Expr>), // 命名が悪い、配列の要素を返すExpr, (変数名,インデックス)
+    VarArrayOfInteger(String, Box<Expr>), // 同上
+    VarRefArrayOfBoolean(String, Box<Expr>), // 同上
+    VarRefArrayOfInteger(String, Box<Expr>), // 同上
+    ReferenceOfVar(String, VarType),      // 現状、配列への参照を持つ用 (変数名,型)
     ParamList(Vec<Expr>),
 }
 
@@ -3199,7 +3246,7 @@ impl Function {
             CBool | Eof => ExprType::Boolean,
             Abs | Asc | CInt | Len | Max | Min => ExprType::Integer,
             Chr | CStr | Mid | Space => ExprType::String,
-            Array => unreachable!("BUG"),
+            Array | SubArray => unreachable!("BUG"),
         }
     }
 
@@ -3247,15 +3294,45 @@ impl Function {
             // 引数は文字列1個
             Asc | Len => matches!(param.return_type(), ExprType::String),
 
+            // 引数は全て真理値もしくは全て整数
             Array => {
                 if let Expr::ParamList(list) = param {
-                    list.iter()
-                        .all(|expr| matches!(expr.return_type(), ExprType::Integer))
-                        || list
+                    (1..=MAX_ARRAY_SIZE).contains(&list.len())
+                        && (list
                             .iter()
-                            .all(|expr| matches!(expr.return_type(), ExprType::Boolean))
+                            .all(|expr| matches!(expr.return_type(), ExprType::Integer))
+                            || list
+                                .iter()
+                                .all(|expr| matches!(expr.return_type(), ExprType::Boolean)))
                 } else {
                     matches!(param.return_type(), ExprType::Boolean | ExprType::Integer)
+                }
+            }
+
+            // 引数は(配列、整数、整数リテラル)
+            SubArray => {
+                if let Expr::ParamList(list) = param {
+                    match list.as_slice() {
+                        [Expr::FunctionBooleanArray(size, ..), offset, Expr::LitInteger(len)]
+                        | [Expr::FunctionIntegerArray(size, ..), offset, Expr::LitInteger(len)]
+                        | [Expr::ReferenceOfVar(_, VarType::ArrayOfBoolean(size)), offset, Expr::LitInteger(len)]
+                        | [Expr::ReferenceOfVar(_, VarType::RefArrayOfBoolean(size)), offset, Expr::LitInteger(len)]
+                        | [Expr::ReferenceOfVar(_, VarType::ArrayOfInteger(size)), offset, Expr::LitInteger(len)]
+                        | [Expr::ReferenceOfVar(_, VarType::RefArrayOfInteger(size)), offset, Expr::LitInteger(len)] => {
+                            (1..=*size as i32).contains(len)
+                                && matches!(offset.return_type(), ExprType::Integer)
+                        }
+                        [expr, offset, Expr::LitInteger(_)]
+                            if matches!(offset.return_type(), ExprType::Integer)
+                                && (expr.return_type().is_bool_array()
+                                    || expr.return_type().is_int_array()) =>
+                        {
+                            unreachable!("BUG")
+                        }
+                        _ => false,
+                    }
+                } else {
+                    false
                 }
             }
         }

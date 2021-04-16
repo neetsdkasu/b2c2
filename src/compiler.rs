@@ -4719,7 +4719,9 @@ impl Compiler {
             Space => self.call_function_space(param),
 
             // 戻り値が文字列ではないもの
-            Abs | Array | Asc | CInt | Eof | Len | Max | Min | CBool => unreachable!("BUG"),
+            Abs | Array | Asc | CBool | CInt | Eof | Len | Max | Min | SubArray => {
+                unreachable!("BUG")
+            }
         }
     }
 
@@ -5082,7 +5084,7 @@ impl Compiler {
             Eof => self.call_function_eof(param),
 
             // 戻り値が真理値ではないもの
-            Abs | Array | Asc | Chr | CInt | Len | Max | Mid | Min | CStr | Space => {
+            Abs | Array | Asc | Chr | CInt | CStr | Len | Max | Mid | Min | Space | SubArray => {
                 unreachable!("BUG")
             }
         }
@@ -6976,7 +6978,7 @@ impl Compiler {
             Min => self.call_function_min(param),
 
             // 戻り値が整数ではないもの
-            Array | CBool | Chr | CStr | Eof | Mid | Space => unreachable!("BUG"),
+            Array | CBool | Chr | CStr | Eof | Mid | Space | SubArray => unreachable!("BUG"),
         }
     }
 
@@ -7331,11 +7333,11 @@ impl Compiler {
                 assert_eq!(arr_size, *size);
                 ArrayLabel::VarRefArrayOfInteger(arr_label, arr_size)
             }
-            FunctionBooleanArray(size, func, value) => {
-                self.compile_function_boolean_array(*size, *func, value)
+            FunctionBooleanArray(size, func, param) => {
+                self.compile_function_boolean_array(*size, *func, param)
             }
-            FunctionIntegerArray(size, func, value) => {
-                self.compile_function_integer_array(*size, *func, value)
+            FunctionIntegerArray(size, func, param) => {
+                self.compile_function_integer_array(*size, *func, param)
             }
 
             // 戻り値が配列参照ではないもの
@@ -7375,14 +7377,15 @@ impl Compiler {
         &mut self,
         size: usize,
         func: tokenizer::Function,
-        value: &parser::Expr,
+        param: &parser::Expr,
     ) -> ArrayLabel {
         use tokenizer::Function::*;
 
         assert!((1..=MAX_ARRAY_SIZE).contains(&size));
 
         match func {
-            Array => self.call_function_array_with_boolean_array(size, value),
+            Array => self.call_function_array_with_boolean_array(size, param),
+            SubArray => self.call_function_subarray_with_boolean_array(size, param),
 
             // 戻り値が真理値配列ではないもの
             Abs | Asc | CBool | Chr | CInt | CStr | Eof | Len | Max | Mid | Min | Space => {
@@ -7392,17 +7395,87 @@ impl Compiler {
     }
 
     // (式展開の処理の一部)
+    // SubArray (<bool_arr>, <offset>, <size>) の処理
+    fn call_function_subarray_with_boolean_array(
+        &mut self,
+        size: usize,
+        param: &parser::Expr,
+    ) -> ArrayLabel {
+        let (arr, offset) = if let parser::Expr::ParamList(list) = param {
+            if let [arr, offset, parser::Expr::LitInteger(len)] = list.as_slice() {
+                assert!(arr.return_type().is_bool_array());
+                assert!(matches!(offset.return_type(), parser::ExprType::Integer));
+                assert_eq!(size as i32, *len);
+                (arr, offset)
+            } else {
+                unreachable!("BUG");
+            }
+        } else {
+            unreachable!("BUG");
+        };
+
+        let copystr = self.load_subroutine(subroutine::Id::UtilCopyFromOffsetStr);
+        let fill = self.load_subroutine(subroutine::Id::UtilFill);
+
+        let arr_label = self.compile_ref_arr_expr(arr);
+        let offset_reg = self.compile_int_expr(offset);
+        let temp_labels = self.get_temp_str_var_label();
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4, Gr5, Gr6])
+        };
+
+        let offset_line = if matches!(offset_reg, casl2::Register::Gr4) {
+            "".to_string()
+        } else {
+            format!(" LD GR4,{offset}", offset = offset_reg)
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" {offset_line}
+                LAD   GR1,{temppos}
+                XOR   GR2,GR2
+                LAD   GR3,{size}
+                CALL  {fill}
+                LD    GR5,GR1
+                LD    GR1,GR4
+                LD    GR4,GR3
+                LD    GR6,GR3
+                LAD   GR2,{srclen}
+                {lad_gr3_srcpos}
+                CALL  {copy}"#,
+            offset_line = offset_line,
+            temppos = temp_labels.pos,
+            size = size,
+            fill = fill,
+            srclen = arr_label.size(),
+            lad_gr3_srcpos = arr_label.lad_pos(casl2::Register::Gr3),
+            copy = copystr
+        ));
+        self.code(recovers);
+
+        if let Some(labels) = arr_label.release() {
+            self.return_temp_str_var_label(labels);
+        }
+        self.set_register_idle(offset_reg);
+
+        ArrayLabel::TempArrayOfBoolean(temp_labels, size)
+    }
+
+    // (式展開の処理の一部)
     // Array (<bool_expr>, ...) の処理
     fn call_function_array_with_boolean_array(
         &mut self,
         size: usize,
-        value: &parser::Expr,
+        param: &parser::Expr,
     ) -> ArrayLabel {
         let labels = self.get_temp_str_var_label();
 
-        if matches!(value.return_type(), parser::ExprType::Boolean) {
+        if matches!(param.return_type(), parser::ExprType::Boolean) {
             assert_eq!(size, 1);
-            let reg = self.compile_int_expr(value);
+            let reg = self.compile_int_expr(param);
             self.code(format!(r#" ST {reg},{arr}"#, reg = reg, arr = labels.pos));
             self.set_register_idle(reg);
             return ArrayLabel::TempArrayOfBoolean(labels, size);
@@ -7410,7 +7483,7 @@ impl Compiler {
 
         assert_ne!(size, 1);
 
-        let list = if let parser::Expr::ParamList(list) = value {
+        let list = if let parser::Expr::ParamList(list) = param {
             assert_eq!(size, list.len());
             list
         } else {
@@ -7449,14 +7522,15 @@ impl Compiler {
         &mut self,
         size: usize,
         func: tokenizer::Function,
-        value: &parser::Expr,
+        param: &parser::Expr,
     ) -> ArrayLabel {
         use tokenizer::Function::*;
 
         assert!((1..=MAX_ARRAY_SIZE).contains(&size));
 
         match func {
-            Array => self.call_function_array_with_integer_array(size, value),
+            Array => self.call_function_array_with_integer_array(size, param),
+            SubArray => self.call_function_subarray_with_integer_array(size, param),
 
             // 戻り値が整数配列ではないもの
             Abs | Asc | CBool | Chr | CInt | CStr | Eof | Len | Max | Mid | Min | Space => {
@@ -7466,17 +7540,87 @@ impl Compiler {
     }
 
     // (式展開の処理の一部)
+    // SubArray (<int_arr>, <offset>, <size>) の処理
+    fn call_function_subarray_with_integer_array(
+        &mut self,
+        size: usize,
+        param: &parser::Expr,
+    ) -> ArrayLabel {
+        let (arr, offset) = if let parser::Expr::ParamList(list) = param {
+            if let [arr, offset, parser::Expr::LitInteger(len)] = list.as_slice() {
+                assert!(arr.return_type().is_int_array());
+                assert!(matches!(offset.return_type(), parser::ExprType::Integer));
+                assert_eq!(size as i32, *len);
+                (arr, offset)
+            } else {
+                unreachable!("BUG");
+            }
+        } else {
+            unreachable!("BUG");
+        };
+
+        let copystr = self.load_subroutine(subroutine::Id::UtilCopyFromOffsetStr);
+        let fill = self.load_subroutine(subroutine::Id::UtilFill);
+
+        let arr_label = self.compile_ref_arr_expr(arr);
+        let offset_reg = self.compile_int_expr(offset);
+        let temp_labels = self.get_temp_str_var_label();
+
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4, Gr5, Gr6])
+        };
+
+        let offset_line = if matches!(offset_reg, casl2::Register::Gr4) {
+            "".to_string()
+        } else {
+            format!(" LD GR4,{offset}", offset = offset_reg)
+        };
+
+        self.code(saves);
+        self.code(format!(
+            r#" {offset_line}
+                LAD   GR1,{temppos}
+                XOR   GR2,GR2
+                LAD   GR3,{size}
+                CALL  {fill}
+                LD    GR5,GR1
+                LD    GR1,GR4
+                LD    GR4,GR3
+                LD    GR6,GR3
+                LAD   GR2,{srclen}
+                {lad_gr3_srcpos}
+                CALL  {copy}"#,
+            offset_line = offset_line,
+            temppos = temp_labels.pos,
+            size = size,
+            fill = fill,
+            srclen = arr_label.size(),
+            lad_gr3_srcpos = arr_label.lad_pos(casl2::Register::Gr3),
+            copy = copystr
+        ));
+        self.code(recovers);
+
+        if let Some(labels) = arr_label.release() {
+            self.return_temp_str_var_label(labels);
+        }
+        self.set_register_idle(offset_reg);
+
+        ArrayLabel::TempArrayOfInteger(temp_labels, size)
+    }
+
+    // (式展開の処理の一部)
     // Array (<int_expr>, ...) の処理
     fn call_function_array_with_integer_array(
         &mut self,
         size: usize,
-        value: &parser::Expr,
+        param: &parser::Expr,
     ) -> ArrayLabel {
         let labels = self.get_temp_str_var_label();
 
-        if matches!(value.return_type(), parser::ExprType::Integer) {
+        if matches!(param.return_type(), parser::ExprType::Integer) {
             assert_eq!(size, 1);
-            let reg = self.compile_int_expr(value);
+            let reg = self.compile_int_expr(param);
             self.code(format!(r#" ST {reg},{arr}"#, reg = reg, arr = labels.pos));
             self.set_register_idle(reg);
             return ArrayLabel::TempArrayOfInteger(labels, size);
@@ -7484,7 +7628,7 @@ impl Compiler {
 
         assert_ne!(size, 1);
 
-        let list = if let parser::Expr::ParamList(list) = value {
+        let list = if let parser::Expr::ParamList(list) = param {
             assert_eq!(size, list.len());
             list
         } else {

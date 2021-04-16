@@ -367,6 +367,10 @@ fn it_works() {
         argIArr = intArr2
         boolArr2 = Array(True, False, True, True)
         intArr2 = Array(1, 2, 3, 4)
+        boolArr2 = SubArray(boolArr1, 0, 4)
+        boolArr2 = SubArray(boolArr1, int1, 4)
+        intArr2 = SubArray(intArr1, 0, 4)
+        intArr2 = SubArray(intArr1, int1, 4)
     End Program
         "#;
 
