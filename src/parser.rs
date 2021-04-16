@@ -2573,6 +2573,35 @@ impl Parser {
                 Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
             }
 
+            // 関数 CArray ( 引数 )
+            [(_, Token::Function(Function::CArray)), (pos, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
+            {
+                let param = self.parse_expr(inner)?;
+                if let Expr::ParamList(list) = &param {
+                    if let [expr, Expr::LitInteger(len)] = list.as_slice() {
+                        if (1..=MAX_ARRAY_SIZE as i32).contains(len) {
+                            let size = *len as usize;
+                            if expr.return_type().is_bool_array() {
+                                return Ok(Expr::FunctionBooleanArray(
+                                    size,
+                                    Function::CArray,
+                                    Box::new(param),
+                                ));
+                            } else if matches!(expr.return_type(), ExprType::String)
+                                || expr.return_type().is_int_array()
+                            {
+                                return Ok(Expr::FunctionIntegerArray(
+                                    size,
+                                    Function::CArray,
+                                    Box::new(param),
+                                ));
+                            }
+                        }
+                    }
+                }
+                Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+            }
+
             // 関数 ( 引数 )
             [(_, Token::Function(function)), (pos, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
             {
@@ -3246,7 +3275,7 @@ impl Function {
             CBool | Eof => ExprType::Boolean,
             Abs | Asc | CInt | Len | Max | Min => ExprType::Integer,
             Chr | CStr | Mid | Space => ExprType::String,
-            Array | SubArray => unreachable!("BUG"),
+            Array | CArray | SubArray => unreachable!("BUG"),
         }
     }
 
@@ -3306,6 +3335,22 @@ impl Function {
                                 .all(|expr| matches!(expr.return_type(), ExprType::Boolean)))
                 } else {
                     matches!(param.return_type(), ExprType::Boolean | ExprType::Integer)
+                }
+            }
+
+            // 引数は(配列、整数リテラル)もしくは(文字列、整数リテラル)
+            CArray => {
+                if let Expr::ParamList(list) = param {
+                    if let [expr, Expr::LitInteger(len)] = list.as_slice() {
+                        (1..=MAX_ARRAY_SIZE as i32).contains(len)
+                            && (matches!(expr.return_type(), ExprType::String)
+                                || expr.return_type().is_bool_array()
+                                || expr.return_type().is_int_array())
+                    } else {
+                        false
+                    }
+                } else {
+                    false
                 }
             }
 

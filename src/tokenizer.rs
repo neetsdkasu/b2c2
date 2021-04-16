@@ -348,6 +348,7 @@ enumdef!(
     Abs,
     Array,
     Asc,
+    CArray,
     CBool,
     Chr,
     CInt,

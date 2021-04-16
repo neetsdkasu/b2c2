@@ -371,6 +371,11 @@ fn it_works() {
         boolArr2 = SubArray(boolArr1, int1, 4)
         intArr2 = SubArray(intArr1, 0, 4)
         intArr2 = SubArray(intArr1, int1, 4)
+        boolArr2 = CArray(boolArr1, 4)
+        boolArr1 = CArray(boolArr2, 11)
+        intArr2 = CArray(intArr1, 4)
+        intArr1 = CArray(intArr2, 11)
+        intArr1 = CArray(str1, 11)
     End Program
         "#;
 
