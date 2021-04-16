@@ -310,6 +310,11 @@ fn take_token_works() {
                 take_token(function.to_str()),
                 Some((Keyword::Mid.into(), ""))
             );
+        } else if matches!(function, Function::String) {
+            assert_eq!(
+                take_token(function.to_str()),
+                Some((TypeName::String.into(), ""))
+            );
         } else {
             assert_eq!(
                 take_token(function.to_str()),

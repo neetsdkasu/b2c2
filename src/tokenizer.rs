@@ -231,8 +231,8 @@ fn take_word_token(s: &str) -> Option<(Token, &str)> {
         [
             parse_boolean,
             Keyword::parse,
-            Function::parse,
             TypeName::parse,
+            Function::parse,
             Operator::parse,
         ]
         .iter()
@@ -359,6 +359,7 @@ enumdef!(
     Mid,
     Min,
     Space,
+    String,
     SubArray,
 );
 

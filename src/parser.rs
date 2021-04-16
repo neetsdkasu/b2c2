@@ -2602,6 +2602,24 @@ impl Parser {
                 Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
             }
 
+            // 関数 String( 引数 )
+            [(_, Token::TypeName(TypeName::String)), (pos, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
+            {
+                let param = self.parse_expr(inner)?;
+                if let Expr::ParamList(list) = &param {
+                    if list.len() == 2
+                        && list
+                            .iter()
+                            .all(|expr| matches!(expr.return_type(), ExprType::Integer))
+                    {
+                        return Ok(Expr::FunctionString(Function::String, Box::new(param)));
+                    }
+                } else if param.return_type().is_int_array() {
+                    return Ok(Expr::FunctionString(Function::String, Box::new(param)));
+                }
+                Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+            }
+
             // 関数 ( 引数 )
             [(_, Token::Function(function)), (pos, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
             {
@@ -3274,7 +3292,7 @@ impl Function {
         match self {
             CBool | Eof => ExprType::Boolean,
             Abs | Asc | CInt | Len | Max | Min => ExprType::Integer,
-            Chr | CStr | Mid | Space => ExprType::String,
+            Chr | CStr | Mid | Space | String => ExprType::String,
             Array | CArray | SubArray => unreachable!("BUG"),
         }
     }
@@ -3322,6 +3340,18 @@ impl Function {
 
             // 引数は文字列1個
             Asc | Len => matches!(param.return_type(), ExprType::String),
+
+            // 引数は整数配列か整数２個
+            String => {
+                if let Expr::ParamList(list) = param {
+                    list.len() == 2
+                        && list
+                            .iter()
+                            .all(|expr| matches!(expr.return_type(), ExprType::Integer))
+                } else {
+                    param.return_type().is_int_array()
+                }
+            }
 
             // 引数は全て真理値もしくは全て整数
             Array => {

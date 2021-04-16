@@ -4717,11 +4717,105 @@ impl Compiler {
             CStr => self.call_function_cstr(param),
             Mid => self.call_function_mid(param),
             Space => self.call_function_space(param),
+            String => self.call_function_string(param),
 
             // 戻り値が文字列ではないもの
             Abs | Array | Asc | CArray | CBool | CInt | Eof | Len | Max | Min | SubArray => {
                 unreachable!("BUG")
             }
+        }
+    }
+
+    // String関数
+    // String(<int_arr>)
+    // String(<length>,<char>)
+    fn call_function_string(&mut self, param: &parser::Expr) -> StrLabels {
+        if param.return_type().is_int_array() {
+            let arr_label = self.compile_ref_arr_expr(param);
+            assert!(matches!(
+                arr_label.element_type(),
+                parser::ExprType::Integer
+            ));
+
+            let temp_labels = self.get_temp_str_var_label();
+
+            let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
+
+            let (saves, recovers) = {
+                use casl2::Register::*;
+                self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+            };
+
+            self.code(saves);
+            self.code(format!(
+                r#" LAD   GR1,{temppos}
+                    LAD   GR2,{templen}
+                    {lad_gr3_srcpos}
+                    LAD   GR4,{size}
+                    CALL  {copy}
+                    "#,
+                temppos = temp_labels.pos,
+                templen = temp_labels.len,
+                lad_gr3_srcpos = arr_label.lad_pos(casl2::Register::Gr3),
+                size = arr_label.size(),
+                copy = copystr
+            ));
+            self.code(recovers);
+
+            if let Some(labels) = arr_label.release() {
+                self.return_temp_str_var_label(labels);
+            }
+
+            temp_labels
+        } else if let parser::Expr::ParamList(list) = param {
+            let (count, value) = if let [count, value] = list.as_slice() {
+                assert!(matches!(count.return_type(), parser::ExprType::Integer));
+                assert!(matches!(value.return_type(), parser::ExprType::Integer));
+                (count, value)
+            } else {
+                unreachable!("BUG");
+            };
+            let count_reg = self.compile_int_expr(count);
+            let value_reg = self.compile_int_expr(value);
+            self.restore_register(count_reg);
+
+            let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
+            let fill = self.load_subroutine(subroutine::Id::UtilFill);
+
+            let temp_labels = self.get_temp_str_var_label();
+
+            let (saves, recovers) = {
+                use casl2::Register::*;
+                self.get_save_registers_src(&[Gr1, Gr2, Gr3])
+            };
+
+            self.code(saves);
+            self.code(format!(
+                r#" LD    GR3,{value}
+                    LD    GR1,{count}
+                    LAD   GR2,257
+                    CALL  {fit}
+                    ST    GR0,{templen}
+                    LAD   GR1,{temppos}
+                    LD    GR2,GR3
+                    LD    GR3,GR0
+                    CALL  {fill}
+                    "#,
+                value = value_reg,
+                count = count_reg,
+                temppos = temp_labels.pos,
+                templen = temp_labels.len,
+                fit = safe_index,
+                fill = fill
+            ));
+            self.code(recovers);
+
+            self.set_register_idle(value_reg);
+            self.set_register_idle(count_reg);
+
+            temp_labels
+        } else {
+            unreachable!("BUG");
         }
     }
 
@@ -5085,7 +5179,7 @@ impl Compiler {
 
             // 戻り値が真理値ではないもの
             Abs | Array | Asc | CArray | Chr | CInt | CStr | Len | Max | Mid | Min | Space
-            | SubArray => {
+            | String | SubArray => {
                 unreachable!("BUG")
             }
         }
@@ -6979,7 +7073,7 @@ impl Compiler {
             Min => self.call_function_min(param),
 
             // 戻り値が整数ではないもの
-            Array | CArray | CBool | Chr | CStr | Eof | Mid | Space | SubArray => {
+            Array | CArray | CBool | Chr | CStr | Eof | Mid | Space | String | SubArray => {
                 unreachable!("BUG")
             }
         }
@@ -7392,7 +7486,8 @@ impl Compiler {
             SubArray => self.call_function_subarray_with_boolean_array(size, param),
 
             // 戻り値が真理値配列ではないもの
-            Abs | Asc | CBool | Chr | CInt | CStr | Eof | Len | Max | Mid | Min | Space => {
+            Abs | Asc | CBool | Chr | CInt | CStr | Eof | Len | Max | Mid | Min | Space
+            | String => {
                 unreachable!("BUG")
             }
         }
@@ -7621,7 +7716,8 @@ impl Compiler {
             SubArray => self.call_function_subarray_with_integer_array(size, param),
 
             // 戻り値が整数配列ではないもの
-            Abs | Asc | CBool | Chr | CInt | CStr | Eof | Len | Max | Mid | Min | Space => {
+            Abs | Asc | CBool | Chr | CInt | CStr | Eof | Len | Max | Mid | Min | Space
+            | String => {
                 unreachable!("BUG")
             }
         }

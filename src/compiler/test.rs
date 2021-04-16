@@ -376,6 +376,10 @@ fn it_works() {
         intArr2 = CArray(intArr1, 4)
         intArr1 = CArray(intArr2, 11)
         intArr1 = CArray(str1, 11)
+        intArr2 = CArray("ABCD", 4)
+        str1 = String(intArr1)
+        str1 = String(Array("A"c, "B"c, "C"c, "D"c))
+        str1 = String(10, "A"c)
     End Program
         "#;
 
