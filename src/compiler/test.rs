@@ -1613,7 +1613,7 @@ Print outStr
 }
 
 #[test]
-fn with_arguments_works() {
+fn with_arguments_1_works() {
     let src1 = r#"
 Extern Sub FIZZ With
     ByVal num As Integer To GR1
@@ -1652,6 +1652,407 @@ End Program
 "#;
 
     for src in [src1, src2].iter() {
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile(None, &code[..]).unwrap();
+
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
+
+        eprintln!("{}", crate::stat::analyze(&statements));
+
+        assert!(!statements.is_empty()); // dummy assert
+    }
+}
+
+#[test]
+fn with_arguments_2_works() {
+    let src1 = r#"
+Extern Sub FOO With
+    ByVal arg(3) As Boolean To GR1
+End Sub
+Extern Sub BAR With
+    ByRef arg(3) As Boolean To GR1
+End Sub
+Extern Sub BAZ With
+    ByRef msg As String To GR2,GR3
+    ByRef arg(3) As Boolean To GR1
+End Sub
+Program TEST
+    Dim arr(3) As Boolean
+    Dim big(5) As Boolean
+    big = Array(True, False, True, False, True, False)
+
+    Call BAZ("TEST 1", arr)
+
+    arr = Array(False, True, True, False)
+    Call BAZ("TEST 2", arr)
+
+    arr = SubArray(big, 1, 4)
+    Call BAZ("TEST 3", arr)
+
+    arr = CArray(big, 4)
+    Call BAZ("TEST 4", arr)
+
+    Fill arr, True
+    Call BAZ("TEST 5", arr)
+
+    Call FOO(arr)
+    Call BAZ("TEST 6", arr)
+
+    Call BAR(arr)
+    Call BAZ("TEST 7", arr)
+End Program
+"#;
+
+    let src2 = r#"
+Extern Sub BAZ With
+    ByRef msg As String To GR2,GR3
+    ByRef arg(3) As Boolean To GR1
+End Sub
+Program FOO
+    Argument
+        ByVal arr(3) As Boolean From GR1
+    End Argument
+    Dim big(5) As Boolean
+    big = Array(True, True, True, False, False, False)
+
+    Call BAZ("FOO 1", arr)
+
+    arr = Array(False, True, True, False)
+    Call BAZ("FOO 2", arr)
+
+    Fill arr, True
+    Call BAZ("FOO 3", arr)
+
+    arr = SubArray(big, 2, 4)
+    Call BAZ("FOO 4", arr)
+
+    arr = CArray(big, 4)
+    Call BAZ("FOO 5", arr)
+End Program
+"#;
+
+    let src3 = r#"
+Extern Sub BAZ With
+    ByRef msg As String To GR2,GR3
+    ByRef arg(3) As Boolean To GR1
+End Sub
+Program BAR
+    Argument
+        ByRef arr(3) As Boolean From GR1
+    End Argument
+    Dim big(5) As Boolean
+    big = Array(False, False, True, True, False, False)
+
+    Call BAZ("BAR 1", arr)
+
+    arr = Array(False, True, True, False)
+    Call BAZ("BAR 2", arr)
+
+    Fill arr, True
+    Call BAZ("BAR 3", arr)
+
+    arr = SubArray(big, 2, 4)
+    Call BAZ("BAR 4", arr)
+
+    arr = CArray(big, 4)
+    Call BAZ("BAR 5", arr)
+End Program
+"#;
+
+    let src4 = r#"
+Program BAZ
+    Argument
+        ByRef msg As String From GR2,GR3
+        ByRef arr(3) As Boolean From GR1
+    End Argument
+    Dim i As Integer
+    Dim s As String
+    s = ""
+    For i = 0 To Len(arr) - 1
+        s = s & CStr(arr(i)) & ", "
+    Next i
+    Print msg
+    Print s
+End Program
+"#;
+
+    for src in [src1, src2, src3, src4].iter() {
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile(None, &code[..]).unwrap();
+
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
+
+        eprintln!("{}", crate::stat::analyze(&statements));
+
+        assert!(!statements.is_empty()); // dummy assert
+    }
+}
+
+#[test]
+fn with_arguments_3_works() {
+    let src1 = r#"
+Extern Sub FOO With
+    ByVal arg(3) As Integer To GR1
+End Sub
+Extern Sub BAR With
+    ByRef arg(3) As Integer To GR1
+End Sub
+Extern Sub BAZ With
+    ByRef msg As String To GR2,GR3
+    ByRef arg(3) As Integer To GR1
+End Sub
+Program TEST
+    Dim arr(3) As Integer
+    Dim big(5) As Integer
+    big = Array(1, 2, 3, 4, 5, 6)
+
+    Call BAZ("TEST 1", arr)
+
+    arr = Array(100, 200, 300, 400)
+    Call BAZ("TEST 2", arr)
+
+    arr = SubArray(big, 1, 4)
+    Call BAZ("TEST 3", arr)
+
+    arr = CArray(big, 4)
+    Call BAZ("TEST 4", arr)
+
+    arr = CArray("ABCD", 4)
+    Call BAZ("TEST 5", arr)
+
+    Fill arr, 123
+    Call BAZ("TEST 6", arr)
+
+    Call FOO(arr)
+    Call BAZ("TEST 7", arr)
+
+    Call BAR(arr)
+    Call BAZ("TEST 8", arr)
+End Program
+"#;
+
+    let src2 = r#"
+Extern Sub BAZ With
+    ByRef msg As String To GR2,GR3
+    ByRef arg(3) As Integer To GR1
+End Sub
+Program FOO
+    Argument
+        ByVal arr(3) As Integer From GR1
+    End Argument
+    Dim big(5) As Integer
+    big = Array(11, 22, 33, 44, 55, 66)
+
+    Call BAZ("FOO 1", arr)
+
+    arr = Array(12, 23, 34, 45)
+    Call BAZ("FOO 2", arr)
+
+    arr = CArray("abcd", 4)
+    Call BAZ("FOO 3", arr)
+
+    Fill arr, 789
+    Call BAZ("FOO 4", arr)
+
+    arr = SubArray(big, 2, 4)
+    Call BAZ("FOO 5", arr)
+
+    arr = CArray(big, 4)
+    Call BAZ("FOO 6", arr)
+End Program
+"#;
+
+    let src3 = r#"
+Extern Sub BAZ With
+    ByRef msg As String To GR2,GR3
+    ByRef arg(3) As Integer To GR1
+End Sub
+Program BAR
+    Argument
+        ByRef arr(3) As Integer From GR1
+    End Argument
+    Dim big(5) As Integer
+    big = Array(999, 888, 777, 666, 555, 444)
+
+    Call BAZ("BAR 1", arr)
+
+    arr = Array(21, 43, 65, 87)
+    Call BAZ("BAR 2", arr)
+
+    arr = CArray("1234", 4)
+    Call BAZ("BAR 3", arr)
+
+    Fill arr, 456
+    Call BAZ("BAR 4", arr)
+
+    arr = SubArray(big, 2, 4)
+    Call BAZ("BAR 5", arr)
+
+    arr = CArray(big, 4)
+    Call BAZ("BAR 6", arr)
+End Program
+"#;
+
+    let src4 = r#"
+Program BAZ
+    Argument
+        ByRef msg As String From GR2,GR3
+        ByRef arr(3) As Integer From GR1
+    End Argument
+    Dim i As Integer
+    Dim s As String
+    s = ""
+    For i = 0 To Len(arr) - 1
+        s = s & CStr(arr(i)) & ", "
+    Next i
+    Print msg
+    Print s
+End Program
+"#;
+
+    for src in [src1, src2, src3, src4].iter() {
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile(None, &code[..]).unwrap();
+
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
+
+        eprintln!("{}", crate::stat::analyze(&statements));
+
+        assert!(!statements.is_empty()); // dummy assert
+    }
+}
+
+#[test]
+fn with_arguments_4_works() {
+    let src1 = r#"
+Extern Sub FOO With
+    ByVal arg As String To GR1,GR2
+End Sub
+Extern Sub BAR With
+    ByRef arg As String To GR1,GR2
+End Sub
+Extern Sub BAZ With
+    ByRef msg As String To GR2,GR3
+    ByVal arg As String To GR1,GR4
+End Sub
+Program TEST
+    Dim str As String
+    Dim arr(5) As Integer
+    arr = Array(65, 66, 67, 65, 65, 70)
+
+    Call BAZ("TEST 1", str)
+
+    str = String(10, "?"c)
+    Call BAZ("TEST 2", str)
+
+    str = String(arr)
+    Call BAZ("TEST 3", str)
+
+    Fill str, "@"c
+    Call BAZ("TEST 4", str)
+
+    str = String(SubArray(arr, 2, 3))
+    Call BAZ("TEST 5", str)
+
+    Call FOO(str)
+    Call BAZ("TEST 6", str)
+
+    Call BAR(str)
+    Call BAZ("TEST 7", str)
+End Program
+"#;
+
+    let src2 = r#"
+Extern Sub BAZ With
+    ByRef msg As String To GR2,GR3
+    ByVal arg As String To GR1,GR4
+End Sub
+Program FOO
+    Argument
+        ByVal str As String From GR1,GR2
+    End Argument
+    Dim arr(5) As Integer
+    arr = Array(97, 98, 104, 105, 98, 98)
+
+    Call BAZ("FOO 1", str)
+
+    str = String(10, "!"c)
+    Call BAZ("FOO 2", str)
+
+    str = String(arr)
+    Call BAZ("FOO 3", str)
+
+    Fill str, "%"c
+    Call BAZ("FOO 4", str)
+
+    str = String(SubArray(arr, 2, 4))
+    Call BAZ("FOO 5", str)
+End Program
+"#;
+
+    let src3 = r#"
+Extern Sub BAZ With
+    ByRef msg As String To GR2,GR3
+    ByVal arg As String To GR1,GR4
+End Sub
+Program BAR
+    Argument
+        ByRef str As String From GR1,GR2
+    End Argument
+    Dim arr(5) As Integer
+    arr = Array(97, 65, 98, 66, 99, 67)
+
+    Call BAZ("BAR 1", str)
+
+    str = String(10, "("c)
+    Call BAZ("BAR 2", str)
+
+    str = String(arr)
+    Call BAZ("BAR 3", str)
+
+    Fill str, ">"c
+    Call BAZ("BAR 4", str)
+
+    str = String(SubArray(arr, 1, 4))
+    Call BAZ("BAR 5", str)
+End Program
+"#;
+
+    let src4 = r#"
+Program BAZ
+    Argument
+        ByRef msg As String From GR2,GR3
+        ByVal arg As String From GR1,GR4
+    End Argument
+    Dim i As Integer
+    Dim s As String
+    s = ""
+    For i = 0 To Len(arg) - 1
+        s = s & CStr(arg(i)) & ", "
+    Next i
+    Print msg
+    Print Len(arg)
+    Print arg
+    Print s
+End Program
+"#;
+
+    for src in [src1, src2, src3, src4].iter() {
         let mut cursor = std::io::Cursor::new(src);
 
         let code = parser::parse(&mut cursor).unwrap().unwrap();
