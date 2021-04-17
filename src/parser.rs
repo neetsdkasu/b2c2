@@ -658,6 +658,7 @@ impl Parser {
             Keyword::ElseIf => self.parse_command_elseif(pos_and_tokens),
             Keyword::End => self.parse_command_end(pos_and_tokens),
             Keyword::Exit => self.parse_command_exit(pos_and_tokens),
+            Keyword::Fill => self.parse_command_fill(pos_and_tokens),
             Keyword::For => self.parse_command_for(pos_and_tokens),
             Keyword::If => self.parse_command_if(pos_and_tokens),
             Keyword::Input => self.parse_command_input(pos_and_tokens),
@@ -687,6 +688,75 @@ impl Parser {
             | Keyword::With
             | Keyword::While => unreachable!("BUG"),
         }
+    }
+
+    // Fill <bool_arr>, <value>
+    // Fill <ref_bool_arr>, <value>
+    // Fill <int_arr>, <value>
+    // Fill <ref_int_arr>, <value>
+    // Fill <str_var>, <char>
+    // Fill <ref_str_var>, <char>
+    fn parse_command_fill(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
+        let param = self.parse_expr(pos_and_tokens)?;
+        let (var, value) = if let Expr::ParamList(list) = &param {
+            if let [var, value] = list.as_slice() {
+                (var, value)
+            } else {
+                return Err(self.syntax_error("invalid Fill arguments".into()));
+            }
+        } else {
+            return Err(self.syntax_error("invalid Fill arguments".into()));
+        };
+
+        match var {
+            Expr::VarString(var_name) if matches!(value.return_type(), ExprType::Integer) => {
+                self.add_statement(Statement::FillString {
+                    var_name: var_name.clone(),
+                    value: value.clone(),
+                });
+            }
+            Expr::VarRefString(var_name) if matches!(value.return_type(), ExprType::Integer) => {
+                self.add_statement(Statement::FillRefString {
+                    var_name: var_name.clone(),
+                    value: value.clone(),
+                });
+            }
+            Expr::ReferenceOfVar(var_name, VarType::ArrayOfBoolean(_))
+                if matches!(value.return_type(), ExprType::Boolean) =>
+            {
+                self.add_statement(Statement::FillArrayOfBoolean {
+                    var_name: var_name.clone(),
+                    value: value.clone(),
+                });
+            }
+            Expr::ReferenceOfVar(var_name, VarType::RefArrayOfBoolean(_))
+                if matches!(value.return_type(), ExprType::Boolean) =>
+            {
+                self.add_statement(Statement::FillRefArrayOfBoolean {
+                    var_name: var_name.clone(),
+                    value: value.clone(),
+                });
+            }
+            Expr::ReferenceOfVar(var_name, VarType::ArrayOfInteger(_))
+                if matches!(value.return_type(), ExprType::Integer) =>
+            {
+                self.add_statement(Statement::FillArrayOfInteger {
+                    var_name: var_name.clone(),
+                    value: value.clone(),
+                });
+            }
+            Expr::ReferenceOfVar(var_name, VarType::RefArrayOfInteger(_))
+                if matches!(value.return_type(), ExprType::Integer) =>
+            {
+                self.add_statement(Statement::FillRefArrayOfInteger {
+                    var_name: var_name.clone(),
+                    value: value.clone(),
+                });
+            }
+            _ => return Err(self.syntax_error("invalid Fill arguments".into())),
+        }
+
+        Ok(())
     }
 
     // Call <name>
@@ -2657,10 +2727,10 @@ impl Keyword {
         use Keyword::*;
         match self {
             Argument | ByRef | ByVal | Call | Case | Continue | Else | ElseIf | End | Exit
-            | Extern | Dim | Do | For | If | Input | Loop | Mid | Next | Print | Program
+            | Extern | Dim | Do | Fill | For | If | Input | Loop | Mid | Next | Print | Program
             | Select => true,
 
-            As | From | Rem | Step | Sub | Then | To | Until | With | While => false,
+            As | From | Rem | Step | Sub | Then | To | Until | While | With => false,
         }
     }
 }
@@ -3040,6 +3110,30 @@ pub enum Statement {
         value: Expr,
     },
     PrintExprString {
+        value: Expr,
+    },
+    FillArrayOfBoolean {
+        var_name: String,
+        value: Expr,
+    },
+    FillRefArrayOfBoolean {
+        var_name: String,
+        value: Expr,
+    },
+    FillArrayOfInteger {
+        var_name: String,
+        value: Expr,
+    },
+    FillRefArrayOfInteger {
+        var_name: String,
+        value: Expr,
+    },
+    FillString {
+        var_name: String,
+        value: Expr,
+    },
+    FillRefString {
+        var_name: String,
         value: Expr,
     },
 }

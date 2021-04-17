@@ -385,6 +385,13 @@ fn it_works() {
         int1 = Len(intArr1)
         int1 = Len(argIArr)
         int1 = Len(Array(1,2,3,4))
+        Fill (boolArr1, True)
+        Fill boolArr2, Not False
+        Fill argBArr, 1 <> int1
+        Fill intArr1, 12*34+int1
+        Fill argIArr, 99
+        Fill str1, "X"c
+        Fill argStr, "e"c
     End Program
         "#;
 

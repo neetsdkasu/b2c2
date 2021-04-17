@@ -322,8 +322,9 @@ enumdef!(
     Extern,
     Dim,
     Do,
-    From,
+    Fill,
     For,
+    From,
     If,
     Input,
     Loop,
@@ -338,8 +339,8 @@ enumdef!(
     Then,
     To,
     Until,
-    With,
     While,
+    With,
 );
 
 enumdef!(
