@@ -733,7 +733,7 @@ impl Parser {
         }
     }
 
-    // Option Array { Bound / Length } [ All ]
+    // Option Array { UBound / Length } [ { All / Declare / Function } ]
     // Option EOF { Special / Common }
     // Option Recursion { Disable / Enable }
     // Option Register { Restore / Break }
@@ -753,19 +753,29 @@ impl Parser {
                 if self.declare_array_with_length.is_some() {
                     return Err(self.syntax_error_pos(*pv, "invalid Option statement".into()));
                 }
+                // value
+                //   UBound .... 最大インデックス(境界値・上限値)でサイズ指定 (Bound,Bounds,Indexでも可)
+                //   Length .... 配列長でサイズ指定 (Sizeでも可)
+                // extra
+                //   Declare ... Dim,ByRef,ByValだけ設定変更、CArray,SubArrayはデフォルトの設定
+                //   Function .. CArray,SubArrayだけ設定変更、Dim,ByRef,ByValはデフォルトの設定
+                //   All ....... Dim,ByRef,ByVal,CArray,SubArrayの全部の設定変更
+                //  extraを省略した場合はAllがデフォルト
                 let mut length = false;
-                let mut all = false;
+                let mut all = true;
                 match value {
                     Token::Name(value)
                         if "Bound".eq_ignore_ascii_case(value)
-                            || "Bounds".eq_ignore_ascii_case(value) =>
+                            || "Bounds".eq_ignore_ascii_case(value)
+                            || "Index".eq_ignore_ascii_case(value)
+                            || "UBound".eq_ignore_ascii_case(value) =>
                     {
-                        self.declare_array_with_length = Some(false);
                         if let Some((pa, Token::Name(extra))) = extra {
-                            if "All".eq_ignore_ascii_case(extra) {
-                                self.use_bound_for_array_function = true;
-                                all = true;
-                            } else if !"Declare".eq_ignore_ascii_case(extra) {
+                            if "Declare".eq_ignore_ascii_case(extra) {
+                                all = false;
+                            } else if !"Function".eq_ignore_ascii_case(extra)
+                                && !"All".eq_ignore_ascii_case(extra)
+                            {
                                 return Err(
                                     self.syntax_error_pos(*pa, "invalid Option statement".into())
                                 );
@@ -776,12 +786,14 @@ impl Parser {
                         if "Length".eq_ignore_ascii_case(value)
                             || "Size".eq_ignore_ascii_case(value) =>
                     {
-                        self.declare_array_with_length = Some(true);
                         length = true;
                         if let Some((pa, Token::Name(extra))) = extra {
-                            if !"All".eq_ignore_ascii_case(extra)
-                                && !"Declare".eq_ignore_ascii_case(extra)
-                            {
+                            if "Declare".eq_ignore_ascii_case(extra) {
+                                all = false;
+                            } else if "Function".eq_ignore_ascii_case(extra) {
+                                length = false;
+                                all = false;
+                            } else if !"All".eq_ignore_ascii_case(extra) {
                                 return Err(
                                     self.syntax_error_pos(*pa, "invalid Option statement".into())
                                 );
@@ -790,6 +802,8 @@ impl Parser {
                     }
                     _ => return Err(self.syntax_error_pos(*pv, "invalid Option statement".into())),
                 }
+                self.declare_array_with_length = Some(length);
+                self.use_bound_for_array_function = length != all;
                 self.add_statement(Statement::CompileOption {
                     option: CompileOption::ArraySize { length, all },
                 });

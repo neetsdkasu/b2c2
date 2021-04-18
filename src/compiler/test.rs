@@ -21,7 +21,7 @@ fn it_works() {
     let src = r#"
     Rem TEST PROGRAM
     Rem コンパイル通るかのチェックだけで、正しくコンパイルされてるかはチェックしていないという…
-    Option Array Bound ' Length
+    Option Array UBound Declare ' Length
     ' Option EOF Special ' Common
     ' Option Recursion Disable ' Enable
     ' Option Register Restore ' Break
@@ -2077,7 +2077,7 @@ End Program
 #[test]
 fn with_arguments_5_works() {
     let src1 = r#"
-Option Array Bound All
+Option Array UBound
 Extern Sub FOO With
     ByVal arg1(5) As Boolean To GR1
     ByRef arg2(5) As Boolean To GR2
