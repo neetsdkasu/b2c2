@@ -1059,6 +1059,7 @@ impl Compiler {
     fn compile(&mut self, stmt: &parser::Statement) {
         use parser::Statement::*;
         match stmt {
+            CompileOption { option } => self.set_option(option),
             ProgramName { name } => self.compile_program_name(name),
             Argument { arguments } => self.compile_argument(arguments),
             Call { name, arguments } => self.compile_call_exterun_sub(name, arguments),
@@ -1249,6 +1250,16 @@ impl Compiler {
             | ProvisionalSelectString { .. }
             | ProvisionalCaseString { .. }
             | ProvisionalCaseElse => unreachable!("BUG"),
+        }
+    }
+
+    // Option
+    fn set_option(&mut self, option: &parser::CompileOption) {
+        match option {
+            parser::CompileOption::ArraySize { .. } => {}
+            parser::CompileOption::Eof { common: _ } => todo!(),
+            parser::CompileOption::Register { restore: _ } => todo!(),
+            parser::CompileOption::Variable { initialize: _ } => todo!(),
         }
     }
 

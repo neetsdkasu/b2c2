@@ -330,6 +330,7 @@ enumdef!(
     Loop,
     Mid,
     Next,
+    Option,
     Print,
     Program,
     Rem,

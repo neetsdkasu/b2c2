@@ -65,6 +65,7 @@ enum EndProgramState {
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 enum HeaderState {
+    Option,
     ExternSub,
     InExternSub,
     ProgramName,
@@ -91,28 +92,36 @@ impl HeaderState {
         matches!(self, HeaderState::InArgument)
     }
 
-    fn can_command(self) -> bool {
-        use HeaderState::*;
-        matches!(self, ExternSub | ProgramName | Argument | Dim | NotHeader)
+    fn can_option(self) -> bool {
+        matches!(self, HeaderState::Option)
     }
 
-    fn can_argument(self) -> bool {
+    fn can_extern_sub(self) -> bool {
         use HeaderState::*;
-        matches!(self, ExternSub | ProgramName | Argument)
+        matches!(self, Option | ExternSub)
     }
 
     fn can_program_name(self) -> bool {
         use HeaderState::*;
-        matches!(self, ExternSub | ProgramName)
+        matches!(self, Option | ExternSub | ProgramName)
     }
 
-    fn can_extern_sub(self) -> bool {
-        matches!(self, HeaderState::ExternSub)
+    fn can_argument(self) -> bool {
+        use HeaderState::*;
+        matches!(self, Option | ExternSub | ProgramName | Argument)
     }
 
     fn can_dim(self) -> bool {
         use HeaderState::*;
-        matches!(self, ExternSub | ProgramName | Argument | Dim)
+        matches!(self, Option | ExternSub | ProgramName | Argument | Dim)
+    }
+
+    fn can_command(self) -> bool {
+        use HeaderState::*;
+        matches!(
+            self,
+            Option | ExternSub | ProgramName | Argument | Dim | NotHeader
+        )
     }
 }
 
@@ -134,6 +143,8 @@ struct Parser {
     end_program_state: EndProgramState,
     in_call_with: bool,
     temp_call_with_arguments: Vec<(String, Expr)>,
+    declare_array_with_length: Option<bool>,
+    use_bound_for_array_function: bool,
 }
 
 impl Parser {
@@ -149,13 +160,43 @@ impl Parser {
             provisionals: Vec::new(),
             exit_id: 0,
             is_select_head: false,
-            header_state: HeaderState::ExternSub,
+            header_state: HeaderState::Option,
             temp_argumets: Vec::new(),
             temp_progam_name: None,
             callables: HashMap::new(),
             end_program_state: EndProgramState::Unnecessary,
             in_call_with: false,
             temp_call_with_arguments: Vec::new(),
+            declare_array_with_length: None,
+            use_bound_for_array_function: false,
+        }
+    }
+
+    fn parse_size_for_array_function(&self, size: usize, value: i32) -> Option<usize> {
+        if self.use_bound_for_array_function {
+            if (0..size as i32).contains(&value) {
+                Some(value as usize + 1)
+            } else {
+                None
+            }
+        } else if (1..=size as i32).contains(&value) {
+            Some(value as usize)
+        } else {
+            None
+        }
+    }
+
+    fn parse_declare_array_size(&self, value: i32) -> Option<usize> {
+        if let Some(true) = self.declare_array_with_length {
+            if (1..=MAX_ARRAY_SIZE as i32).contains(&value) {
+                Some(value as usize)
+            } else {
+                None
+            }
+        } else if (0..MAX_ARRAY_SIZE as i32).contains(&value) {
+            Some(value as usize + 1)
+        } else {
+            None
         }
     }
 
@@ -610,6 +651,7 @@ impl Parser {
                 Keyword::Argument => return self.parse_command_argument(pos_and_tokens),
                 Keyword::Dim => return self.parse_command_dim(pos_and_tokens),
                 Keyword::Extern => return self.parse_command_extern_sub(pos_and_tokens),
+                Keyword::Option => return self.parse_option(pos_and_tokens),
                 Keyword::Program => return self.parse_command_program_name(pos_and_tokens),
                 _ => {}
             }
@@ -673,6 +715,7 @@ impl Parser {
             | Keyword::ByVal
             | Keyword::Dim
             | Keyword::Extern
+            | Keyword::Option
             | Keyword::Program => {
                 Err(self.syntax_error(format!("invalid {:?} statement", command)))
             }
@@ -688,6 +731,77 @@ impl Parser {
             | Keyword::With
             | Keyword::While => unreachable!("BUG"),
         }
+    }
+
+    // Option Array { Bound / Length } [ All ]
+    // Option EOF { Special / Common }
+    // Option Recursion { Disable / Enable }
+    // Option Register { Restore / Break }
+    // Option Variable { Initialize / Uninitialize }
+    fn parse_option(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
+        if !self.header_state.can_option() {
+            return Err(self.syntax_error("invalid Option statement".into()));
+        }
+        let ((pt, target), (pv, value), extra) = match pos_and_tokens {
+            [target, value] => (target, value, None),
+            [target, value, extra] => (target, value, Some(extra)),
+            _ => return Err(self.syntax_error("invalid Option statement".into())),
+        };
+
+        match target {
+            Token::Function(Function::Array) => {
+                if self.declare_array_with_length.is_some() {
+                    return Err(self.syntax_error_pos(*pv, "invalid Option statement".into()));
+                }
+                let mut length = false;
+                let mut all = false;
+                match value {
+                    Token::Name(value)
+                        if "Bound".eq_ignore_ascii_case(value)
+                            || "Bounds".eq_ignore_ascii_case(value) =>
+                    {
+                        self.declare_array_with_length = Some(false);
+                        if let Some((pa, Token::Name(extra))) = extra {
+                            if "All".eq_ignore_ascii_case(extra) {
+                                self.use_bound_for_array_function = true;
+                                all = true;
+                            } else if !"Declare".eq_ignore_ascii_case(extra) {
+                                return Err(
+                                    self.syntax_error_pos(*pa, "invalid Option statement".into())
+                                );
+                            }
+                        }
+                    }
+                    Token::Name(value)
+                        if "Length".eq_ignore_ascii_case(value)
+                            || "Size".eq_ignore_ascii_case(value) =>
+                    {
+                        self.declare_array_with_length = Some(true);
+                        length = true;
+                        if let Some((pa, Token::Name(extra))) = extra {
+                            if !"All".eq_ignore_ascii_case(extra)
+                                && !"Declare".eq_ignore_ascii_case(extra)
+                            {
+                                return Err(
+                                    self.syntax_error_pos(*pa, "invalid Option statement".into())
+                                );
+                            }
+                        }
+                    }
+                    _ => return Err(self.syntax_error_pos(*pv, "invalid Option statement".into())),
+                }
+                self.add_statement(Statement::CompileOption {
+                    option: CompileOption::ArraySize { length, all },
+                });
+            }
+            Token::Function(Function::Eof) => todo!(),
+            Token::Name(target) if "Recursion".eq_ignore_ascii_case(target) => todo!(),
+            Token::Name(target) if "Register".eq_ignore_ascii_case(target) => todo!(),
+            Token::Name(target) if "Variable".eq_ignore_ascii_case(target) => todo!(),
+            _ => return Err(self.syntax_error_pos(*pt, "invalid Option statement".into())),
+        }
+
+        Ok(())
     }
 
     // Fill <bool_arr>, <value>
@@ -877,7 +991,7 @@ impl Parser {
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
         if !self.header_state.can_extern_sub() {
-            return Err(self.syntax_error("invalid Extern statement".into()));
+            return Err(self.syntax_error("invalid Extern Sub statement".into()));
         }
         match pos_and_tokens {
             [(_, Token::Keyword(Keyword::Sub)), (pn, Token::Name(name)), (_, Token::Keyword(Keyword::With))] =>
@@ -895,7 +1009,7 @@ impl Parser {
                     arguments: Vec::new(),
                 });
             }
-            _ => return Err(self.syntax_error("invalid Extern statement".into())),
+            _ => return Err(self.syntax_error("invalid Extern Sub statement".into())),
         }
         Ok(())
     }
@@ -926,22 +1040,18 @@ impl Parser {
             }
             [(pn, N(name)), (_, Op(Ob)), (pu, I(ubound)), (_, Op(Cb)), (_, K(As)), (_, T(Tn::Boolean)), (pf, K(flow)), (pr, N(reg))] =>
             {
-                if !(0..MAX_ARRAY_SIZE as i32).contains(ubound) {
-                    return Err(
-                        self.syntax_error_pos(*pu, "invalid array size in ByRef statement".into())
-                    );
-                }
-                let var_type = VarType::RefArrayOfBoolean(*ubound as usize + 1);
+                let size = self.parse_declare_array_size(*ubound).ok_or_else(|| {
+                    self.syntax_error_pos(*pu, "invalid array size in ByRef statement".into())
+                })?;
+                let var_type = VarType::RefArrayOfBoolean(size);
                 ((pn, name), var_type, (pf, flow), (pr, reg), None)
             }
             [(pn, N(name)), (_, Op(Ob)), (pu, I(ubound)), (_, Op(Cb)), (_, K(As)), (_, T(Tn::Integer)), (pf, K(flow)), (pr, N(reg))] =>
             {
-                if !(0..MAX_ARRAY_SIZE as i32).contains(ubound) {
-                    return Err(
-                        self.syntax_error_pos(*pu, "invalid array size in ByRef statement".into())
-                    );
-                }
-                let var_type = VarType::RefArrayOfInteger(*ubound as usize + 1);
+                let size = self.parse_declare_array_size(*ubound).ok_or_else(|| {
+                    self.syntax_error_pos(*pu, "invalid array size in ByRef statement".into())
+                })?;
+                let var_type = VarType::RefArrayOfInteger(size);
                 ((pn, name), var_type, (pf, flow), (pr, reg), None)
             }
             _ => return Err(self.syntax_error("invalid ByRef statement".into())),
@@ -1027,22 +1137,18 @@ impl Parser {
             }
             [(pn, N(name)), (_, Op(Ob)), (pu, I(ubound)), (_, Op(Cb)), (_, K(As)), (_, T(Tn::Boolean)), (pf, K(flow)), (pr, N(reg))] =>
             {
-                if !(0..MAX_ARRAY_SIZE as i32).contains(ubound) {
-                    return Err(
-                        self.syntax_error_pos(*pu, "invalid array size in ByVal statement".into())
-                    );
-                }
-                let var_type = VarType::ArrayOfBoolean(*ubound as usize + 1);
+                let size = self.parse_declare_array_size(*ubound).ok_or_else(|| {
+                    self.syntax_error_pos(*pu, "invalid array size in ByVal statement".into())
+                })?;
+                let var_type = VarType::ArrayOfBoolean(size);
                 ((pn, name), var_type, (pf, flow), (pr, reg), None)
             }
             [(pn, N(name)), (_, Op(Ob)), (pu, I(ubound)), (_, Op(Cb)), (_, K(As)), (_, T(Tn::Integer)), (pf, K(flow)), (pr, N(reg))] =>
             {
-                if !(0..MAX_ARRAY_SIZE as i32).contains(ubound) {
-                    return Err(
-                        self.syntax_error_pos(*pu, "invalid array size in ByVal statement".into())
-                    );
-                }
-                let var_type = VarType::ArrayOfInteger(*ubound as usize + 1);
+                let size = self.parse_declare_array_size(*ubound).ok_or_else(|| {
+                    self.syntax_error_pos(*pu, "invalid array size in ByVal statement".into())
+                })?;
+                let var_type = VarType::ArrayOfInteger(size);
                 ((pn, name), var_type, (pf, flow), (pr, reg), None)
             }
             _ => return Err(self.syntax_error("invalid ByVal statement".into())),
@@ -2091,12 +2197,9 @@ impl Parser {
                     return Err(self
                         .syntax_error_pos(*pos_n, format!("already defined variable: {}", name)));
                 }
-                if !(0..MAX_ARRAY_SIZE as i32).contains(size) {
-                    return Err(
-                        self.syntax_error_pos(*pos_s, "invalid Array Size in Dim statement".into())
-                    );
-                }
-                let size = *size as usize + 1;
+                let size = self.parse_declare_array_size(*size).ok_or_else(|| {
+                    self.syntax_error_pos(*pos_s, "invalid Array Size in Dim statement".into())
+                })?;
                 let var_type = match type_name {
                     TypeName::Boolean => VarType::ArrayOfBoolean(size),
                     TypeName::Integer => VarType::ArrayOfInteger(size),
@@ -2599,35 +2702,37 @@ impl Parser {
             // 関数 SubArray ( 引数 )
             [(_, Token::Function(Function::SubArray)), (pos, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
             {
-                let param = self.parse_expr(inner)?;
-                if let Expr::ParamList(list) = &param {
-                    match list.as_slice() {
+                let mut param = self.parse_expr(inner)?;
+                if let Expr::ParamList(list) = &mut param {
+                    match list.as_mut_slice() {
                         [Expr::FunctionBooleanArray(size, ..), offset, Expr::LitInteger(len)]
                         | [Expr::ReferenceOfVar(_, VarType::ArrayOfBoolean(size)), offset, Expr::LitInteger(len)]
                         | [Expr::ReferenceOfVar(_, VarType::RefArrayOfBoolean(size)), offset, Expr::LitInteger(len)] => {
-                            if (1..=*size as i32).contains(len)
-                                && matches!(offset.return_type(), ExprType::Integer)
-                            {
-                                let size = *len as usize;
-                                return Ok(Expr::FunctionBooleanArray(
-                                    size,
-                                    Function::SubArray,
-                                    Box::new(param),
-                                ));
+                            if matches!(offset.return_type(), ExprType::Integer) {
+                                if let Some(size) = self.parse_size_for_array_function(*size, *len)
+                                {
+                                    *len = size as i32;
+                                    return Ok(Expr::FunctionBooleanArray(
+                                        size,
+                                        Function::SubArray,
+                                        Box::new(param),
+                                    ));
+                                }
                             }
                         }
                         [Expr::FunctionIntegerArray(size, ..), offset, Expr::LitInteger(len)]
                         | [Expr::ReferenceOfVar(_, VarType::ArrayOfInteger(size)), offset, Expr::LitInteger(len)]
                         | [Expr::ReferenceOfVar(_, VarType::RefArrayOfInteger(size)), offset, Expr::LitInteger(len)] => {
-                            if (1..=*size as i32).contains(len)
-                                && matches!(offset.return_type(), ExprType::Integer)
-                            {
-                                let size = *len as usize;
-                                return Ok(Expr::FunctionIntegerArray(
-                                    size,
-                                    Function::SubArray,
-                                    Box::new(param),
-                                ));
+                            if matches!(offset.return_type(), ExprType::Integer) {
+                                if let Some(size) = self.parse_size_for_array_function(*size, *len)
+                                {
+                                    *len = size as i32;
+                                    return Ok(Expr::FunctionIntegerArray(
+                                        size,
+                                        Function::SubArray,
+                                        Box::new(param),
+                                    ));
+                                }
                             }
                         }
                         [expr, offset, Expr::LitInteger(_)]
@@ -2646,12 +2751,13 @@ impl Parser {
             // 関数 CArray ( 引数 )
             [(_, Token::Function(Function::CArray)), (pos, Token::Operator(Operator::OpenBracket)), inner @ .., (_, Token::Operator(Operator::CloseBracket))] =>
             {
-                let param = self.parse_expr(inner)?;
-                if let Expr::ParamList(list) = &param {
-                    if let [expr, Expr::LitInteger(len)] = list.as_slice() {
-                        if (1..=MAX_ARRAY_SIZE as i32).contains(len) {
-                            let size = *len as usize;
+                let mut param = self.parse_expr(inner)?;
+                if let Expr::ParamList(list) = &mut param {
+                    if let [expr, Expr::LitInteger(len)] = list.as_mut_slice() {
+                        if let Some(size) = self.parse_size_for_array_function(MAX_ARRAY_SIZE, *len)
+                        {
                             if expr.return_type().is_bool_array() {
+                                *len = size as i32;
                                 return Ok(Expr::FunctionBooleanArray(
                                     size,
                                     Function::CArray,
@@ -2660,6 +2766,7 @@ impl Parser {
                             } else if matches!(expr.return_type(), ExprType::String)
                                 || expr.return_type().is_int_array()
                             {
+                                *len = size as i32;
                                 return Ok(Expr::FunctionIntegerArray(
                                     size,
                                     Function::CArray,
@@ -2727,8 +2834,8 @@ impl Keyword {
         use Keyword::*;
         match self {
             Argument | ByRef | ByVal | Call | Case | Continue | Else | ElseIf | End | Exit
-            | Extern | Dim | Do | Fill | For | If | Input | Loop | Mid | Next | Print | Program
-            | Select => true,
+            | Extern | Dim | Do | Fill | For | If | Input | Loop | Mid | Next | Option | Print
+            | Program | Select => true,
 
             As | From | Rem | Step | Sub | Then | To | Until | While | With => false,
         }
@@ -2822,7 +2929,18 @@ impl ArgumentInfo {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
+pub enum CompileOption {
+    ArraySize { length: bool, all: bool },
+    Eof { common: bool },
+    Register { restore: bool },
+    Variable { initialize: bool },
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum Statement {
+    CompileOption {
+        option: CompileOption,
+    },
     ProgramName {
         name: String,
     },
@@ -3454,6 +3572,8 @@ impl Function {
                 }
             }
 
+            Array | CArray | SubArray => unreachable!("BUG"),
+            /*
             // 引数は全て真理値もしくは全て整数
             Array => {
                 if let Expr::ParamList(list) = param {
@@ -3511,6 +3631,7 @@ impl Function {
                     false
                 }
             }
+            */
         }
     }
 }
@@ -3532,11 +3653,15 @@ impl std::fmt::Display for ArgumentInfo {
             ),
             VarType::ArrayOfBoolean(size) => format!(
                 "ByVal {}({}) As Boolean [{}]",
-                self.var_name, size, self.register1
+                self.var_name,
+                size - 1,
+                self.register1
             ),
             VarType::ArrayOfInteger(size) => format!(
                 "ByVal {}({}) As Integer [{}]",
-                self.var_name, size, self.register1
+                self.var_name,
+                size - 1,
+                self.register1
             ),
             VarType::RefBoolean => {
                 format!("ByRef {} As Boolean [{}]", self.var_name, self.register1)
@@ -3552,11 +3677,15 @@ impl std::fmt::Display for ArgumentInfo {
             ),
             VarType::RefArrayOfBoolean(size) => format!(
                 "ByRef {}({}) As Boolean [{}]",
-                self.var_name, size, self.register1
+                self.var_name,
+                size - 1,
+                self.register1
             ),
             VarType::RefArrayOfInteger(size) => format!(
                 "ByRef {}({}) As Integer [{}]",
-                self.var_name, size, self.register1
+                self.var_name,
+                size - 1,
+                self.register1
             ),
         };
         s.fmt(f)

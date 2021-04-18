@@ -21,6 +21,11 @@ fn it_works() {
     let src = r#"
     Rem TEST PROGRAM
     Rem コンパイル通るかのチェックだけで、正しくコンパイルされてるかはチェックしていないという…
+    Option Array Bound ' Length
+    ' Option EOF Special ' Common
+    ' Option Recursion Disable ' Enable
+    ' Option Register Restore ' Break
+    ' Option Variable Initialize ' Uninitialize
     Extern Sub PROC1
     Extern Sub PROC2 With
     End Sub
@@ -2053,6 +2058,68 @@ End Program
 "#;
 
     for src in [src1, src2, src3, src4].iter() {
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile(None, &code[..]).unwrap();
+
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
+
+        eprintln!("{}", crate::stat::analyze(&statements));
+
+        assert!(!statements.is_empty()); // dummy assert
+    }
+}
+
+#[test]
+fn with_arguments_5_works() {
+    let src1 = r#"
+Option Array Bound All
+Extern Sub FOO With
+    ByVal arg1(5) As Boolean To GR1
+    ByRef arg2(5) As Boolean To GR2
+    ByVal arg3(5) As Integer To GR3
+    ByRef arg4(5) As Integer To GR4
+End Sub
+Program TEST
+    Dim foo(5) As Boolean
+    Dim bar(5) As Integer
+    foo = CArray(Array(True, True), 5)
+    bar = SubArray(Array(1, 2, 3, 4, 5, 6, 7, 8, 9), 1, 5)
+    Print "TEST"
+    Print Len(foo)
+    Print Len(bar)
+    Call FOO(foo, foo, bar, bar)
+End Program
+"#;
+
+    let src2 = r#"
+Option Array Length
+Program FOO
+    Argument
+        ByVal arg1(6) As Boolean From GR1
+        ByRef arg2(6) As Boolean From GR2
+        ByVal arg3(6) As Integer From GR3
+        ByRef arg4(6) As Integer From GR4
+    End Argument
+    Dim foo(6) As Boolean
+    Dim bar(6) As Integer
+    foo = CArray(Array(True, True), 6)
+    bar = SubArray(Array(1, 2, 3, 4, 5, 6, 7, 8, 9), 1, 6)
+    Print "FOO"
+    Print Len(foo)
+    Print Len(bar)
+    Print Len(arg1)
+    Print Len(arg2)
+    Print Len(arg3)
+    Print Len(arg4)
+End Program
+"#;
+
+    for src in [src1, src2].iter() {
         let mut cursor = std::io::Cursor::new(src);
 
         let code = parser::parse(&mut cursor).unwrap().unwrap();
