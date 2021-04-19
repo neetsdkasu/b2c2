@@ -736,7 +736,7 @@ impl Parser {
     // Option Array { UBound / Length } [ { All / Declare / Function } ]
     // Option EOF { Special / Common }
     // Option Recursion { Disable / Enable }
-    // Option Register { Restore / Break }
+    // Option Register { Restore / Dirty }
     // Option Variable { Initialize / Uninitialize }
     fn parse_option(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         if !self.header_state.can_option() {
@@ -808,10 +808,76 @@ impl Parser {
                     option: CompileOption::ArraySize { length, all },
                 });
             }
+            _ if extra.is_some() => {
+                let (pe, _) = extra.unwrap();
+                return Err(self.syntax_error_pos(*pe, "invalid Option statement".into()));
+            }
             Token::Function(Function::Eof) => todo!(),
             Token::Name(target) if "Recursion".eq_ignore_ascii_case(target) => todo!(),
-            Token::Name(target) if "Register".eq_ignore_ascii_case(target) => todo!(),
-            Token::Name(target) if "Variable".eq_ignore_ascii_case(target) => todo!(),
+            Token::Name(target) if "Register".eq_ignore_ascii_case(target) => {
+                for stmt in self.statements.first().expect("BUG").iter() {
+                    if let Statement::CompileOption {
+                        option: CompileOption::Register { .. },
+                    } = stmt
+                    {
+                        return Err(self.syntax_error_pos(*pt, "invalid Option statement".into()));
+                    }
+                }
+                // Recover 呼び出し前に回復する
+                // Restore 呼び出し前を復元する
+                // Back    呼び出し前の状態に戻る
+                // Break   破壊（呼び出し前の状態には戻らない)
+                // Dirty　　　汚染(呼び出し前の状態には戻らない) (Pollutionでもいいかもしれない)
+                // Unclean  汚染(呼び出し前の状態には戻らない) (反対がcleanにするわけではないので違和感はある)
+                // Keep,Leave,Saveは対象がどうなるのか俺にはよくわからん
+                // Keep は呼び出し前を維持するのか、終了状態を維持するのか、
+                // Save は呼び出し前を保存するのか、終了状態を保存するのか、
+                // Leave は呼び出し前を残しておくのか、終了状態を残しておくのか、(Leaveは後者な雰囲気はある)
+                match value {
+                    Token::Name(value)
+                        if "Recover".eq_ignore_ascii_case(value)
+                            || "Restore".eq_ignore_ascii_case(value)
+                            || "Back".eq_ignore_ascii_case(value) =>
+                    {
+                        self.add_statement(Statement::CompileOption {
+                            option: CompileOption::Register { restore: true },
+                        });
+                    }
+                    Token::Name(value)
+                        if "Break".eq_ignore_ascii_case(value)
+                            || "Dirty".eq_ignore_ascii_case(value)
+                            || "Unclean".eq_ignore_ascii_case(value) =>
+                    {
+                        self.add_statement(Statement::CompileOption {
+                            option: CompileOption::Register { restore: false },
+                        });
+                    }
+                    _ => return Err(self.syntax_error_pos(*pv, "invalid Option statement".into())),
+                }
+            }
+            Token::Name(target) if "Variable".eq_ignore_ascii_case(target) => {
+                for stmt in self.statements.first().expect("BUG").iter() {
+                    if let Statement::CompileOption {
+                        option: CompileOption::Variable { .. },
+                    } = stmt
+                    {
+                        return Err(self.syntax_error_pos(*pt, "invalid Option statement".into()));
+                    }
+                }
+                match value {
+                    Token::Name(value) if "Initialize".eq_ignore_ascii_case(value) => {
+                        self.add_statement(Statement::CompileOption {
+                            option: CompileOption::Variable { initialize: true },
+                        });
+                    }
+                    Token::Name(value) if "Uninitialize".eq_ignore_ascii_case(value) => {
+                        self.add_statement(Statement::CompileOption {
+                            option: CompileOption::Variable { initialize: false },
+                        });
+                    }
+                    _ => return Err(self.syntax_error_pos(*pv, "invalid Option statement".into())),
+                }
+            }
             _ => return Err(self.syntax_error_pos(*pt, "invalid Option statement".into())),
         }
 

@@ -24,8 +24,8 @@ fn it_works() {
     Option Array UBound Declare ' Length
     ' Option EOF Special ' Common
     ' Option Recursion Disable ' Enable
-    ' Option Register Restore ' Break
-    ' Option Variable Initialize ' Uninitialize
+    Option Register Restore ' Dirty
+    Option Variable Initialize ' Uninitialize
     Extern Sub PROC1
     Extern Sub PROC2 With
     End Sub
@@ -491,7 +491,8 @@ fn compiler_get_lit_str_labels_works() {
             r#"
 TEST   START
        RPUSH
-EXIT   RPOP
+EXIT   NOP
+       RPOP
        RET
 LL1    DC     4
 LB1    DC     '-123'
@@ -532,7 +533,8 @@ TEST   START
        XOR    GR2,GR2
        LAD    GR3,705
        CALL   {fill}
-EXIT   RPOP
+EXIT   NOP
+       RPOP
        RET
                                    ; Dim boolVar1 As Boolean
 B2     DS     1
@@ -591,7 +593,8 @@ TEST   START
        OUT    LB2,LL2
                                    ; Print True
        OUT    LB1,LL1
-EXIT   RPOP
+EXIT   NOP
+       RPOP
        RET
 LL1    DC     4
 LB1    DC     'True'
@@ -627,7 +630,8 @@ TEST   START
        OUT    LB3,LL3
                                    ; Print 1234
        OUT    LB1,LL1
-EXIT   RPOP
+EXIT   NOP
+       RPOP
        RET
 LL1    DC     4
 LB1    DC     '1234'
@@ -665,7 +669,8 @@ TEST   START
        OUT    LB3,LL3
                                    ; Print "ABCD"
        OUT    LB1,LL1
-EXIT   RPOP
+EXIT   NOP
+       RPOP
        RET
 LL1    DC     4
 LB1    DC     'ABCD'
@@ -708,7 +713,8 @@ TEST   START
        OUT    SB2,SL2
                                    ; Print strVar1
        OUT    SB1,SL1
-EXIT   RPOP
+EXIT   NOP
+       RPOP
        RET
                                    ; Dim strVar1 As String
 SL1    DS     1
@@ -784,7 +790,8 @@ J2     NOP
        XOR    GR0,GR0
        ST     GR0,SL1
 J3     NOP
-EXIT   RPOP
+EXIT   NOP
+       RPOP
        RET
                                    ; Dim strVar1 As String
 SL1    DS     1
@@ -845,7 +852,8 @@ TEST   START
        XOR    GR2,GR2
 J4     CALL   {cint}
        ST     GR0,I1
-EXIT   RPOP
+EXIT   NOP
+       RPOP
        RET
                                    ; Dim intVar1 As Integer
 I1     DS     1
@@ -910,7 +918,8 @@ J2                   NOP
                      ST     GR1,I1
                      JUMP   J1
 J3                   NOP
-EXIT                 RPOP
+EXIT                 NOP
+                     RPOP
                      RET
                                    ; Dim i As Integer
 I1                   DS 1
@@ -957,7 +966,8 @@ J2                   NOP
                      ST     GR1,I1
                      JUMP   J1
 J3                   NOP
-EXIT                 RPOP
+EXIT                 NOP
+                     RPOP
                      RET
                                    ; Dim i As Integer
 I1                   DS 1
@@ -1004,7 +1014,8 @@ J2                   NOP
                      ST     GR1,I1
                      JUMP   J1
 J3                   NOP
-EXIT                 RPOP
+EXIT                 NOP
+                     RPOP
                      RET
                                    ; Dim i As Integer
 I1                   DS 1
@@ -1062,7 +1073,8 @@ J4                   NOP
                      ST     GR1,I2
                      JUMP   J1
 J5                   NOP
-EXIT                 RPOP
+EXIT                 NOP
+                     RPOP
                      RET
                                    ; Dim S As Integer
 I1                   DS 1
@@ -1110,7 +1122,8 @@ fn expr_add_literal_int_rhs_works() {
                      LAD    GR7,11
                      LAD    GR7,22,GR7
                      ST     GR7,I1
-EXIT                 RPOP
+EXIT                 NOP
+                     RPOP
                      RET
                                    ; Dim x As Integer
 I1                   DS 1
@@ -1150,7 +1163,8 @@ fn expr_add_variable_rhs_works() {
                      LD     GR6,I2
                      ADDA   GR7,GR6
                      ST     GR7,I1
-EXIT                 RPOP
+EXIT                 NOP
+                     RPOP
                      RET
                                    ; Dim x As Integer
 I1                   DS 1
@@ -2120,6 +2134,34 @@ End Program
 "#;
 
     for src in [src1, src2].iter() {
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile(None, &code[..]).unwrap();
+
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
+
+        eprintln!("{}", crate::stat::analyze(&statements));
+
+        assert!(!statements.is_empty()); // dummy assert
+    }
+}
+
+#[test]
+fn somethings_works() {
+    let src1 = r#"
+Option Variable Uninitialize
+Program TEST
+    Dim s As String
+    s = "Test"
+    Print s
+End Program
+"#;
+
+    for src in [src1].iter() {
         let mut cursor = std::io::Cursor::new(src);
 
         let code = parser::parse(&mut cursor).unwrap().unwrap();

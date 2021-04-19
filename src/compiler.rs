@@ -176,6 +176,12 @@ struct Compiler {
 
     // 変数領域の総サイズ
     var_total_size: usize,
+
+    // プログラム実行前のレジスタを保持するかどうか
+    option_restore_registers: bool,
+
+    // プログラム開始時に変数領域を0で初期化するかどうか
+    option_initialize_variables: bool,
 }
 
 // 文字列ラベルのタイプ判定に使う
@@ -417,6 +423,8 @@ impl Compiler {
             statements: Vec::new(),
             has_eof: false,
             var_total_size: 0,
+            option_restore_registers: true,
+            option_initialize_variables: true,
         })
     }
 
@@ -750,11 +758,19 @@ impl Compiler {
             mut statements,
             has_eof,
             mut var_total_size,
+            option_restore_registers,
+            option_initialize_variables,
             ..
         } = self;
 
+        // プログラム終了ポイント
+        statements.labeled("EXIT", casl2::Command::Nop);
+
         // プログラム開始時のレジスタの状態の復帰
-        statements.labeled("EXIT", casl2::Command::Rpop);
+        if option_restore_registers {
+            statements.code(casl2::Command::Rpop);
+        }
+
         // プログラムの終了
         statements.code(casl2::Command::Ret);
 
@@ -895,7 +911,9 @@ impl Compiler {
         }
 
         // プログラム開始時のレジスタの状態の保存
-        temp_statements.code(casl2::Command::Rpush);
+        if option_restore_registers {
+            temp_statements.code(casl2::Command::Rpush);
+        }
 
         // 引数であるレジスタの値の保存
         for arg in arguments.iter() {
@@ -973,34 +991,36 @@ impl Compiler {
         }
 
         // 変数領域の初期化処理のコード
-        match first_var_label {
-            Some(label) if var_total_size == 1 => {
-                temp_statements.comment("Init Variable");
-                temp_statements.extend(
-                    casl2::parse(&format!(
-                        r#" XOR   GR0,GR0
+        if option_initialize_variables {
+            match first_var_label {
+                Some(label) if var_total_size == 1 => {
+                    temp_statements.comment("Init Variable");
+                    temp_statements.extend(
+                        casl2::parse(&format!(
+                            r#" XOR   GR0,GR0
                             ST    GR0,{label}"#,
-                        label = label
-                    ))
-                    .unwrap(),
-                );
-            }
-            Some(label) => {
-                temp_statements.comment("Init Variables");
-                temp_statements.extend(
-                    casl2::parse(&format!(
-                        r#" LAD   GR1,{start}
+                            label = label
+                        ))
+                        .unwrap(),
+                    );
+                }
+                Some(label) => {
+                    temp_statements.comment("Init Variables");
+                    temp_statements.extend(
+                        casl2::parse(&format!(
+                            r#" LAD   GR1,{start}
                             XOR   GR2,GR2
                             LAD   GR3,{size}
                             CALL  {fill}"#,
-                        start = label,
-                        size = var_total_size,
-                        fill = subroutine::Id::UtilFill.label()
-                    ))
-                    .unwrap(),
-                );
+                            start = label,
+                            size = var_total_size,
+                            fill = subroutine::Id::UtilFill.label()
+                        ))
+                        .unwrap(),
+                    );
+                }
+                _ => {}
             }
-            _ => {}
         }
 
         // プログラム冒頭のコードをマージ
@@ -1258,8 +1278,12 @@ impl Compiler {
         match option {
             parser::CompileOption::ArraySize { .. } => {}
             parser::CompileOption::Eof { common: _ } => todo!(),
-            parser::CompileOption::Register { restore: _ } => todo!(),
-            parser::CompileOption::Variable { initialize: _ } => todo!(),
+            parser::CompileOption::Register { restore } => {
+                self.option_restore_registers = *restore;
+            }
+            parser::CompileOption::Variable { initialize } => {
+                self.option_initialize_variables = *initialize;
+            }
         }
     }
 
