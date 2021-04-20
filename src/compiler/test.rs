@@ -2192,10 +2192,11 @@ End Program
         assert!(!statements.is_empty()); // dummy assert
     }
 
-    let mut eof_stmt = vec![
-        casl2::Statement::labeled("EOF", casl2::Command::Start{entry_point: None}),
-    ];
-    let mut gen = Gen{
+    let mut eof_stmt = vec![casl2::Statement::labeled(
+        "EOF",
+        casl2::Command::Start { entry_point: None },
+    )];
+    let mut gen = Gen {
         jump: vec!["J1"],
         var: vec!["V1"],
     };
@@ -2205,5 +2206,4 @@ End Program
     eof_stmt.iter().for_each(|line| {
         eprintln!("{}", line);
     });
-
 }
