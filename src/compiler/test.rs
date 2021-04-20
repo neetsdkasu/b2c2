@@ -2153,7 +2153,7 @@ End Program
 }
 
 #[test]
-fn somethings_works() {
+fn eof_shared_works() {
     let src1 = r#"
 Option EOF Shared
 Option Register Dirty
@@ -2206,4 +2206,37 @@ End Program
     eof_stmt.iter().for_each(|line| {
         eprintln!("{}", line);
     });
+}
+
+#[test]
+fn non_safe_recur_works() {
+    let src1 = r#"
+Option Register Dirty
+Option Variable Uninitialize
+Program TEST
+    Dim x As Integer
+    Print "Before: " & CStr(x)
+    If x < 10 Then
+        x += 1
+        Call TEST
+    End If
+    Print "After: " & CStr(x)
+End Program
+"#;
+
+    for src in [src1].iter() {
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile(None, &code[..]).unwrap();
+
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
+
+        eprintln!("{}", crate::stat::analyze(&statements));
+
+        assert!(!statements.is_empty()); // dummy assert
+    }
 }

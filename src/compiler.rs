@@ -2106,6 +2106,7 @@ impl Compiler {
             self.program_name = Some(name.into());
         }
         self.original_program_name = Some(name.into());
+        self.callables.insert(name.to_string(), Vec::new());
     }
 
     // Extern Sub ステートメント
