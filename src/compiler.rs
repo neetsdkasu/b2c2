@@ -88,6 +88,7 @@ pub fn compile_with_flag(
 struct Compiler {
     // プログラム名
     program_name: Option<String>,
+    original_program_name: Option<String>,
 
     // プログラム引数リスト
     arguments: Vec<parser::ArgumentInfo>,
@@ -396,6 +397,7 @@ impl Compiler {
 
         Ok(Self {
             program_name,
+            original_program_name: None,
             arguments: Vec::new(),
             argument_labels: HashMap::new(),
             str_argument_labels: HashMap::new(),
@@ -1685,7 +1687,12 @@ impl Compiler {
         use casl2::IndexRegister;
         use parser::{Expr, ExprType, VarType};
 
-        let argument_def = self.callables.get(name).cloned().expect("BUG");
+        let name = match self.original_program_name.as_ref() {
+            Some(origin) if origin == name => self.program_name.clone().expect("BUG"),
+            _ => name.to_string(),
+        };
+
+        let argument_def = self.callables.get(&name).cloned().expect("BUG");
         assert_eq!(argument_def.len(), arguments.len());
 
         let mut reg_and_label = Vec::<((IndexRegister, bool), (String, bool))>::new();
@@ -2098,6 +2105,7 @@ impl Compiler {
         if self.program_name.is_none() {
             self.program_name = Some(name.into());
         }
+        self.original_program_name = Some(name.into());
     }
 
     // Extern Sub ステートメント
