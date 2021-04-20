@@ -812,7 +812,47 @@ impl Parser {
                 let (pe, _) = extra.unwrap();
                 return Err(self.syntax_error_pos(*pe, "invalid Option statement".into()));
             }
-            Token::Function(Function::Eof) => todo!(),
+            Token::Function(Function::Eof) => {
+                for stmt in self.statements.first().expect("BUG").iter() {
+                    if let Statement::CompileOption {
+                        option: CompileOption::Eof { .. },
+                    } = stmt
+                    {
+                        return Err(self.syntax_error_pos(*pt, "invalid Option statement".into()));
+                    }
+                }
+                match value {
+                    Token::Keyword(Keyword::Extern) => {
+                        self.add_statement(Statement::CompileOption {
+                            option: CompileOption::Eof { common: true },
+                        });
+                    }
+                    Token::Name(value)
+                        if "Common".eq_ignore_ascii_case(value)
+                            || "Shared".eq_ignore_ascii_case(value)
+                            || "External".eq_ignore_ascii_case(value)
+                            || "Global".eq_ignore_ascii_case(value)
+                            || "Public".eq_ignore_ascii_case(value) =>
+                    {
+                        self.add_statement(Statement::CompileOption {
+                            option: CompileOption::Eof { common: true },
+                        });
+                    }
+                    Token::Name(value)
+                        if "Special".eq_ignore_ascii_case(value)
+                            || "Intern".eq_ignore_ascii_case(value)
+                            || "Internal".eq_ignore_ascii_case(value)
+                            || "Local".eq_ignore_ascii_case(value)
+                            || "Personal".eq_ignore_ascii_case(value)
+                            || "Private".eq_ignore_ascii_case(value) =>
+                    {
+                        self.add_statement(Statement::CompileOption {
+                            option: CompileOption::Eof { common: false },
+                        });
+                    }
+                    _ => return Err(self.syntax_error_pos(*pv, "invalid Option statement".into())),
+                }
+            }
             Token::Name(target) if "Recursion".eq_ignore_ascii_case(target) => todo!(),
             Token::Name(target) if "Register".eq_ignore_ascii_case(target) => {
                 for stmt in self.statements.first().expect("BUG").iter() {

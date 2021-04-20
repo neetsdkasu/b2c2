@@ -22,7 +22,7 @@ fn it_works() {
     Rem TEST PROGRAM
     Rem コンパイル通るかのチェックだけで、正しくコンパイルされてるかはチェックしていないという…
     Option Array UBound Declare ' Length
-    ' Option EOF Special ' Common
+    Option EOF Internal ' External
     ' Option Recursion Disable ' Enable
     Option Register Restore ' Dirty
     Option Variable Initialize ' Uninitialize
@@ -761,10 +761,12 @@ TEST   START
                                    ; Init Variables
        LAD    GR1,SL1
        XOR    GR2,GR2
-       LAD    GR3,772
+       LAD    GR3,771
        CALL   {fill}
                                    ; Input strVar3
        IN     SB3,SL3
+       XOR    GR0,GR0
+       ST     GR0,EOF
        LD     GR0,SL3
        JPL    J1
        JZE    J1
@@ -774,6 +776,8 @@ TEST   START
 J1     NOP
                                    ; Input strVar2
        IN     SB2,SL2
+       XOR    GR0,GR0
+       ST     GR0,EOF
        LD     GR0,SL2
        JPL    J2
        JZE    J2
@@ -783,6 +787,8 @@ J1     NOP
 J2     NOP
                                    ; Input strVar1
        IN     SB1,SL1
+       XOR    GR0,GR0
+       ST     GR0,EOF
        LD     GR0,SL1
        JPL    J3
        JZE    J3
@@ -830,20 +836,19 @@ fn compiler_compile_input_integer_works() {
     assert_eq!(compiler.subroutine_codes.len(), 1);
     assert_eq!(compiler.temp_str_var_labels.len(), 1);
 
-    let fill = subroutine::Id::UtilFill;
     let cint = subroutine::Id::FuncCInt;
 
     let mut statements = casl2::parse(&format!(
         r#"
 TEST   START
        RPUSH
-                                   ; Init Variables
-       LAD    GR1,I1
-       XOR    GR2,GR2
-       LAD    GR3,2
-       CALL   {fill}
+                                   ; Init Variable
+       XOR    GR0,GR0
+       ST     GR0,I1
                                    ; Input intVar1
        IN     TB1,TL1
+       XOR    GR0,GR0
+       ST     GR0,EOF
        LAD    GR1,TB1
        LD     GR2,TL1
        JPL    J4
@@ -861,7 +866,6 @@ EOF    DS     1
 TL1    DS     1
 TB1    DS     256
 "#,
-        fill = fill.label(),
         cint = cint.label()
     ))
     .unwrap();
@@ -872,10 +876,8 @@ TB1    DS     256
     };
 
     let cint_src = subroutine::get_src(&mut gen, cint).statements;
-    let fill_src = subroutine::get_src(&mut gen, fill).statements;
 
     statements.extend(cint_src);
-    statements.extend(fill_src);
 
     statements.push(casl2::Statement::code(casl2::Command::End));
 
@@ -2153,15 +2155,28 @@ End Program
 #[test]
 fn somethings_works() {
     let src1 = r#"
+Option EOF Shared
+Option Register Dirty
 Option Variable Uninitialize
+Extern Sub FOO
 Program TEST
-    Dim s As String
-    s = "Test"
-    Print s
+    Call  FOO
+    Print CInt(EOF())
+    Print EOF()
 End Program
 "#;
 
-    for src in [src1].iter() {
+    let src2 = r#"
+Option EOF Shared
+Option Register Restore
+Option Variable Uninitialize
+Program FOO
+    Dim s As String
+    Input s
+End Program
+"#;
+
+    for src in [src1, src2].iter() {
         let mut cursor = std::io::Cursor::new(src);
 
         let code = parser::parse(&mut cursor).unwrap().unwrap();
@@ -2176,4 +2191,19 @@ End Program
 
         assert!(!statements.is_empty()); // dummy assert
     }
+
+    let mut eof_stmt = vec![
+        casl2::Statement::labeled("EOF", casl2::Command::Start{entry_point: None}),
+    ];
+    let mut gen = Gen{
+        jump: vec!["J1"],
+        var: vec!["V1"],
+    };
+    let src = subroutine::get_src(&mut gen, subroutine::Id::UtilEofStore);
+    eof_stmt.extend(src.statements);
+    eof_stmt.push(casl2::Statement::code(casl2::Command::End));
+    eof_stmt.iter().for_each(|line| {
+        eprintln!("{}", line);
+    });
+
 }

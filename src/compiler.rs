@@ -7,7 +7,7 @@ use std::convert::TryFrom;
 use std::fmt::Write;
 
 mod ext;
-mod subroutine;
+pub mod subroutine;
 
 #[cfg(test)]
 mod test;
@@ -182,6 +182,9 @@ struct Compiler {
 
     // プログラム開始時に変数領域を0で初期化するかどうか
     option_initialize_variables: bool,
+
+    // EOF情報の保持場所が外部プログラムかどうか
+    option_external_eof: bool,
 }
 
 // 文字列ラベルのタイプ判定に使う
@@ -425,6 +428,7 @@ impl Compiler {
             var_total_size: 0,
             option_restore_registers: true,
             option_initialize_variables: true,
+            option_external_eof: false,
         })
     }
 
@@ -737,7 +741,7 @@ impl Compiler {
 
     // コンパイル最終工程
     fn finish(mut self) -> Vec<casl2::Statement> {
-        if self.var_total_size > 1 || (self.var_total_size == 1 && self.has_eof) {
+        if self.var_total_size > 1 {
             self.load_subroutine(subroutine::Id::UtilFill);
         }
         let Self {
@@ -757,9 +761,10 @@ impl Compiler {
             subroutine_codes,
             mut statements,
             has_eof,
-            mut var_total_size,
+            var_total_size,
             option_restore_registers,
             option_initialize_variables,
+            option_external_eof,
             ..
         } = self;
 
@@ -875,11 +880,7 @@ impl Compiler {
         }
 
         // EOFを扱う場合
-        if has_eof {
-            var_total_size += 1;
-            if first_var_label.is_none() {
-                first_var_label = Some("EOF".to_string());
-            }
+        if has_eof && !option_external_eof {
             statements.labeled("EOF", casl2::Command::Ds { size: 1 });
         }
 
@@ -1277,7 +1278,9 @@ impl Compiler {
     fn set_option(&mut self, option: &parser::CompileOption) {
         match option {
             parser::CompileOption::ArraySize { .. } => {}
-            parser::CompileOption::Eof { common: _ } => todo!(),
+            parser::CompileOption::Eof { common } => {
+                self.option_external_eof = *common;
+            }
             parser::CompileOption::Register { restore } => {
                 self.option_restore_registers = *restore;
             }
@@ -4340,20 +4343,42 @@ impl Compiler {
                 self.get_save_registers_src(&[Gr1, Gr2])
             };
             self.code(saves);
-            self.code(format!(
-                r#" IN    {pos},{len}
-                    LAD   GR1,{pos}
-                    LD    GR2,{len}
-                    JPL   {ok}
-                    JZE   {ok}
-                    ST    GR2,EOF
-                    XOR   GR2,GR2
-{ok}                CALL  {cint}"#,
-                pos = s_labels.pos,
-                len = s_labels.len,
-                cint = cint_label,
-                ok = ok_label
-            ));
+            if self.option_external_eof {
+                self.code(format!(
+                    r#" IN    {pos},{len}
+                        XOR   GR0,GR0
+                        CALL  EOF
+                        LAD   GR1,{pos}
+                        LD    GR2,{len}
+                        JPL   {ok}
+                        JZE   {ok}
+                        LD    GR0,GR2
+                        CALL  EOF
+                        XOR   GR2,GR2
+{ok}                    CALL  {cint}"#,
+                    pos = s_labels.pos,
+                    len = s_labels.len,
+                    cint = cint_label,
+                    ok = ok_label
+                ));
+            } else {
+                self.code(format!(
+                    r#" IN    {pos},{len}
+                        XOR   GR0,GR0
+                        ST    GR0,EOF
+                        LAD   GR1,{pos}
+                        LD    GR2,{len}
+                        JPL   {ok}
+                        JZE   {ok}
+                        ST    GR2,EOF
+                        XOR   GR2,GR2
+{ok}                    CALL  {cint}"#,
+                    pos = s_labels.pos,
+                    len = s_labels.len,
+                    cint = cint_label,
+                    ok = ok_label
+                ));
+            }
             self.code(if index == 0 {
                 format!(r#" ST GR0,{arr}"#, arr = arr_label)
             } else {
@@ -4389,29 +4414,60 @@ impl Compiler {
         // index_regがGR1でもGR2でも無い場合でもindexにGR3を利用しててもデメリットは無いと思われる
 
         self.code(saves);
-        self.code(format!(
-            r#" LD    GR1,{index}
-                LAD   GR2,{size}
-                CALL  {fit}
-                LD    GR3,GR0
-                IN    {pos},{len}
-                LAD   GR1,{pos}
-                LD    GR2,{len}
-                JPL   {ok}
-                JZE   {ok}
-                ST    GR2,EOF
-                XOR   GR2,GR2
-{ok}            CALL  {cint}
-                ST    GR0,{arr},GR3"#,
-            index = index_reg,
-            size = arr_size,
-            fit = safe_index,
-            pos = s_labels.pos,
-            len = s_labels.len,
-            ok = ok_label,
-            cint = cint_label,
-            arr = arr_label
-        ));
+        if self.option_external_eof {
+            self.code(format!(
+                r#" LD    GR1,{index}
+                    LAD   GR2,{size}
+                    CALL  {fit}
+                    LD    GR3,GR0
+                    IN    {pos},{len}
+                    XOR   GR0,GR0
+                    CALL  EOF
+                    LAD   GR1,{pos}
+                    LD    GR2,{len}
+                    JPL   {ok}
+                    JZE   {ok}
+                    LD    GR0,GR2
+                    CALL  EOF
+                    XOR   GR2,GR2
+{ok}                CALL  {cint}
+                    ST    GR0,{arr},GR3"#,
+                index = index_reg,
+                size = arr_size,
+                fit = safe_index,
+                pos = s_labels.pos,
+                len = s_labels.len,
+                ok = ok_label,
+                cint = cint_label,
+                arr = arr_label
+            ));
+        } else {
+            self.code(format!(
+                r#" LD    GR1,{index}
+                    LAD   GR2,{size}
+                    CALL  {fit}
+                    LD    GR3,GR0
+                    IN    {pos},{len}
+                    XOR   GR0,GR0
+                    ST    GR0,EOF
+                    LAD   GR1,{pos}
+                    LD    GR2,{len}
+                    JPL   {ok}
+                    JZE   {ok}
+                    ST    GR2,EOF
+                    XOR   GR2,GR2
+{ok}                CALL  {cint}
+                    ST    GR0,{arr},GR3"#,
+                index = index_reg,
+                size = arr_size,
+                fit = safe_index,
+                pos = s_labels.pos,
+                len = s_labels.len,
+                ok = ok_label,
+                cint = cint_label,
+                arr = arr_label
+            ));
+        }
         self.code(recovers);
 
         self.set_register_idle(index_reg); // GR7 解放のはず
@@ -4438,22 +4494,46 @@ impl Compiler {
 
         self.comment(format!("Input {}", var_name));
         self.code(saves);
-        self.code(format!(
-            r#" IN    {pos},{len}
-                LAD   GR1,{pos}
-                LD    GR2,{len}
-                JPL   {ok}
-                JZE   {ok}
-                ST    GR2,EOF
-                XOR   GR2,GR2
-{ok}            CALL  {cint}
-                ST    GR0,{var}"#,
-            pos = s_labels.pos,
-            len = s_labels.len,
-            ok = label,
-            cint = cint_label,
-            var = var_label
-        ));
+        if self.option_external_eof {
+            self.code(format!(
+                r#" IN    {pos},{len}
+                    XOR   GR0,GR0
+                    CALL  EOF
+                    LAD   GR1,{pos}
+                    LD    GR2,{len}
+                    JPL   {ok}
+                    JZE   {ok}
+                    LD    GR0,GR2
+                    CALL  EOF
+                    XOR   GR2,GR2
+{ok}                CALL  {cint}
+                    ST    GR0,{var}"#,
+                pos = s_labels.pos,
+                len = s_labels.len,
+                ok = label,
+                cint = cint_label,
+                var = var_label
+            ));
+        } else {
+            self.code(format!(
+                r#" IN    {pos},{len}
+                    XOR   GR0,GR0
+                    ST    GR0,EOF
+                    LAD   GR1,{pos}
+                    LD    GR2,{len}
+                    JPL   {ok}
+                    JZE   {ok}
+                    ST    GR2,EOF
+                    XOR   GR2,GR2
+{ok}                CALL  {cint}
+                    ST    GR0,{var}"#,
+                pos = s_labels.pos,
+                len = s_labels.len,
+                ok = label,
+                cint = cint_label,
+                var = var_label
+            ));
+        }
         self.code(recovers);
 
         self.return_temp_str_var_label(s_labels);
@@ -4466,20 +4546,40 @@ impl Compiler {
         let label = self.get_new_jump_label();
         self.has_eof = true;
         self.comment(format!("Input {}", var_name));
-        // IN {var_pos},{var_len}
-        self.code(format!(
-            r#" IN   {pos},{len}
-                LD   GR0,{len}
-                JPL  {ok}
-                JZE  {ok}
-                ST   GR0,EOF
-                XOR  GR0,GR0
-                ST   GR0,{len}
-{ok}            NOP"#,
-            pos = pos,
-            len = len,
-            ok = label
-        ));
+        if self.option_external_eof {
+            self.code(format!(
+                r#" IN    {pos},{len}
+                    XOR   GR0,GR0
+                    CALL  EOF
+                    LD    GR0,{len}
+                    JPL   {ok}
+                    JZE   {ok}
+                    CALL  EOF
+                    XOR   GR0,GR0
+                    ST    GR0,{len}
+{ok}                NOP"#,
+                pos = pos,
+                len = len,
+                ok = label
+            ));
+        } else {
+            // IN {var_pos},{var_len}
+            self.code(format!(
+                r#" IN   {pos},{len}
+                    XOR  GR0,GR0
+                    ST   GR0,EOF
+                    LD   GR0,{len}
+                    JPL  {ok}
+                    JZE  {ok}
+                    ST   GR0,EOF
+                    XOR  GR0,GR0
+                    ST   GR0,{len}
+{ok}                NOP"#,
+                pos = pos,
+                len = len,
+                ok = label
+            ));
+        }
     }
 
     // Input <ref_int_arr>( <index> ) ステートメント
@@ -4510,20 +4610,42 @@ impl Compiler {
                 self.get_save_registers_src(&[Gr1, Gr2])
             };
             self.code(saves);
-            self.code(format!(
-                r#" IN    {pos},{len}
-                    LAD   GR1,{pos}
-                    LD    GR2,{len}
-                    JPL   {ok}
-                    JZE   {ok}
-                    ST    GR2,EOF
-                    XOR   GR2,GR2
-{ok}                CALL  {cint}"#,
-                pos = s_labels.pos,
-                len = s_labels.len,
-                cint = cint_label,
-                ok = ok_label
-            ));
+            if self.option_external_eof {
+                self.code(format!(
+                    r#" IN    {pos},{len}
+                        XOR   GR0,GR0
+                        CALL  EOF
+                        LAD   GR1,{pos}
+                        LD    GR2,{len}
+                        JPL   {ok}
+                        JZE   {ok}
+                        LD    GR0,GR2
+                        CALL  EOF
+                        XOR   GR2,GR2
+{ok}                    CALL  {cint}"#,
+                    pos = s_labels.pos,
+                    len = s_labels.len,
+                    cint = cint_label,
+                    ok = ok_label
+                ));
+            } else {
+                self.code(format!(
+                    r#" IN    {pos},{len}
+                        XOR   GR0,GR0
+                        ST    GR0,EOF
+                        LAD   GR1,{pos}
+                        LD    GR2,{len}
+                        JPL   {ok}
+                        JZE   {ok}
+                        ST    GR2,EOF
+                        XOR   GR2,GR2
+{ok}                    CALL  {cint}"#,
+                    pos = s_labels.pos,
+                    len = s_labels.len,
+                    cint = cint_label,
+                    ok = ok_label
+                ));
+            }
             self.code(format!(
                 r#" LD    GR1,{arr}
                     ST    GR0,{index},GR1"#,
@@ -4555,30 +4677,62 @@ impl Compiler {
         // index_regがGR1でもGR2でも無い場合でもindexにGR3を利用しててもデメリットは無いと思われる
 
         self.code(saves);
-        self.code(format!(
-            r#" LD    GR1,{index}
-                LAD   GR2,{size}
-                CALL  {fit}
-                LD    GR3,GR0
-                IN    {pos},{len}
-                LAD   GR1,{pos}
-                LD    GR2,{len}
-                JPL   {ok}
-                JZE   {ok}
-                ST    GR2,EOF
-                XOR   GR2,GR2
-{ok}            CALL  {cint}
-                ADDL  GR3,{arr}
-                ST    GR0,0,GR3"#,
-            index = index_reg,
-            size = arr_size,
-            fit = safe_index,
-            pos = s_labels.pos,
-            len = s_labels.len,
-            ok = ok_label,
-            cint = cint_label,
-            arr = arr_label
-        ));
+        if self.option_external_eof {
+            self.code(format!(
+                r#" LD    GR1,{index}
+                    LAD   GR2,{size}
+                    CALL  {fit}
+                    LD    GR3,GR0
+                    IN    {pos},{len}
+                    XOR   GR0,GR0
+                    CALL  EOF
+                    LAD   GR1,{pos}
+                    LD    GR2,{len}
+                    JPL   {ok}
+                    JZE   {ok}
+                    LD    GR0,GR2
+                    CALL  EOF
+                    XOR   GR2,GR2
+{ok}                CALL  {cint}
+                    ADDL  GR3,{arr}
+                    ST    GR0,0,GR3"#,
+                index = index_reg,
+                size = arr_size,
+                fit = safe_index,
+                pos = s_labels.pos,
+                len = s_labels.len,
+                ok = ok_label,
+                cint = cint_label,
+                arr = arr_label
+            ));
+        } else {
+            self.code(format!(
+                r#" LD    GR1,{index}
+                    LAD   GR2,{size}
+                    CALL  {fit}
+                    LD    GR3,GR0
+                    IN    {pos},{len}
+                    XOR   GR0,GR0
+                    ST    GR0,EOF
+                    LAD   GR1,{pos}
+                    LD    GR2,{len}
+                    JPL   {ok}
+                    JZE   {ok}
+                    ST    GR2,EOF
+                    XOR   GR2,GR2
+{ok}                CALL  {cint}
+                    ADDL  GR3,{arr}
+                    ST    GR0,0,GR3"#,
+                index = index_reg,
+                size = arr_size,
+                fit = safe_index,
+                pos = s_labels.pos,
+                len = s_labels.len,
+                ok = ok_label,
+                cint = cint_label,
+                arr = arr_label
+            ));
+        }
         self.code(recovers);
 
         self.set_register_idle(index_reg); // GR7 解放のはず
@@ -4605,23 +4759,48 @@ impl Compiler {
 
         self.comment(format!("Input {}", var_name));
         self.code(saves);
-        self.code(format!(
-            r#" IN    {pos},{len}
-                LAD   GR1,{pos}
-                LD    GR2,{len}
-                JPL   {ok}
-                JZE   {ok}
-                ST    GR2,EOF
-                XOR   GR2,GR2
-{ok}            CALL  {cint}
-                LD    GR1,{var}
-                ST    GR0,0,GR1"#,
-            pos = s_labels.pos,
-            len = s_labels.len,
-            ok = label,
-            cint = cint_label,
-            var = var_label
-        ));
+        if self.option_external_eof {
+            self.code(format!(
+                r#" IN    {pos},{len}
+                    XOR   GR0,GR0
+                    CALL  EOF
+                    LAD   GR1,{pos}
+                    LD    GR2,{len}
+                    JPL   {ok}
+                    JZE   {ok}
+                    LD    GR0,GR2
+                    CALL  EOF
+                    XOR   GR2,GR2
+{ok}                CALL  {cint}
+                    LD    GR1,{var}
+                    ST    GR0,0,GR1"#,
+                pos = s_labels.pos,
+                len = s_labels.len,
+                ok = label,
+                cint = cint_label,
+                var = var_label
+            ));
+        } else {
+            self.code(format!(
+                r#" IN    {pos},{len}
+                    XOR   GR0,GR0
+                    ST    GR0,EOF
+                    LAD   GR1,{pos}
+                    LD    GR2,{len}
+                    JPL   {ok}
+                    JZE   {ok}
+                    ST    GR2,EOF
+                    XOR   GR2,GR2
+{ok}                CALL  {cint}
+                    LD    GR1,{var}
+                    ST    GR0,0,GR1"#,
+                pos = s_labels.pos,
+                len = s_labels.len,
+                ok = label,
+                cint = cint_label,
+                var = var_label
+            ));
+        }
         self.code(recovers);
 
         self.return_temp_str_var_label(s_labels);
@@ -4648,25 +4827,52 @@ impl Compiler {
         };
 
         self.code(saves);
-        self.code(format!(
-            r#" IN   {pos},{len}
-                LD   GR4,{len}
-                JPL  {ok}
-                JZE  {ok}
-                ST   GR4,EOF
-                XOR  GR4,GR4
-{ok}            LD   GR1,{strpos}
-                LD   GR2,{strlen}
-                LAD  GR3,{pos}
-                CALL {copy}
+        if self.option_external_eof {
+            self.code(format!(
+                r#" IN    {pos},{len}
+                    XOR   GR0,GR0
+                    CALL  EOF
+                    LD    GR4,{len}
+                    JPL   {ok}
+                    JZE   {ok}
+                    LD    GR0,GR4
+                    CALL  EOF
+                    XOR   GR4,GR4
+{ok}                LD    GR1,{strpos}
+                    LD    GR2,{strlen}
+                    LAD   GR3,{pos}
+                    CALL  {copy}
 "#,
-            pos = temp_labels.pos,
-            len = temp_labels.len,
-            ok = label,
-            strpos = pos,
-            strlen = len,
-            copy = copystr
-        ));
+                pos = temp_labels.pos,
+                len = temp_labels.len,
+                ok = label,
+                strpos = pos,
+                strlen = len,
+                copy = copystr
+            ));
+        } else {
+            self.code(format!(
+                r#" IN    {pos},{len}
+                    XOR   GR0,GR0
+                    ST    GR0,EOF
+                    LD    GR4,{len}
+                    JPL   {ok}
+                    JZE   {ok}
+                    ST    GR4,EOF
+                    XOR   GR4,GR4
+{ok}                LD    GR1,{strpos}
+                    LD    GR2,{strlen}
+                    LAD   GR3,{pos}
+                    CALL  {copy}
+"#,
+                pos = temp_labels.pos,
+                len = temp_labels.len,
+                ok = label,
+                strpos = pos,
+                strlen = len,
+                copy = copystr
+            ));
+        }
         self.code(recovers);
 
         self.return_temp_str_var_label(temp_labels);
@@ -5453,7 +5659,16 @@ impl Compiler {
         assert!(matches!(param, parser::Expr::LitInteger(0)));
         self.has_eof = true;
         let reg = self.get_idle_register();
-        self.code(format!(" LD {reg},EOF", reg = reg));
+        if self.option_external_eof {
+            self.code(format!(
+                r#" LAD   GR0,1
+                    CALL  EOF
+                    LD    {reg},GR0"#,
+                reg = reg
+            ));
+        } else {
+            self.code(format!(" LD {reg},EOF", reg = reg));
+        }
         reg
     }
 
