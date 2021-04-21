@@ -459,21 +459,21 @@ impl Compiler {
     ) -> casl2::Register {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
 
-        let (arr_label, arr_size) = self.get_bool_arr_label(arr_name);
+        let arr_label = self.get_bool_arr_label(arr_name);
 
         // インデックスがリテラル整数で指定…
         if let parser::Expr::LitInteger(index) = index {
-            let index = ((*index).max(0) as usize).min(arr_size - 1);
+            let index = ((*index).max(0) as usize).min(arr_label.size() - 1);
             let reg = self.get_idle_register();
             self.code(if index == 0 {
-                format!(r#" LD {reg},{arr}"#, reg = reg, arr = arr_label)
+                arr_label.ld_first_elem(reg)
             } else {
                 format!(
-                    r#" LAD {reg},{index}
-                        LD  {reg},{arr},{reg}"#,
+                    r#" {lad_reg_arrpos}
+                        LD  {reg},{index},{reg}"#,
+                    lad_reg_arrpos = arr_label.lad_pos(reg),
                     reg = reg,
-                    index = index,
-                    arr = arr_label
+                    index = index
                 )
             });
             return reg;
@@ -505,15 +505,16 @@ impl Compiler {
                 LAD   GR2,{size}
                 CALL  {fit}"#,
             index_line = index_line,
-            size = arr_size,
+            size = arr_label.size(),
             fit = safe_index
         ));
         self.code(recovers);
         self.code(format!(
-            r#" LD    {index},GR0
-                LD    {index},{arr},{index}"#,
-            index = index_reg,
-            arr = arr_label
+            r#" {lad_index_arrpos}
+                ADDL  {index},GR0
+                LD    {index},0,{index}"#,
+            lad_index_arrpos = arr_label.lad_pos(index_reg),
+            index = index_reg
         ));
 
         index_reg
@@ -528,18 +529,18 @@ impl Compiler {
     ) -> casl2::Register {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
 
-        let (arr_label, arr_size) = self.get_ref_bool_arr_label(arr_name);
+        let arr_label = self.get_ref_bool_arr_label(arr_name);
 
         // インデックスがリテラル整数で指定…
         if let parser::Expr::LitInteger(index) = index {
-            let index = ((*index).max(0) as usize).min(arr_size - 1);
+            let index = ((*index).max(0) as usize).min(arr_label.size() - 1);
             let reg = self.get_idle_register();
             self.code(format!(
-                r#" LD  {reg},{arr}
+                r#" {lad_reg_arrpos}
                     LD  {reg},{index},{reg}"#,
+                lad_reg_arrpos = arr_label.lad_pos(reg),
                 reg = reg,
-                index = index,
-                arr = arr_label
+                index = index
             ));
             return reg;
         }
@@ -570,16 +571,16 @@ impl Compiler {
                 LAD   GR2,{size}
                 CALL  {fit}"#,
             index_line = index_line,
-            size = arr_size,
+            size = arr_label.size(),
             fit = safe_index
         ));
         self.code(recovers);
         self.code(format!(
-            r#" LD    {index},{arr}
+            r#" {lad_index_arrpos}
                 ADDL  {index},GR0
                 LD    {index},0,{index}"#,
-            index = index_reg,
-            arr = arr_label
+            lad_index_arrpos = arr_label.lad_pos(index_reg),
+            index = index_reg
         ));
 
         index_reg
@@ -594,21 +595,21 @@ impl Compiler {
     ) -> casl2::Register {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
 
-        let (arr_label, arr_size) = self.get_int_arr_label(arr_name);
+        let arr_label = self.get_int_arr_label(arr_name);
 
         // インデックスがリテラル整数で指定…
         if let parser::Expr::LitInteger(index) = index {
-            let index = ((*index).max(0) as usize).min(arr_size - 1);
+            let index = ((*index).max(0) as usize).min(arr_label.size() - 1);
             let reg = self.get_idle_register();
             self.code(if index == 0 {
-                format!(r#" LD {reg},{arr}"#, reg = reg, arr = arr_label)
+                arr_label.ld_first_elem(reg)
             } else {
                 format!(
-                    r#" LAD {reg},{index}
-                        LD  {reg},{arr},{reg}"#,
+                    r#" {lad_reg_arrpos}
+                        LD  {reg},{index},{reg}"#,
+                    lad_reg_arrpos = arr_label.lad_pos(reg),
                     reg = reg,
-                    index = index,
-                    arr = arr_label
+                    index = index
                 )
             });
             return reg;
@@ -640,15 +641,16 @@ impl Compiler {
                 LAD   GR2,{size}
                 CALL  {fit}"#,
             index_line = index_line,
-            size = arr_size,
+            size = arr_label.size(),
             fit = safe_index
         ));
         self.code(recovers);
         self.code(format!(
-            r#" LD    {index},GR0
-                LD    {index},{arr},{index}"#,
-            index = index_reg,
-            arr = arr_label
+            r#" {lad_index_arrpos}
+                ADDL  {index},GR0
+                LD    {index},0,{index}"#,
+            lad_index_arrpos = arr_label.lad_pos(index_reg),
+            index = index_reg
         ));
 
         index_reg
@@ -663,18 +665,18 @@ impl Compiler {
     ) -> casl2::Register {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
 
-        let (arr_label, arr_size) = self.get_ref_int_arr_label(arr_name);
+        let arr_label = self.get_ref_int_arr_label(arr_name);
 
         // インデックスがリテラル整数で指定…
         if let parser::Expr::LitInteger(index) = index {
-            let index = ((*index).max(0) as usize).min(arr_size - 1);
+            let index = ((*index).max(0) as usize).min(arr_label.size() - 1);
             let reg = self.get_idle_register();
             self.code(format!(
-                r#" LD  {reg},{arr}
+                r#" {lad_reg_arrpos}
                     LD  {reg},{index},{reg}"#,
+                lad_reg_arrpos = arr_label.lad_pos(reg),
                 reg = reg,
-                index = index,
-                arr = arr_label
+                index = index
             ));
             return reg;
         }
@@ -705,16 +707,16 @@ impl Compiler {
                 LAD   GR2,{size}
                 CALL  {fit}"#,
             index_line = index_line,
-            size = arr_size,
+            size = arr_label.size(),
             fit = safe_index
         ));
         self.code(recovers);
         self.code(format!(
-            r#" LD    {index},GR0
-                ADDL  {index},{arr}
+            r#" {lad_index_arrpos}
+                ADDL  {index},GR0
                 LD    {index},0,{index}"#,
-            index = index_reg,
-            arr = arr_label
+            lad_index_arrpos = arr_label.lad_pos(index_reg),
+            index = index_reg
         ));
 
         index_reg
@@ -897,24 +899,24 @@ impl Compiler {
         use parser::Expr::*;
         match expr {
             ReferenceOfVar(var_name, parser::VarType::ArrayOfBoolean(size)) => {
-                let (arr_label, arr_size) = self.get_bool_arr_label(var_name);
-                assert_eq!(arr_size, *size);
-                ArrayLabel::VarArrayOfBoolean(arr_label, arr_size)
+                let arr_label = self.get_bool_arr_label(var_name);
+                assert_eq!(arr_label.size(), *size);
+                arr_label
             }
             ReferenceOfVar(var_name, parser::VarType::ArrayOfInteger(size)) => {
-                let (arr_label, arr_size) = self.get_int_arr_label(var_name);
-                assert_eq!(arr_size, *size);
-                ArrayLabel::VarArrayOfInteger(arr_label, arr_size)
+                let arr_label = self.get_int_arr_label(var_name);
+                assert_eq!(arr_label.size(), *size);
+                arr_label
             }
             ReferenceOfVar(var_name, parser::VarType::RefArrayOfBoolean(size)) => {
-                let (arr_label, arr_size) = self.get_ref_bool_arr_label(var_name);
-                assert_eq!(arr_size, *size);
-                ArrayLabel::VarRefArrayOfBoolean(arr_label, arr_size)
+                let arr_label = self.get_ref_bool_arr_label(var_name);
+                assert_eq!(arr_label.size(), *size);
+                arr_label
             }
             ReferenceOfVar(var_name, parser::VarType::RefArrayOfInteger(size)) => {
-                let (arr_label, arr_size) = self.get_ref_int_arr_label(var_name);
-                assert_eq!(arr_size, *size);
-                ArrayLabel::VarRefArrayOfInteger(arr_label, arr_size)
+                let arr_label = self.get_ref_int_arr_label(var_name);
+                assert_eq!(arr_label.size(), *size);
+                arr_label
             }
             FunctionBooleanArray(size, func, param) => {
                 self.compile_function_boolean_array(*size, *func, param)

@@ -145,8 +145,11 @@ struct Compiler {
     // プログラム引数リスト
     arguments: Vec<parser::ArgumentInfo>,
 
-    // プログラム引数のラベル (真理値/整数/真理値配列/整数配列) (引数名, (ラベル, 引数情報))
+    // プログラム引数のラベル (真理値/整数) (引数名, (ラベル, 引数情報))
     argument_labels: HashMap<String, (String, parser::ArgumentInfo)>,
+
+    // プログラム引数のラベル (真理値配列/整数配列) (引数名, (ラベル, 引数情報))
+    arr_argument_labels: HashMap<String, (ArrayLabel, parser::ArgumentInfo)>,
 
     // プログラム引数のラベル (文字列) (引数名, (ラベル, 引数情報))
     str_argument_labels: HashMap<String, (StrLabels, parser::ArgumentInfo)>,
@@ -180,10 +183,10 @@ struct Compiler {
     str_var_labels: HashMap<String, StrLabels>,
 
     // 真理値配列のラベル対応を保持 (配列名, (ラベル, 配列サイズ))
-    bool_arr_labels: HashMap<String, (String, usize)>,
+    bool_arr_labels: HashMap<String, ArrayLabel>,
 
     // 整数配列のラベル対応を保持 (配列名, (ラベル, 配列サイズ))
-    int_arr_labels: HashMap<String, (String, usize)>,
+    int_arr_labels: HashMap<String, ArrayLabel>,
 
     // IN/OUTで使用する文字列定数のラベル対応を保持 (文字列定数, (長さラベル, 内容位置ラベル)))
     lit_str_labels: HashMap<String, StrLabels>,
@@ -255,6 +258,7 @@ impl Compiler {
             original_program_name: None,
             arguments: Vec::new(),
             argument_labels: HashMap::new(),
+            arr_argument_labels: HashMap::new(),
             str_argument_labels: HashMap::new(),
             callables: HashMap::new(),
             var_id: 0,
@@ -368,6 +372,13 @@ impl Compiler {
     fn return_temp_str_var_label(&mut self, labels: StrLabels) {
         if matches!(labels.label_type, StrLabelType::Temp) {
             self.temp_str_var_labels.push(labels);
+        }
+    }
+
+    // 式展開時の一時変数(配列)のラベルの返却
+    fn return_if_temp_arr_label(&mut self, label: ArrayLabel) {
+        if let Some(str_labels) = label.release() {
+            self.temp_str_var_labels.push(str_labels);
         }
     }
 
@@ -553,61 +564,45 @@ impl Compiler {
     }
 
     // 真理値配列のラベル取得
-    fn get_bool_arr_label(&self, var_name: &str) -> (String, usize) {
+    fn get_bool_arr_label(&self, var_name: &str) -> ArrayLabel {
         self.bool_arr_labels
             .get(var_name)
             .cloned()
             .unwrap_or_else(|| {
-                let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+                let (label, arg) = self.arr_argument_labels.get(var_name).expect("BUG");
                 assert_eq!(arg.var_name, var_name);
-                if let parser::VarType::ArrayOfBoolean(size) = arg.var_type {
-                    assert!((1..=MAX_ARRAY_SIZE).contains(&size));
-                    (label.clone(), size)
-                } else {
-                    unreachable!("BUG");
-                }
+                assert!(matches!(label, ArrayLabel::VarArrayOfBoolean(..)));
+                label.clone()
             })
     }
 
     // 真理値配列(参照型)のラベル取得
-    fn get_ref_bool_arr_label(&self, var_name: &str) -> (String, usize) {
-        let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+    fn get_ref_bool_arr_label(&self, var_name: &str) -> ArrayLabel {
+        let (label, arg) = self.arr_argument_labels.get(var_name).expect("BUG");
         assert_eq!(arg.var_name, var_name);
-        if let parser::VarType::RefArrayOfBoolean(size) = arg.var_type {
-            assert!((1..=MAX_ARRAY_SIZE).contains(&size));
-            (label.clone(), size)
-        } else {
-            unreachable!("BUG");
-        }
+        assert!(matches!(label, ArrayLabel::VarRefArrayOfBoolean(..)));
+        label.clone()
     }
 
     // 整数配列のラベル取得
-    fn get_int_arr_label(&self, var_name: &str) -> (String, usize) {
+    fn get_int_arr_label(&self, var_name: &str) -> ArrayLabel {
         self.int_arr_labels
             .get(var_name)
             .cloned()
             .unwrap_or_else(|| {
-                let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+                let (label, arg) = self.arr_argument_labels.get(var_name).expect("BUG");
                 assert_eq!(arg.var_name, var_name);
-                if let parser::VarType::ArrayOfInteger(size) = arg.var_type {
-                    assert!((1..=MAX_ARRAY_SIZE).contains(&size));
-                    (label.clone(), size)
-                } else {
-                    unreachable!("BUG");
-                }
+                assert!(matches!(label, ArrayLabel::VarArrayOfInteger(..)));
+                label.clone()
             })
     }
 
     // 整数配列(参照型)のラベル取得
-    fn get_ref_int_arr_label(&self, var_name: &str) -> (String, usize) {
-        let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+    fn get_ref_int_arr_label(&self, var_name: &str) -> ArrayLabel {
+        let (label, arg) = self.arr_argument_labels.get(var_name).expect("BUG");
         assert_eq!(arg.var_name, var_name);
-        if let parser::VarType::RefArrayOfInteger(size) = arg.var_type {
-            assert!((1..=MAX_ARRAY_SIZE).contains(&size));
-            (label.clone(), size)
-        } else {
-            unreachable!("BUG");
-        }
+        assert!(matches!(label, ArrayLabel::VarRefArrayOfInteger(..)));
+        label.clone()
     }
 }
 
@@ -622,6 +617,7 @@ impl Compiler {
             program_name,
             arguments,
             argument_labels,
+            arr_argument_labels,
             str_argument_labels,
             callables,
             bool_var_labels,
@@ -660,15 +656,17 @@ impl Compiler {
                 parser::VarType::Boolean
                 | parser::VarType::RefBoolean
                 | parser::VarType::Integer
-                | parser::VarType::RefInteger
-                | parser::VarType::RefArrayOfBoolean(_)
-                | parser::VarType::RefArrayOfInteger(_) => {
+                | parser::VarType::RefInteger => {
                     let (label, _) = argument_labels.get(&arg.var_name).expect("BUG");
                     statements.labeled(label.clone(), casl2::Command::Ds { size: 1 });
                 }
+                parser::VarType::RefArrayOfBoolean(_) | parser::VarType::RefArrayOfInteger(_) => {
+                    let (label, _) = arr_argument_labels.get(&arg.var_name).expect("BUG");
+                    statements.labeled(label.label(), casl2::Command::Ds { size: 1 });
+                }
                 parser::VarType::ArrayOfBoolean(size) | parser::VarType::ArrayOfInteger(size) => {
-                    let (label, _) = argument_labels.get(&arg.var_name).expect("BUG");
-                    statements.labeled(label.clone(), casl2::Command::Ds { size: size as u16 });
+                    let (label, _) = arr_argument_labels.get(&arg.var_name).expect("BUG");
+                    statements.labeled(label.label(), casl2::Command::Ds { size: size as u16 });
                 }
                 parser::VarType::String => {
                     let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
@@ -728,29 +726,39 @@ impl Compiler {
         }
 
         // 真理値配列(固定長) BA**
-        for ((label, size), var_name) in bool_arr_labels
+        for (label, var_name) in bool_arr_labels
             .into_iter()
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
             if first_var_label.is_none() {
-                first_var_label = Some(label.clone());
+                first_var_label = Some(label.label());
             }
-            statements.comment(format!("Dim {}({}) As Boolean", var_name, size - 1));
-            statements.labeled(label, casl2::Command::Ds { size: size as u16 });
+            statements.comment(format!("Dim {}({}) As Boolean", var_name, label.size() - 1));
+            statements.labeled(
+                label.label(),
+                casl2::Command::Ds {
+                    size: label.size() as u16,
+                },
+            );
         }
 
         // 整数配列(固定長) IA**
-        for ((label, size), var_name) in int_arr_labels
+        for (label, var_name) in int_arr_labels
             .into_iter()
             .map(|(k, v)| (v, k))
             .collect::<BTreeSet<_>>()
         {
             if first_var_label.is_none() {
-                first_var_label = Some(label.clone());
+                first_var_label = Some(label.label());
             }
-            statements.comment(format!("Dim {}({}) As Integer", var_name, size - 1));
-            statements.labeled(label, casl2::Command::Ds { size: size as u16 });
+            statements.comment(format!("Dim {}({}) As Integer", var_name, label.size() - 1));
+            statements.labeled(
+                label.label(),
+                casl2::Command::Ds {
+                    size: label.size() as u16,
+                },
+            );
         }
 
         // EOFを扱う場合
@@ -797,17 +805,24 @@ impl Compiler {
                 parser::VarType::Boolean
                 | parser::VarType::RefBoolean
                 | parser::VarType::Integer
-                | parser::VarType::RefInteger
-                | parser::VarType::RefArrayOfBoolean(_)
-                | parser::VarType::ArrayOfBoolean(_)
-                | parser::VarType::ArrayOfInteger(_)
-                | parser::VarType::RefArrayOfInteger(_) => {
+                | parser::VarType::RefInteger => {
                     let (label, _) = argument_labels.get(&arg.var_name).expect("BUG");
                     temp_statements.code(format!(
                         r#" ST {reg},{label}"#,
                         reg = arg.register1,
                         label = label
                     ));
+                }
+                parser::VarType::RefArrayOfBoolean(_)
+                | parser::VarType::ArrayOfBoolean(_)
+                | parser::VarType::ArrayOfInteger(_)
+                | parser::VarType::RefArrayOfInteger(_) => {
+                    let (label, _) = arr_argument_labels.get(&arg.var_name).expect("BUG");
+                    temp_statements.code(format!(
+                        r#" ST {reg},{label}"#,
+                        reg = arg.register1,
+                        label = label.label()
+                    )); // todo!("ALLOCモードで.label()が定義されない！")
                 }
                 parser::VarType::String | parser::VarType::RefString => {
                     let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
@@ -836,17 +851,17 @@ impl Compiler {
 
                 parser::VarType::ArrayOfBoolean(size) | parser::VarType::ArrayOfInteger(size) => {
                     temp_statements.comment(format!("Copy Into {}", arg.var_name));
-                    let (label, _) = argument_labels.get(&arg.var_name).expect("BUG");
+                    let (label, _) = arr_argument_labels.get(&arg.var_name).expect("BUG");
                     temp_statements.code(format!(
                         r#" LAD   GR1,{label}
                             LAD   GR2,{label}
                             LD    GR3,{label}
                             LAD   GR4,{size}
                             CALL  {copy}"#,
-                        label = label,
+                        label = label.label(),
                         size = size,
                         copy = subroutine::Id::UtilCopyStr.label()
-                    ));
+                    )); // todo!("ALLOCモードで.label()が定義されない！")
                 }
                 parser::VarType::String => {
                     temp_statements.comment(format!("Copy Into {}", arg.var_name));
@@ -873,7 +888,7 @@ impl Compiler {
                     temp_statements.extend(
                         casl2::parse(&format!(
                             r#" XOR   GR0,GR0
-                            ST    GR0,{label}"#,
+                                ST    GR0,{label}"#,
                             label = label
                         ))
                         .unwrap(),
@@ -884,9 +899,9 @@ impl Compiler {
                     temp_statements.extend(
                         casl2::parse(&format!(
                             r#" LAD   GR1,{start}
-                            XOR   GR2,GR2
-                            LAD   GR3,{size}
-                            CALL  {fill}"#,
+                                XOR   GR2,GR2
+                                LAD   GR3,{size}
+                                CALL  {fill}"#,
                             start = label,
                             size = var_total_size,
                             fill = subroutine::Id::UtilFill.label()
@@ -1161,6 +1176,47 @@ impl ArrayLabel {
             | VarArrayOfInteger(label, _)
             | VarRefArrayOfBoolean(label, _)
             | VarRefArrayOfInteger(label, _) => label.clone(),
+        }
+    }
+
+    fn ld_first_elem(&self, reg: casl2::Register) -> String {
+        use ArrayLabel::*;
+        match self {
+            TempArrayOfBoolean(labels, _) | TempArrayOfInteger(labels, _) => {
+                format!(r#" LD  {reg},{pos}"#, reg = reg, pos = labels.pos)
+            }
+            VarArrayOfBoolean(label, _) | VarArrayOfInteger(label, _) => {
+                format!(r#" LD  {reg},{pos}"#, reg = reg, pos = label)
+            }
+            VarRefArrayOfBoolean(label, _) | VarRefArrayOfInteger(label, _) => {
+                format!(
+                    r#" LD   {reg},{pos}
+                        LD   {reg},0,{reg}"#,
+                    reg = reg,
+                    pos = label
+                )
+            }
+        }
+    }
+
+    fn st_first_elem(&self, value: casl2::Register, extra: casl2::Register) -> String {
+        use ArrayLabel::*;
+        match self {
+            TempArrayOfBoolean(labels, _) | TempArrayOfInteger(labels, _) => {
+                format!(r#" ST  {value},{pos}"#, value = value, pos = labels.pos)
+            }
+            VarArrayOfBoolean(label, _) | VarArrayOfInteger(label, _) => {
+                format!(r#" ST  {value},{pos}"#, value = value, pos = label)
+            }
+            VarRefArrayOfBoolean(label, _) | VarRefArrayOfInteger(label, _) => {
+                format!(
+                    r#" LD   {reg},{pos}
+                        ST   {value},0,{reg}"#,
+                    value = value,
+                    reg = extra,
+                    pos = label
+                )
+            }
         }
     }
 

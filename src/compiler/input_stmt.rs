@@ -15,12 +15,12 @@ impl Compiler {
         self.has_eof = true;
         let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
 
-        let (arr_label, arr_size) = self.get_int_arr_label(var_name);
+        let arr_label = self.get_int_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
             let index = *index as i16;
-            let index = (index.max(0) as usize).min(arr_size - 1);
+            let index = (index.max(0) as usize).min(arr_label.size() - 1);
             let s_labels = self.get_temp_str_var_label();
             let ok_label = self.get_new_jump_label();
             // レジスタ退避
@@ -65,16 +65,12 @@ impl Compiler {
                     ok = ok_label
                 ));
             }
-            self.code(if index == 0 {
-                format!(r#" ST GR0,{arr}"#, arr = arr_label)
-            } else {
-                format!(
-                    r#" LAD   GR1,{index}
-                        ST    GR0,{arr},GR1"#,
-                    index = index,
-                    arr = arr_label
-                )
-            });
+            self.code(format!(
+                r#" {lad_gr1_arrpos}
+                    ST GR0,{index},GR1"#,
+                lad_gr1_arrpos = arr_label.lad_pos(casl2::Register::Gr1),
+                index = index
+            ));
             self.code(recovers);
             self.return_temp_str_var_label(s_labels);
             return;
@@ -105,7 +101,8 @@ impl Compiler {
                 r#" LD    GR1,{index}
                     LAD   GR2,{size}
                     CALL  {fit}
-                    LD    GR3,GR0
+                    {lad_gr3_arrpos}
+                    ADDL  GR3,GR0
                     IN    {pos},{len}
                     XOR   GR0,GR0
                     CALL  EOF
@@ -117,22 +114,23 @@ impl Compiler {
                     CALL  EOF
                     XOR   GR2,GR2
 {ok}                CALL  {cint}
-                    ST    GR0,{arr},GR3"#,
+                    ST    GR0,0,GR3"#,
                 index = index_reg,
-                size = arr_size,
+                size = arr_label.size(),
                 fit = safe_index,
+                lad_gr3_arrpos = arr_label.lad_pos(casl2::Register::Gr3),
                 pos = s_labels.pos,
                 len = s_labels.len,
                 ok = ok_label,
-                cint = cint_label,
-                arr = arr_label
+                cint = cint_label
             ));
         } else {
             self.code(format!(
                 r#" LD    GR1,{index}
                     LAD   GR2,{size}
                     CALL  {fit}
-                    LD    GR3,GR0
+                    {lad_gr3_arrpos}
+                    ADDL  GR3,GR0
                     IN    {pos},{len}
                     XOR   GR0,GR0
                     ST    GR0,EOF
@@ -143,15 +141,15 @@ impl Compiler {
                     ST    GR2,EOF
                     XOR   GR2,GR2
 {ok}                CALL  {cint}
-                    ST    GR0,{arr},GR3"#,
+                    ST    GR0,0,GR3"#,
                 index = index_reg,
-                size = arr_size,
+                size = arr_label.size(),
                 fit = safe_index,
+                lad_gr3_arrpos = arr_label.lad_pos(casl2::Register::Gr3),
                 pos = s_labels.pos,
                 len = s_labels.len,
                 ok = ok_label,
-                cint = cint_label,
-                arr = arr_label
+                cint = cint_label
             ));
         }
         self.code(recovers);
@@ -286,12 +284,12 @@ impl Compiler {
         self.has_eof = true;
         let cint_label = self.load_subroutine(subroutine::Id::FuncCInt);
 
-        let (arr_label, arr_size) = self.get_ref_int_arr_label(var_name);
+        let arr_label = self.get_ref_int_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
             let index = *index as i16;
-            let index = (index.max(0) as usize).min(arr_size - 1);
+            let index = (index.max(0) as usize).min(arr_label.size() - 1);
             let s_labels = self.get_temp_str_var_label();
             let ok_label = self.get_new_jump_label();
             // レジスタ退避
@@ -337,10 +335,10 @@ impl Compiler {
                 ));
             }
             self.code(format!(
-                r#" LD    GR1,{arr}
-                    ST    GR0,{index},GR1"#,
-                index = index,
-                arr = arr_label
+                r#" {lad_gr1_arrpos}
+                    ST   GR0,{index},GR1"#,
+                lad_gr1_arrpos = arr_label.lad_pos(casl2::Register::Gr1),
+                index = index
             ));
             self.code(recovers);
             self.return_temp_str_var_label(s_labels);
@@ -372,7 +370,8 @@ impl Compiler {
                 r#" LD    GR1,{index}
                     LAD   GR2,{size}
                     CALL  {fit}
-                    LD    GR3,GR0
+                    {lad_gr3_arrpos}
+                    ADDL  GR3,GR0
                     IN    {pos},{len}
                     XOR   GR0,GR0
                     CALL  EOF
@@ -384,23 +383,23 @@ impl Compiler {
                     CALL  EOF
                     XOR   GR2,GR2
 {ok}                CALL  {cint}
-                    ADDL  GR3,{arr}
                     ST    GR0,0,GR3"#,
                 index = index_reg,
-                size = arr_size,
+                size = arr_label.size(),
                 fit = safe_index,
+                lad_gr3_arrpos = arr_label.lad_pos(casl2::Register::Gr3),
                 pos = s_labels.pos,
                 len = s_labels.len,
                 ok = ok_label,
-                cint = cint_label,
-                arr = arr_label
+                cint = cint_label
             ));
         } else {
             self.code(format!(
                 r#" LD    GR1,{index}
                     LAD   GR2,{size}
                     CALL  {fit}
-                    LD    GR3,GR0
+                    {lad_gr3_arrpos}
+                    ADDL  GR3,GR0
                     IN    {pos},{len}
                     XOR   GR0,GR0
                     ST    GR0,EOF
@@ -411,16 +410,15 @@ impl Compiler {
                     ST    GR2,EOF
                     XOR   GR2,GR2
 {ok}                CALL  {cint}
-                    ADDL  GR3,{arr}
                     ST    GR0,0,GR3"#,
                 index = index_reg,
-                size = arr_size,
+                size = arr_label.size(),
                 fit = safe_index,
+                lad_gr3_arrpos = arr_label.lad_pos(casl2::Register::Gr3),
                 pos = s_labels.pos,
                 len = s_labels.len,
                 ok = ok_label,
-                cint = cint_label,
-                arr = arr_label
+                cint = cint_label
             ));
         }
         self.code(recovers);

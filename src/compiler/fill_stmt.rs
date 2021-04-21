@@ -85,7 +85,7 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) = self.get_ref_int_arr_label(var_name);
+        let arr_label = self.get_ref_int_arr_label(var_name);
         let value_reg = self.compile_int_expr(value);
         let fill = self.load_subroutine(subroutine::Id::UtilFill);
 
@@ -97,12 +97,12 @@ impl Compiler {
         self.code(saves);
         self.code(format!(
             r#" LD    GR2,{value}
-                LD    GR1,{arr}
+                {lad_gr1_arrpos}
                 LAD   GR3,{size}
                 CALL  {fill}"#,
             value = value_reg,
-            arr = arr_label,
-            size = arr_size,
+            lad_gr1_arrpos = arr_label.lad_pos(casl2::Register::Gr1),
+            size = arr_label.size(),
             fill = fill
         ));
         self.code(recovers);
@@ -120,7 +120,7 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) = self.get_int_arr_label(var_name);
+        let arr_label = self.get_int_arr_label(var_name);
         let value_reg = self.compile_int_expr(value);
         let fill = self.load_subroutine(subroutine::Id::UtilFill);
 
@@ -132,12 +132,12 @@ impl Compiler {
         self.code(saves);
         self.code(format!(
             r#" LD    GR2,{value}
-                LAD   GR1,{arr}
+                {lad_gr1_arrpos}
                 LAD   GR3,{size}
                 CALL  {fill}"#,
             value = value_reg,
-            arr = arr_label,
-            size = arr_size,
+            lad_gr1_arrpos = arr_label.lad_pos(casl2::Register::Gr1),
+            size = arr_label.size(),
             fill = fill
         ));
         self.code(recovers);
@@ -155,7 +155,7 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) = self.get_ref_bool_arr_label(var_name);
+        let arr_label = self.get_ref_bool_arr_label(var_name);
         let value_reg = self.compile_int_expr(value);
         let fill = self.load_subroutine(subroutine::Id::UtilFill);
 
@@ -167,12 +167,12 @@ impl Compiler {
         self.code(saves);
         self.code(format!(
             r#" LD    GR2,{value}
-                LD    GR1,{arr}
+                {lad_gr1_arrpos}
                 LAD   GR3,{size}
                 CALL  {fill}"#,
             value = value_reg,
-            arr = arr_label,
-            size = arr_size,
+            lad_gr1_arrpos = arr_label.lad_pos(casl2::Register::Gr1),
+            size = arr_label.size(),
             fill = fill
         ));
         self.code(recovers);
@@ -190,7 +190,7 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) = self.get_bool_arr_label(var_name);
+        let arr_label = self.get_bool_arr_label(var_name);
         let value_reg = self.compile_int_expr(value);
         let fill = self.load_subroutine(subroutine::Id::UtilFill);
 
@@ -202,12 +202,12 @@ impl Compiler {
         self.code(saves);
         self.code(format!(
             r#" LD    GR2,{value}
-                LAD   GR1,{arr}
+                {lad_gr1_arrpos}
                 LAD   GR3,{size}
                 CALL  {fill}"#,
             value = value_reg,
-            arr = arr_label,
-            size = arr_size,
+            lad_gr1_arrpos = arr_label.lad_pos(casl2::Register::Gr1),
+            size = arr_label.size(),
             fill = fill
         ));
         self.code(recovers);

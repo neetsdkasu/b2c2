@@ -1630,6 +1630,9 @@ Print outStr
 
     eprintln!("{}", crate::stat::analyze(&statements));
 
+    eprintln!("TEST CODE");
+    eprintln!("++++++++[>+++++++++[>+>++<<-]++[>>---<<-]<-]>>.>+++++.+++++++..+++.");
+    
     assert!(!statements.is_empty()); // dummy assert
 }
 

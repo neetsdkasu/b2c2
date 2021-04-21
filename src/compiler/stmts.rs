@@ -69,7 +69,7 @@ impl Compiler {
                         Expr::VarArrayOfBoolean(var_name, index) => {
                             let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
                             let index_reg = self.compile_int_expr(index); // リテラルindexの配慮は面倒なのでしてない
-                            let (arr_label, arr_size) = self.get_bool_arr_label(var_name);
+                            let arr_label = self.get_bool_arr_label(var_name);
                             let temp_label = self.get_temp_int_var_label();
                             let (saves, recovers) = {
                                 use casl2::Register::*;
@@ -80,13 +80,13 @@ impl Compiler {
                                 r#" LD    GR1,{index}
                                     LAD   GR2,{size}
                                     CALL  {fit}
-                                    LAD   GR1,{arr}
+                                    {lad_gr1_arrpos}
                                     ADDL  GR1,GR0
                                     ST    GR1,{temp}"#,
                                 index = index_reg,
-                                size = arr_size,
+                                size = arr_label.size(),
                                 fit = safe_index,
-                                arr = arr_label,
+                                lad_gr1_arrpos = arr_label.lad_pos(casl2::Register::Gr1),
                                 temp = temp_label
                             ));
                             self.code(recovers);
@@ -97,7 +97,7 @@ impl Compiler {
                         Expr::VarRefArrayOfBoolean(var_name, index) => {
                             let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
                             let index_reg = self.compile_int_expr(index); // リテラルindexの配慮は面倒なのでしてない
-                            let (arr_label, arr_size) = self.get_ref_bool_arr_label(var_name);
+                            let arr_label = self.get_ref_bool_arr_label(var_name);
                             let temp_label = self.get_temp_int_var_label();
                             let (saves, recovers) = {
                                 use casl2::Register::*;
@@ -108,12 +108,13 @@ impl Compiler {
                                 r#" LD    GR1,{index}
                                     LAD   GR2,{size}
                                     CALL  {fit}
-                                    ADDL  GR0,{arr}
+                                    {lad_gr1_arrpos}
+                                    ADDL  GR0,GR1
                                     ST    GR0,{temp}"#,
                                 index = index_reg,
-                                size = arr_size,
+                                size = arr_label.size(),
                                 fit = safe_index,
-                                arr = arr_label,
+                                lad_gr1_arrpos = arr_label.lad_pos(casl2::Register::Gr1),
                                 temp = temp_label
                             ));
                             self.code(recovers);
@@ -154,7 +155,7 @@ impl Compiler {
                         Expr::VarArrayOfInteger(var_name, index) => {
                             let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
                             let index_reg = self.compile_int_expr(index); // リテラルindexの配慮は面倒なのでしてない
-                            let (arr_label, arr_size) = self.get_int_arr_label(var_name);
+                            let arr_label = self.get_int_arr_label(var_name);
                             let temp_label = self.get_temp_int_var_label();
                             let (saves, recovers) = {
                                 use casl2::Register::*;
@@ -165,13 +166,13 @@ impl Compiler {
                                 r#" LD    GR1,{index}
                                     LAD   GR2,{size}
                                     CALL  {fit}
-                                    LAD   GR1,{arr}
+                                    {lad_gr1_arrpos}
                                     ADDL  GR1,GR0
                                     ST    GR1,{temp}"#,
                                 index = index_reg,
-                                size = arr_size,
+                                size = arr_label.size(),
                                 fit = safe_index,
-                                arr = arr_label,
+                                lad_gr1_arrpos = arr_label.lad_pos(casl2::Register::Gr1),
                                 temp = temp_label
                             ));
                             self.code(recovers);
@@ -182,7 +183,7 @@ impl Compiler {
                         Expr::VarRefArrayOfInteger(var_name, index) => {
                             let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
                             let index_reg = self.compile_int_expr(index); // リテラルindexの配慮は面倒なのでしてない
-                            let (arr_label, arr_size) = self.get_ref_int_arr_label(var_name);
+                            let arr_label = self.get_ref_int_arr_label(var_name);
                             let temp_label = self.get_temp_int_var_label();
                             let (saves, recovers) = {
                                 use casl2::Register::*;
@@ -193,12 +194,13 @@ impl Compiler {
                                 r#" LD    GR1,{index}
                                     LAD   GR2,{size}
                                     CALL  {fit}
-                                    ADDL  GR0,{arr}
+                                    {lad_gr1_arrpos}
+                                    ADDL  GR0,GR1
                                     ST    GR0,{temp}"#,
                                 index = index_reg,
-                                size = arr_size,
+                                size = arr_label.size(),
                                 fit = safe_index,
-                                arr = arr_label,
+                                lad_gr1_arrpos = arr_label.lad_pos(casl2::Register::Gr1),
                                 temp = temp_label
                             ));
                             self.code(recovers);
@@ -403,13 +405,41 @@ impl Compiler {
                 parser::VarType::Boolean
                 | parser::VarType::RefBoolean
                 | parser::VarType::Integer
-                | parser::VarType::RefInteger
-                | parser::VarType::ArrayOfBoolean(_)
-                | parser::VarType::RefArrayOfBoolean(_)
-                | parser::VarType::ArrayOfInteger(_)
-                | parser::VarType::RefArrayOfInteger(_) => {
+                | parser::VarType::RefInteger => {
                     let label = format!("ARG{}", arg.register1 as isize);
                     self.argument_labels
+                        .insert(arg.var_name.clone(), (label, arg.clone()));
+                }
+                parser::VarType::ArrayOfBoolean(size) => {
+                    let label = ArrayLabel::VarArrayOfBoolean(
+                        format!("ARG{}", arg.register1 as isize),
+                        size,
+                    );
+                    self.arr_argument_labels
+                        .insert(arg.var_name.clone(), (label, arg.clone()));
+                }
+                parser::VarType::RefArrayOfBoolean(size) => {
+                    let label = ArrayLabel::VarRefArrayOfBoolean(
+                        format!("ARG{}", arg.register1 as isize),
+                        size,
+                    );
+                    self.arr_argument_labels
+                        .insert(arg.var_name.clone(), (label, arg.clone()));
+                }
+                parser::VarType::ArrayOfInteger(size) => {
+                    let label = ArrayLabel::VarArrayOfInteger(
+                        format!("ARG{}", arg.register1 as isize),
+                        size,
+                    );
+                    self.arr_argument_labels
+                        .insert(arg.var_name.clone(), (label, arg.clone()));
+                }
+                parser::VarType::RefArrayOfInteger(size) => {
+                    let label = ArrayLabel::VarRefArrayOfInteger(
+                        format!("ARG{}", arg.register1 as isize),
+                        size,
+                    );
+                    self.arr_argument_labels
                         .insert(arg.var_name.clone(), (label, arg.clone()));
                 }
                 parser::VarType::String => {
@@ -722,13 +752,13 @@ impl Compiler {
                 self.var_total_size += 257;
             }
             VarType::ArrayOfBoolean(size) => {
-                let label = format!("BA{}", self.var_id);
-                self.bool_arr_labels.insert(var_name.into(), (label, *size));
+                let label = ArrayLabel::VarArrayOfBoolean(format!("BA{}", self.var_id), *size);
+                self.bool_arr_labels.insert(var_name.into(), label);
                 self.var_total_size += size;
             }
             VarType::ArrayOfInteger(size) => {
-                let label = format!("IA{}", self.var_id);
-                self.int_arr_labels.insert(var_name.into(), (label, *size));
+                let label = ArrayLabel::VarArrayOfInteger(format!("IA{}", self.var_id), *size);
+                self.int_arr_labels.insert(var_name.into(), label);
                 self.var_total_size += size;
             }
             VarType::RefBoolean

@@ -19,44 +19,45 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) = self.get_int_arr_label(var_name);
+        let arr_label = self.get_int_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
             let index = *index as i16;
-            let index = (index.max(0) as usize).min(arr_size - 1);
+            let index = (index.max(0) as usize).min(arr_label.size() - 1);
             // おそらくGR7
             let value_reg = self.compile_int_expr(value);
             // おそらくGR6
             let temp_reg = self.get_idle_register();
+            // おそらくGR5
+            let extra_reg = self.get_idle_register();
             assert_ne!(value_reg, temp_reg);
+            assert_ne!(value_reg, extra_reg);
+            assert_ne!(temp_reg, extra_reg);
             if index == 0 {
                 self.code(format!(
-                    r#" LD    {reg},{arr}
-                        SUBA  {reg},{value}
-                        ST    {reg},{arr}"#,
-                    reg = temp_reg,
-                    arr = arr_label,
-                    value = value_reg
+                    r#" {ld_temp_first_elem}
+                        SUBA  {temp},{value}
+                        {st_temp_first_elem}"#,
+                    ld_temp_first_elem = arr_label.ld_first_elem(temp_reg),
+                    temp = temp_reg,
+                    value = value_reg,
+                    st_temp_first_elem = arr_label.st_first_elem(temp_reg, extra_reg)
                 ));
             } else {
-                // おそらくGR5
-                let index_reg = self.get_idle_register();
-                assert_ne!(value_reg, index_reg);
-                assert_ne!(temp_reg, index_reg);
                 self.code(format!(
-                    r#" LAD   {index_reg},{index}
-                        LD    {reg},{arr},{index_reg}
-                        SUBA  {reg},{value}
-                        ST    {reg},{arr},{index_reg}"#,
-                    index_reg = index_reg,
+                    r#" {lad_extra_arrpos}
+                        LD    {temp},{index},{extra}
+                        SUBA  {temp},{value}
+                        ST    {temp},{index},{extra}"#,
+                    lad_extra_arrpos = arr_label.lad_pos(extra_reg),
+                    extra = extra_reg,
                     index = index,
-                    reg = temp_reg,
-                    arr = arr_label,
+                    temp = temp_reg,
                     value = value_reg
                 ));
-                self.set_register_idle(index_reg);
             }
+            self.set_register_idle(extra_reg);
             self.set_register_idle(temp_reg);
             self.set_register_idle(value_reg);
             return;
@@ -81,11 +82,16 @@ impl Compiler {
                 LAD  GR2,{size}
                 CALL {fit}"#,
             index = index_reg,
-            size = arr_size,
+            size = arr_label.size(),
             fit = safe_index
         ));
         self.code(recovers);
-        self.code(format!(" LD {index},GR0", index = index_reg));
+        self.code(format!(
+            r#" {lad_index_arrpos}
+                ADDL {index},GR0"#,
+            lad_index_arrpos = arr_label.lad_pos(index_reg),
+            index = index_reg
+        ));
 
         // 想定では GR6
         let value_reg = self.compile_int_expr(value);
@@ -95,12 +101,11 @@ impl Compiler {
         let reg = self.get_idle_register();
 
         self.code(format!(
-            r#" LD    {reg},{arr},{index}
+            r#" LD    {reg},0,{index}
                 SUBA  {reg},{value}
-                ST    {reg},{arr},{index}"#,
+                ST    {reg},0,{index}"#,
             reg = reg,
             value = value_reg,
-            arr = arr_label,
             index = index_reg
         ));
 
@@ -127,12 +132,12 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) = self.get_ref_int_arr_label(var_name);
+        let arr_label = self.get_ref_int_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
             let index = *index as i16;
-            let index = (index.max(0) as usize).min(arr_size - 1);
+            let index = (index.max(0) as usize).min(arr_label.size() - 1);
             // おそらくGR7
             let value_reg = self.compile_int_expr(value);
             // おそらくGR6
@@ -143,14 +148,14 @@ impl Compiler {
             assert_ne!(value_reg, arr_reg);
             assert_ne!(temp_reg, arr_reg);
             self.code(format!(
-                r#" LD    {arr_reg},{arr}
-                    LD    {reg},{index},{arr_reg}
+                r#" {lad_arr_pos}
+                    LD    {reg},{index},{arr}
                     SUBA  {reg},{value}
-                    ST    {reg},{index},{arr_reg}"#,
-                arr_reg = arr_reg,
+                    ST    {reg},{index},{arr}"#,
+                lad_arr_pos = arr_label.lad_pos(arr_reg),
+                arr = arr_reg,
                 index = index,
                 reg = temp_reg,
-                arr = arr_label,
                 value = value_reg
             ));
             self.set_register_idle(arr_reg);
@@ -178,11 +183,16 @@ impl Compiler {
                 LAD  GR2,{size}
                 CALL {fit}"#,
             index = index_reg,
-            size = arr_size,
+            size = arr_label.size(),
             fit = safe_index
         ));
         self.code(recovers);
-        self.code(format!(" LD {index},GR0", index = index_reg));
+        self.code(format!(
+            r#" {lad_index_arrpos}
+                ADDL {index},GR0"#,
+            lad_index_arrpos = arr_label.lad_pos(index_reg),
+            index = index_reg
+        ));
 
         // 想定では GR6
         let value_reg = self.compile_int_expr(value);
@@ -192,13 +202,11 @@ impl Compiler {
         let reg = self.get_idle_register();
 
         self.code(format!(
-            r#" ADDL  {index},{arr}
-                LD    {reg},0,{index}
+            r#" LD    {reg},0,{index}
                 SUBA  {reg},{value}
                 ST    {reg},0,{index}"#,
             reg = reg,
             value = value_reg,
-            arr = arr_label,
             index = index_reg
         ));
 
@@ -225,36 +233,27 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) = self.get_int_arr_label(var_name);
+        let arr_label = self.get_int_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
             let index = *index as i16;
-            let index = (index.max(0) as usize).min(arr_size - 1);
+            let index = (index.max(0) as usize).min(arr_label.size() - 1);
             // おそらくGR7
             let value_reg = self.compile_int_expr(value);
-            if index == 0 {
-                self.code(format!(
-                    r#" ADDA  {value},{arr}
-                        ST    {value},{arr}"#,
-                    arr = arr_label,
-                    value = value_reg
-                ));
-            } else {
-                // おそらくGR6
-                let index_reg = self.get_idle_register();
-                assert_ne!(value_reg, index_reg);
-                self.code(format!(
-                    r#" LAD   {index_reg},{index}
-                        ADDA  {value},{arr},{index_reg}
-                        ST    {value},{arr},{index_reg}"#,
-                    index_reg = index_reg,
-                    index = index,
-                    arr = arr_label,
-                    value = value_reg
-                ));
-                self.set_register_idle(index_reg);
-            }
+            // おそらくGR6
+            let temp_reg = self.get_idle_register();
+            assert_ne!(value_reg, temp_reg);
+            self.code(format!(
+                r#" {lad_temp_arrpos}
+                    ADDA  {value},{index},{temp}
+                    ST    {value},{index},{temp}"#,
+                lad_temp_arrpos = arr_label.lad_pos(temp_reg),
+                value = value_reg,
+                index = index,
+                temp = temp_reg
+            ));
+            self.set_register_idle(temp_reg);
             self.set_register_idle(value_reg);
             return;
         }
@@ -278,11 +277,16 @@ impl Compiler {
                 LAD  GR2,{size}
                 CALL {fit}"#,
             index = index_reg,
-            size = arr_size,
+            size = arr_label.size(),
             fit = safe_index
         ));
         self.code(recovers);
-        self.code(format!(" LD {index},GR0", index = index_reg));
+        self.code(format!(
+            r#" {lad_index_arrpos}
+                ADDL {index},GR0"#,
+            lad_index_arrpos = arr_label.lad_pos(index_reg),
+            index = index_reg
+        ));
 
         // 想定では GR6
         let value_reg = self.compile_int_expr(value);
@@ -290,10 +294,9 @@ impl Compiler {
         self.restore_register(index_reg);
 
         self.code(format!(
-            r#" ADDA  {value},{arr},{index}
-                ST    {value},{arr},{index}"#,
+            r#" ADDA  {value},0,{index}
+                ST    {value},0,{index}"#,
             value = value_reg,
-            arr = arr_label,
             index = index_reg
         ));
 
@@ -319,25 +322,25 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) = self.get_ref_int_arr_label(var_name);
+        let arr_label = self.get_ref_int_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
             let index = *index as i16;
-            let index = (index.max(0) as usize).min(arr_size - 1);
+            let index = (index.max(0) as usize).min(arr_label.size() - 1);
             // おそらくGR7
             let value_reg = self.compile_int_expr(value);
             // おそらくGR6
             let reg = self.get_idle_register();
             assert_ne!(value_reg, reg);
             self.code(format!(
-                r#" LD    {reg},{arr}
+                r#" {lad_reg_arrpos}
                     ADDA  {value},{index},{reg}
                     ST    {value},{index},{reg}"#,
-                reg = reg,
+                lad_reg_arrpos = arr_label.lad_pos(reg),
+                value = value_reg,
                 index = index,
-                arr = arr_label,
-                value = value_reg
+                reg = reg
             ));
             self.set_register_idle(reg);
             self.set_register_idle(value_reg);
@@ -363,11 +366,16 @@ impl Compiler {
                 LAD  GR2,{size}
                 CALL {fit}"#,
             index = index_reg,
-            size = arr_size,
+            size = arr_label.size(),
             fit = safe_index
         ));
         self.code(recovers);
-        self.code(format!(" LD {index},GR0", index = index_reg));
+        self.code(format!(
+            r#" {lad_index_arrpos}
+                ADDL {index},GR0"#,
+            lad_index_arrpos = arr_label.lad_pos(index_reg),
+            index = index_reg
+        ));
 
         // 想定では GR6
         let value_reg = self.compile_int_expr(value);
@@ -375,11 +383,9 @@ impl Compiler {
         self.restore_register(index_reg);
 
         self.code(format!(
-            r#" ADDL  {index},{arr}
-                ADDA  {value},0,{index}
+            r#" ADDA  {value},0,{index}
                 ST    {value},0,{index}"#,
             value = value_reg,
-            arr = arr_label,
             index = index_reg
         ));
 
@@ -405,34 +411,26 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) = self.get_bool_arr_label(var_name);
+        let arr_label = self.get_bool_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
             let index = *index as i16;
-            let index = (index.max(0) as usize).min(arr_size - 1);
+            let index = (index.max(0) as usize).min(arr_label.size() - 1);
             // おそらくGR7
             let value_reg = self.compile_int_expr(value);
-            if index == 0 {
-                self.code(format!(
-                    r#" ST    {value},{arr}"#,
-                    arr = arr_label,
-                    value = value_reg
-                ));
-            } else {
-                // おそらくGR6
-                let index_reg = self.get_idle_register();
-                assert_ne!(value_reg, index_reg);
-                self.code(format!(
-                    r#" LAD   {index_reg},{index}
-                        ST    {value},{arr},{index_reg}"#,
-                    index_reg = index_reg,
-                    index = index,
-                    arr = arr_label,
-                    value = value_reg
-                ));
-                self.set_register_idle(index_reg);
-            }
+            // GR6
+            let temp_reg = self.get_idle_register();
+            assert_ne!(value_reg, temp_reg);
+            self.code(format!(
+                r#" {lad_temp_arrpos}
+                    ST    {value},{index},{temp}"#,
+                lad_temp_arrpos = arr_label.lad_pos(temp_reg),
+                value = value_reg,
+                index = index,
+                temp = temp_reg
+            ));
+            self.set_register_idle(temp_reg);
             self.set_register_idle(value_reg);
             return;
         }
@@ -456,12 +454,17 @@ impl Compiler {
                 LAD   GR2,{size}
                 CALL  {fit}"#,
             index = index_reg,
-            size = arr_size,
+            size = arr_label.size(),
             fit = safe_index
         ));
         self.code(recovers);
 
-        self.code(format!(" LD {index},GR0", index = index_reg));
+        self.code(format!(
+            r#" {lad_index_arrpos}
+                ADDL {index},GR0"#,
+            lad_index_arrpos = arr_label.lad_pos(index_reg),
+            index = index_reg
+        ));
 
         // 想定では GR6
         let value_reg = self.compile_int_expr(value);
@@ -469,9 +472,8 @@ impl Compiler {
         self.restore_register(index_reg);
 
         self.code(format!(
-            r#" ST {value},{arr},{index}"#,
+            r#" ST {value},0,{index}"#,
             value = value_reg,
-            arr = arr_label,
             index = index_reg
         ));
 
@@ -497,26 +499,26 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) = self.get_ref_bool_arr_label(var_name);
+        let arr_label = self.get_ref_bool_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
             let index = *index as i16;
-            let index = (index.max(0) as usize).min(arr_size - 1);
+            let index = (index.max(0) as usize).min(arr_label.size() - 1);
             // おそらくGR7
             let value_reg = self.compile_int_expr(value);
             // おそらくGR6
-            let reg = self.get_idle_register();
-            assert_ne!(value_reg, reg);
+            let temp_reg = self.get_idle_register();
+            assert_ne!(value_reg, temp_reg);
             self.code(format!(
-                r#" LD  {reg},{arr}
-                    ST  {value},{index},{reg}"#,
-                reg = reg,
+                r#" {lad_temp_arrpos}
+                    ST  {value},{index},{temp}"#,
+                lad_temp_arrpos = arr_label.lad_pos(temp_reg),
+                value = value_reg,
                 index = index,
-                arr = arr_label,
-                value = value_reg
+                temp = temp_reg
             ));
-            self.set_register_idle(reg);
+            self.set_register_idle(temp_reg);
             self.set_register_idle(value_reg);
             return;
         }
@@ -540,12 +542,17 @@ impl Compiler {
                 LAD   GR2,{size}
                 CALL  {fit}"#,
             index = index_reg,
-            size = arr_size,
+            size = arr_label.size(),
             fit = safe_index
         ));
         self.code(recovers);
 
-        self.code(format!(" LD {index},GR0", index = index_reg));
+        self.code(format!(
+            r#" {lad_index_arrpos}
+                ADDL {index},GR0"#,
+            lad_index_arrpos = arr_label.lad_pos(index_reg),
+            index = index_reg
+        ));
 
         // 想定では GR6
         let value_reg = self.compile_int_expr(value);
@@ -553,10 +560,8 @@ impl Compiler {
         self.restore_register(index_reg);
 
         self.code(format!(
-            r#" ADDL {index},{arr}
-                ST   {value},0,{index}"#,
+            r#" ST   {value},0,{index}"#,
             value = value_reg,
-            arr = arr_label,
             index = index_reg
         ));
 
@@ -582,34 +587,26 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) = self.get_int_arr_label(var_name);
+        let arr_label = self.get_int_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
             let index = *index as i16;
-            let index = (index.max(0) as usize).min(arr_size - 1);
+            let index = (index.max(0) as usize).min(arr_label.size() - 1);
             // おそらくGR7
             let value_reg = self.compile_int_expr(value);
-            if index == 0 {
-                self.code(format!(
-                    r#" ST    {value},{arr}"#,
-                    arr = arr_label,
-                    value = value_reg
-                ));
-            } else {
-                // おそらくGR6
-                let index_reg = self.get_idle_register();
-                assert_ne!(value_reg, index_reg);
-                self.code(format!(
-                    r#" LAD   {index_reg},{index}
-                        ST    {value},{arr},{index_reg}"#,
-                    index_reg = index_reg,
-                    index = index,
-                    arr = arr_label,
-                    value = value_reg
-                ));
-                self.set_register_idle(index_reg);
-            }
+            // おそらくGR6
+            let temp_reg = self.get_idle_register();
+            assert_ne!(value_reg, temp_reg);
+            self.code(format!(
+                r#" {lad_temp_arrpos}
+                    ST    {value},{index},{temp}"#,
+                lad_temp_arrpos = arr_label.lad_pos(temp_reg),
+                value = value_reg,
+                index = index,
+                temp = temp_reg
+            ));
+            self.set_register_idle(temp_reg);
             self.set_register_idle(value_reg);
             return;
         }
@@ -633,12 +630,17 @@ impl Compiler {
                 LAD   GR2,{size}
                 CALL  {fit}"#,
             index = index_reg,
-            size = arr_size,
+            size = arr_label.size(),
             fit = safe_index
         ));
         self.code(recovers);
 
-        self.code(format!(" LD {index},GR0", index = index_reg));
+        self.code(format!(
+            r#"  {lad_index_arrpos}
+                 ADDL {index},GR0"#,
+            lad_index_arrpos = arr_label.lad_pos(index_reg),
+            index = index_reg
+        ));
 
         // 想定では GR6
         let value_reg = self.compile_int_expr(value);
@@ -646,9 +648,8 @@ impl Compiler {
         self.restore_register(index_reg);
 
         self.code(format!(
-            r#" ST {value},{arr},{index}"#,
+            r#" ST {value},0,{index}"#,
             value = value_reg,
-            arr = arr_label,
             index = index_reg
         ));
 
@@ -674,27 +675,26 @@ impl Compiler {
             value = value
         ));
 
-        let (arr_label, arr_size) = self.get_ref_int_arr_label(var_name);
-        assert!(arr_size > 0);
+        let arr_label = self.get_ref_int_arr_label(var_name);
 
         // indexがリテラルの場合
         if let parser::Expr::LitInteger(index) = index {
             let index = *index as i16;
-            let index = (index.max(0) as usize).min(arr_size - 1);
+            let index = (index.max(0) as usize).min(arr_label.size() - 1);
             // おそらくGR7
             let value_reg = self.compile_int_expr(value);
             // おそらくGR6
-            let reg = self.get_idle_register();
-            assert_ne!(value_reg, reg);
+            let temp_reg = self.get_idle_register();
+            assert_ne!(value_reg, temp_reg);
             self.code(format!(
-                r#" LD    {reg},{arr}
-                    ST    {value},{index},{reg}"#,
-                reg = reg,
+                r#" {lad_temp_arrpos}
+                    ST  {value},{index},{temp}"#,
+                lad_temp_arrpos = arr_label.lad_pos(temp_reg),
+                value = value_reg,
                 index = index,
-                arr = arr_label,
-                value = value_reg
+                temp = temp_reg
             ));
-            self.set_register_idle(reg);
+            self.set_register_idle(temp_reg);
             self.set_register_idle(value_reg);
             return;
         }
@@ -718,12 +718,17 @@ impl Compiler {
                 LAD   GR2,{size}
                 CALL  {fit}"#,
             index = index_reg,
-            size = arr_size,
+            size = arr_label.size(),
             fit = safe_index
         ));
         self.code(recovers);
 
-        self.code(format!(" LD {index},GR0", index = index_reg));
+        self.code(format!(
+            r#" {lad_index_arrpos}
+                LD {index},GR0"#,
+            lad_index_arrpos = arr_label.lad_pos(index_reg),
+            index = index_reg
+        ));
 
         // 想定では GR6
         let value_reg = self.compile_int_expr(value);
@@ -731,10 +736,8 @@ impl Compiler {
         self.restore_register(index_reg);
 
         self.code(format!(
-            r#" ADDL  {index},{arr}
-                ST    {value},0,{index}"#,
+            r#" ST    {value},0,{index}"#,
             value = value_reg,
-            arr = arr_label,
             index = index_reg
         ));
 

@@ -8,14 +8,14 @@ impl Compiler {
 
         self.comment(format!("{} = {}", var_name, value));
 
-        let (arr_label, arr_size) = self.get_int_arr_label(var_name);
+        let dst_arr_label = self.get_int_arr_label(var_name);
 
-        let int_arr_label = self.compile_ref_arr_expr(value);
+        let src_arr_label = self.compile_ref_arr_expr(value);
         assert!(matches!(
-            int_arr_label.element_type(),
+            src_arr_label.element_type(),
             parser::ExprType::Integer
         ));
-        assert_eq!(arr_size, int_arr_label.size());
+        assert_eq!(dst_arr_label.size(), src_arr_label.size());
 
         let temp = self.get_temp_int_var_label();
 
@@ -26,22 +26,21 @@ impl Compiler {
 
         self.code(saves);
         self.code(format!(
-            r#" LAD   GR1,{arr}
+            r#" {lad_gr1_dstpos}
                 LAD   GR2,{temp}
                 {lad_gr3_srcpos}
                 LAD   GR4,{size}
                 CALL  {copy}"#,
-            arr = arr_label,
+            lad_gr1_dstpos = dst_arr_label.lad_pos(casl2::Register::Gr1),
             temp = temp,
-            lad_gr3_srcpos = int_arr_label.lad_pos(casl2::Register::Gr3),
-            size = arr_size,
+            lad_gr3_srcpos = src_arr_label.lad_pos(casl2::Register::Gr3),
+            size = src_arr_label.size(),
             copy = copystr
         ));
         self.code(recovers);
 
-        if let Some(labels) = int_arr_label.release() {
-            self.return_temp_str_var_label(labels);
-        }
+        self.return_if_temp_arr_label(src_arr_label);
+        self.return_if_temp_arr_label(dst_arr_label);
         self.return_temp_int_var_label(temp);
     }
 
@@ -56,14 +55,14 @@ impl Compiler {
 
         self.comment(format!("{} = {}", var_name, value));
 
-        let (arr_label, arr_size) = self.get_ref_int_arr_label(var_name);
+        let dst_arr_label = self.get_ref_int_arr_label(var_name);
 
-        let int_arr_label = self.compile_ref_arr_expr(value);
+        let src_arr_label = self.compile_ref_arr_expr(value);
         assert!(matches!(
-            int_arr_label.element_type(),
+            src_arr_label.element_type(),
             parser::ExprType::Integer
         ));
-        assert_eq!(arr_size, int_arr_label.size());
+        assert_eq!(dst_arr_label.size(), src_arr_label.size());
 
         let temp = self.get_temp_int_var_label();
 
@@ -74,22 +73,21 @@ impl Compiler {
 
         self.code(saves);
         self.code(format!(
-            r#" LD    GR1,{arr}
+            r#" {lad_gr1_dstpos}
                 LAD   GR2,{temp}
                 {lad_gr3_srcpos}
                 LAD   GR4,{size}
                 CALL  {copy}"#,
-            arr = arr_label,
+            lad_gr1_dstpos = dst_arr_label.lad_pos(casl2::Register::Gr1),
             temp = temp,
-            lad_gr3_srcpos = int_arr_label.lad_pos(casl2::Register::Gr3),
-            size = arr_size,
+            lad_gr3_srcpos = src_arr_label.lad_pos(casl2::Register::Gr3),
+            size = src_arr_label.size(),
             copy = copystr
         ));
         self.code(recovers);
 
-        if let Some(labels) = int_arr_label.release() {
-            self.return_temp_str_var_label(labels);
-        }
+        self.return_if_temp_arr_label(src_arr_label);
+        self.return_if_temp_arr_label(dst_arr_label);
         self.return_temp_int_var_label(temp);
     }
 
@@ -100,14 +98,14 @@ impl Compiler {
 
         self.comment(format!("{} = {}", var_name, value));
 
-        let (arr_label, arr_size) = self.get_bool_arr_label(var_name);
+        let dst_arr_label = self.get_bool_arr_label(var_name);
 
-        let bool_arr_label = self.compile_ref_arr_expr(value);
+        let src_arr_label = self.compile_ref_arr_expr(value);
         assert!(matches!(
-            bool_arr_label.element_type(),
+            src_arr_label.element_type(),
             parser::ExprType::Boolean
         ));
-        assert_eq!(arr_size, bool_arr_label.size());
+        assert_eq!(dst_arr_label.size(), src_arr_label.size());
 
         let temp = self.get_temp_int_var_label();
 
@@ -118,22 +116,21 @@ impl Compiler {
 
         self.code(saves);
         self.code(format!(
-            r#" LAD   GR1,{arr}
+            r#" {lad_gr1_dstpos}
                 LAD   GR2,{temp}
                 {lad_gr3_srcpos}
                 LAD   GR4,{size}
                 CALL  {copy}"#,
-            arr = arr_label,
+            lad_gr1_dstpos = dst_arr_label.lad_pos(casl2::Register::Gr1),
             temp = temp,
-            lad_gr3_srcpos = bool_arr_label.lad_pos(casl2::Register::Gr3),
-            size = arr_size,
+            lad_gr3_srcpos = src_arr_label.lad_pos(casl2::Register::Gr3),
+            size = src_arr_label.size(),
             copy = copystr
         ));
         self.code(recovers);
 
-        if let Some(labels) = bool_arr_label.release() {
-            self.return_temp_str_var_label(labels);
-        }
+        self.return_if_temp_arr_label(src_arr_label);
+        self.return_if_temp_arr_label(dst_arr_label);
         self.return_temp_int_var_label(temp);
     }
 
@@ -148,14 +145,14 @@ impl Compiler {
 
         self.comment(format!("{} = {}", var_name, value));
 
-        let (arr_label, arr_size) = self.get_ref_bool_arr_label(var_name);
+        let dst_arr_label = self.get_ref_bool_arr_label(var_name);
 
-        let bool_arr_label = self.compile_ref_arr_expr(value);
+        let src_arr_label = self.compile_ref_arr_expr(value);
         assert!(matches!(
-            bool_arr_label.element_type(),
+            src_arr_label.element_type(),
             parser::ExprType::Boolean
         ));
-        assert_eq!(arr_size, bool_arr_label.size());
+        assert_eq!(dst_arr_label.size(), src_arr_label.size());
 
         let temp = self.get_temp_int_var_label();
 
@@ -166,22 +163,21 @@ impl Compiler {
 
         self.code(saves);
         self.code(format!(
-            r#" LD    GR1,{arr}
+            r#" {lad_gr1_dstpos}
                 LAD   GR2,{temp}
                 {lad_gr3_srcpos}
                 LAD   GR4,{size}
                 CALL  {copy}"#,
-            arr = arr_label,
+            lad_gr1_dstpos = dst_arr_label.lad_pos(casl2::Register::Gr1),
             temp = temp,
-            lad_gr3_srcpos = bool_arr_label.lad_pos(casl2::Register::Gr3),
-            size = arr_size,
+            lad_gr3_srcpos = src_arr_label.lad_pos(casl2::Register::Gr3),
+            size = src_arr_label.size(),
             copy = copystr
         ));
         self.code(recovers);
 
-        if let Some(labels) = bool_arr_label.release() {
-            self.return_temp_str_var_label(labels);
-        }
+        self.return_if_temp_arr_label(src_arr_label);
+        self.return_if_temp_arr_label(dst_arr_label);
         self.return_temp_int_var_label(temp);
     }
 
