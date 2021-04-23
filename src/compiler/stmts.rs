@@ -35,7 +35,7 @@ impl Compiler {
         let argument_def = self.callables.get(&name).cloned().expect("BUG");
         assert_eq!(argument_def.len(), arguments.len());
 
-        let mut reg_and_label = Vec::<((IndexRegister, bool), (String, bool))>::new();
+        let mut set_argument_codes = Vec::<(IndexRegister, String)>::new();
         let mut temp_int_labels = Vec::<String>::new();
         let mut str_labels = Vec::<StrLabels>::new();
 
@@ -60,11 +60,25 @@ impl Compiler {
                     match value {
                         Expr::VarBoolean(var_name) => {
                             let label = self.get_bool_var_label(var_name);
-                            reg_and_label.push(((arg.register1, is_byref), (label, false)));
+                            set_argument_codes.push((
+                                arg.register1,
+                                if is_byref {
+                                    label.lad_pos(arg.register1.into())
+                                } else {
+                                    label.ld_value(arg.register1.into())
+                                },
+                            ));
                         }
                         Expr::VarRefBoolean(var_name) => {
                             let label = self.get_ref_bool_var_label(var_name);
-                            reg_and_label.push(((arg.register1, is_byref), (label, true)))
+                            set_argument_codes.push((
+                                arg.register1,
+                                if is_byref {
+                                    label.lad_pos(arg.register1.into())
+                                } else {
+                                    label.ld_value(arg.register1.into())
+                                },
+                            ));
                         }
                         Expr::VarArrayOfBoolean(var_name, index) => {
                             let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
@@ -92,7 +106,10 @@ impl Compiler {
                             self.code(recovers);
                             self.set_register_idle(index_reg);
                             temp_int_labels.push(temp_label.clone());
-                            reg_and_label.push(((arg.register1, is_byref), (temp_label, true)));
+                            set_argument_codes.push((
+                                arg.register1,
+                                format!(" LD {reg},{temp}", reg = arg.register1, temp = temp_label),
+                            ));
                         }
                         Expr::VarRefArrayOfBoolean(var_name, index) => {
                             let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
@@ -120,7 +137,10 @@ impl Compiler {
                             self.code(recovers);
                             self.set_register_idle(index_reg);
                             temp_int_labels.push(temp_label.clone());
-                            reg_and_label.push(((arg.register1, is_byref), (temp_label, true)));
+                            set_argument_codes.push((
+                                arg.register1,
+                                format!(" LD {reg},{temp}", reg = arg.register1, temp = temp_label),
+                            ));
                         }
                         _ => {
                             let value_reg = self.compile_int_expr(value);
@@ -132,7 +152,15 @@ impl Compiler {
                             ));
                             self.set_register_idle(value_reg);
                             temp_int_labels.push(temp_label.clone());
-                            reg_and_label.push(((arg.register1, is_byref), (temp_label, false)));
+                            set_argument_codes.push((
+                                arg.register1,
+                                format!(
+                                    " {cmd} {reg},{temp}",
+                                    cmd = if is_byref { "LAD" } else { "LD" },
+                                    reg = arg.register1,
+                                    temp = temp_label
+                                ),
+                            ));
                         }
                     }
                 }
@@ -146,11 +174,25 @@ impl Compiler {
                     match value {
                         Expr::VarInteger(var_name) => {
                             let label = self.get_int_var_label(var_name);
-                            reg_and_label.push(((arg.register1, is_byref), (label, false)));
+                            set_argument_codes.push((
+                                arg.register1,
+                                if is_byref {
+                                    label.lad_pos(arg.register1.into())
+                                } else {
+                                    label.ld_value(arg.register1.into())
+                                },
+                            ));
                         }
                         Expr::VarRefInteger(var_name) => {
                             let label = self.get_ref_int_var_label(var_name);
-                            reg_and_label.push(((arg.register1, is_byref), (label, true)))
+                            set_argument_codes.push((
+                                arg.register1,
+                                if is_byref {
+                                    label.lad_pos(arg.register1.into())
+                                } else {
+                                    label.ld_value(arg.register1.into())
+                                },
+                            ));
                         }
                         Expr::VarArrayOfInteger(var_name, index) => {
                             let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
@@ -178,7 +220,10 @@ impl Compiler {
                             self.code(recovers);
                             self.set_register_idle(index_reg);
                             temp_int_labels.push(temp_label.clone());
-                            reg_and_label.push(((arg.register1, is_byref), (temp_label, true)));
+                            set_argument_codes.push((
+                                arg.register1,
+                                format!(" LD {reg},{temp}", reg = arg.register1, temp = temp_label),
+                            ));
                         }
                         Expr::VarRefArrayOfInteger(var_name, index) => {
                             let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
@@ -206,7 +251,10 @@ impl Compiler {
                             self.code(recovers);
                             self.set_register_idle(index_reg);
                             temp_int_labels.push(temp_label.clone());
-                            reg_and_label.push(((arg.register1, is_byref), (temp_label, true)));
+                            set_argument_codes.push((
+                                arg.register1,
+                                format!(" LD {reg},{temp}", reg = arg.register1, temp = temp_label),
+                            ));
                         }
                         Expr::CharOfVarString(var_name, index) => {
                             let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
@@ -234,7 +282,10 @@ impl Compiler {
                             self.code(recovers);
                             self.set_register_idle(index_reg);
                             temp_int_labels.push(temp_label.clone());
-                            reg_and_label.push(((arg.register1, is_byref), (temp_label, true)));
+                            set_argument_codes.push((
+                                arg.register1,
+                                format!(" LD {reg},{temp}", reg = arg.register1, temp = temp_label),
+                            ));
                         }
                         Expr::CharOfVarRefString(var_name, index) => {
                             let safe_index = self.load_subroutine(subroutine::Id::UtilSafeIndex);
@@ -261,7 +312,10 @@ impl Compiler {
                             self.code(recovers);
                             self.set_register_idle(index_reg);
                             temp_int_labels.push(temp_label.clone());
-                            reg_and_label.push(((arg.register1, is_byref), (temp_label, true)));
+                            set_argument_codes.push((
+                                arg.register1,
+                                format!(" LD {reg},{temp}", reg = arg.register1, temp = temp_label),
+                            ));
                         }
                         _ => {
                             let value_reg = self.compile_int_expr(value);
@@ -273,7 +327,15 @@ impl Compiler {
                             ));
                             self.set_register_idle(value_reg);
                             temp_int_labels.push(temp_label.clone());
-                            reg_and_label.push(((arg.register1, is_byref), (temp_label, false)));
+                            set_argument_codes.push((
+                                arg.register1,
+                                format!(
+                                    " {cmd} {reg},{temp}",
+                                    cmd = if is_byref { "LAD" } else { "LD" },
+                                    reg = arg.register1,
+                                    temp = temp_label
+                                ),
+                            ));
                         }
                     }
                 }
@@ -287,9 +349,15 @@ impl Compiler {
                     let labels = self.compile_str_expr(value);
                     let reg1 = arg.register1;
                     let reg2 = arg.register2.expect("BUG");
-                    let val_is_ref = matches!(labels.label_type, StrLabelType::ArgRef);
-                    reg_and_label.push(((reg1, is_byref), (labels.len.clone(), val_is_ref)));
-                    reg_and_label.push(((reg2, true), (labels.pos.clone(), val_is_ref)));
+                    set_argument_codes.push((
+                        reg1,
+                        if is_byref {
+                            labels.lad_len(reg1.into())
+                        } else {
+                            labels.ld_len(reg1.into())
+                        },
+                    ));
+                    set_argument_codes.push((reg2, labels.lad_pos(reg2.into())));
                     str_labels.push(labels);
                 }
 
@@ -303,15 +371,21 @@ impl Compiler {
                     let label = self.compile_ref_arr_expr(value);
                     match label {
                         ArrayLabel::TempArrayOfBoolean(labels, size3) if size1 == size3 => {
-                            reg_and_label
-                                .push(((arg.register1, true), (labels.pos.clone(), false)));
-                            str_labels.push(labels);
+                            set_argument_codes
+                                .push((arg.register1, labels.lad_pos(arg.register1.into())));
+                            str_labels.push(labels.clone());
                         }
                         ArrayLabel::VarArrayOfBoolean(label, size3) if size1 == size3 => {
-                            reg_and_label.push(((arg.register1, true), (label, false)));
+                            set_argument_codes.push((
+                                arg.register1,
+                                format!(" LAD {reg},{arr}", reg = arg.register1, arr = label),
+                            ));
                         }
                         ArrayLabel::VarRefArrayOfBoolean(label, size3) if size1 == size3 => {
-                            reg_and_label.push(((arg.register1, true), (label, true)));
+                            set_argument_codes.push((
+                                arg.register1,
+                                format!(" LD {reg},{arr}", reg = arg.register1, arr = label),
+                            ));
                         }
                         _ => unreachable!("BUG"),
                     }
@@ -327,15 +401,21 @@ impl Compiler {
                     let label = self.compile_ref_arr_expr(value);
                     match label {
                         ArrayLabel::TempArrayOfInteger(labels, size3) if size1 == size3 => {
-                            reg_and_label
-                                .push(((arg.register1, true), (labels.pos.clone(), false)));
+                            set_argument_codes
+                                .push((arg.register1, labels.lad_pos(arg.register1.into())));
                             str_labels.push(labels);
                         }
                         ArrayLabel::VarArrayOfInteger(label, size3) if size1 == size3 => {
-                            reg_and_label.push(((arg.register1, true), (label, false)));
+                            set_argument_codes.push((
+                                arg.register1,
+                                format!(" LAD {reg},{arr}", reg = arg.register1, arr = label),
+                            ));
                         }
                         ArrayLabel::VarRefArrayOfInteger(label, size3) if size1 == size3 => {
-                            reg_and_label.push(((arg.register1, true), (label, true)));
+                            set_argument_codes.push((
+                                arg.register1,
+                                format!(" LD {reg},{arr}", reg = arg.register1, arr = label),
+                            ));
                         }
                         _ => unreachable!("BUG"),
                     }
@@ -349,31 +429,16 @@ impl Compiler {
             self.comment(format!("  Set Arguments And Call {}", name));
         }
 
-        let regs: Vec<casl2::Register> = reg_and_label
+        let regs: Vec<casl2::Register> = set_argument_codes
             .iter()
-            .map(|((reg, _), _)| (*reg).into())
+            .map(|(reg, _)| (*reg).into())
             .collect();
 
         let (saves, recovers) = self.get_save_registers_src(&regs);
 
         self.code(saves);
-        for ((reg, is_byref), (label, val_is_ref)) in reg_and_label {
-            if is_byref {
-                if val_is_ref {
-                    self.code(format!(r#" LD {reg},{label}"#, reg = reg, label = label));
-                } else {
-                    self.code(format!(r#" LAD {reg},{label}"#, reg = reg, label = label));
-                }
-            } else if val_is_ref {
-                self.code(format!(
-                    r#" LD  {reg},{label}
-                        LD  {reg},0,{reg}"#,
-                    reg = reg,
-                    label = label
-                ));
-            } else {
-                self.code(format!(r#" LD  {reg},{label}"#, reg = reg, label = label));
-            }
+        for (_, src) in set_argument_codes {
+            self.code(src);
         }
         self.code(format!(r#" CALL {prog}"#, prog = name));
         self.code(recovers);
@@ -402,11 +467,23 @@ impl Compiler {
 
         for arg in arguments.iter() {
             match arg.var_type {
-                parser::VarType::Boolean
-                | parser::VarType::RefBoolean
-                | parser::VarType::Integer
-                | parser::VarType::RefInteger => {
-                    let label = format!("ARG{}", arg.register1 as isize);
+                parser::VarType::Boolean => {
+                    let label = ValueLabel::VarBoolean(format!("ARG{}", arg.register1 as isize));
+                    self.argument_labels
+                        .insert(arg.var_name.clone(), (label, arg.clone()));
+                }
+                parser::VarType::RefBoolean => {
+                    let label = ValueLabel::VarRefBoolean(format!("ARG{}", arg.register1 as isize));
+                    self.argument_labels
+                        .insert(arg.var_name.clone(), (label, arg.clone()));
+                }
+                parser::VarType::Integer => {
+                    let label = ValueLabel::VarInteger(format!("ARG{}", arg.register1 as isize));
+                    self.argument_labels
+                        .insert(arg.var_name.clone(), (label, arg.clone()));
+                }
+                parser::VarType::RefInteger => {
+                    let label = ValueLabel::VarRefInteger(format!("ARG{}", arg.register1 as isize));
                     self.argument_labels
                         .insert(arg.var_name.clone(), (label, arg.clone()));
                 }
@@ -731,12 +808,12 @@ impl Compiler {
         self.var_id += 1;
         match var_type {
             VarType::Boolean => {
-                let label = format!("B{}", self.var_id);
+                let label = ValueLabel::VarBoolean(format!("B{}", self.var_id));
                 self.bool_var_labels.insert(var_name.into(), label);
                 self.var_total_size += 1;
             }
             VarType::Integer => {
-                let label = format!("I{}", self.var_id);
+                let label = ValueLabel::VarInteger(format!("I{}", self.var_id));
                 self.int_var_labels.insert(var_name.into(), label);
                 self.var_total_size += 1;
             }

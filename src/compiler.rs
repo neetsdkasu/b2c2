@@ -137,6 +137,14 @@ enum ArrayLabel {
     VarRefArrayOfInteger(String, usize),
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+enum ValueLabel {
+    VarBoolean(String),
+    VarInteger(String),
+    VarRefBoolean(String),
+    VarRefInteger(String),
+}
+
 struct Compiler {
     // プログラム名
     program_name: Option<String>,
@@ -146,7 +154,7 @@ struct Compiler {
     arguments: Vec<parser::ArgumentInfo>,
 
     // プログラム引数のラベル (真理値/整数) (引数名, (ラベル, 引数情報))
-    argument_labels: HashMap<String, (String, parser::ArgumentInfo)>,
+    argument_labels: HashMap<String, (ValueLabel, parser::ArgumentInfo)>,
 
     // プログラム引数のラベル (真理値配列/整数配列) (引数名, (ラベル, 引数情報))
     arr_argument_labels: HashMap<String, (ArrayLabel, parser::ArgumentInfo)>,
@@ -174,10 +182,10 @@ struct Compiler {
     jump_id: usize,
 
     // 真理値変数のラベル対応を保持 (変数名, ラベル)
-    bool_var_labels: HashMap<String, String>,
+    bool_var_labels: HashMap<String, ValueLabel>,
 
     // 整数変数のラベル対応を保持 (変数名, ラベル)
-    int_var_labels: HashMap<String, String>,
+    int_var_labels: HashMap<String, ValueLabel>,
 
     // 文字列変数のラベル対応を保持 (変数名, (長さラベル, 内容位置ラベル))
     str_var_labels: HashMap<String, StrLabels>,
@@ -499,7 +507,7 @@ impl Compiler {
     }
 
     // 整数変数のラベル取得
-    fn get_int_var_label(&self, var_name: &str) -> String {
+    fn get_int_var_label(&self, var_name: &str) -> ValueLabel {
         self.int_var_labels
             .get(var_name)
             .cloned()
@@ -512,7 +520,7 @@ impl Compiler {
     }
 
     // 整数変数(参照型)のラベル取得
-    fn get_ref_int_var_label(&self, var_name: &str) -> String {
+    fn get_ref_int_var_label(&self, var_name: &str) -> ValueLabel {
         let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
         assert_eq!(arg.var_name, var_name);
         assert!(matches!(arg.var_type, parser::VarType::RefInteger));
@@ -520,7 +528,7 @@ impl Compiler {
     }
 
     // 真理値変数のラベル取得
-    fn get_bool_var_label(&self, var_name: &str) -> String {
+    fn get_bool_var_label(&self, var_name: &str) -> ValueLabel {
         self.bool_var_labels
             .get(var_name)
             .cloned()
@@ -533,7 +541,7 @@ impl Compiler {
     }
 
     // 真理値変数(参照型)のラベル取得
-    fn get_ref_bool_var_label(&self, var_name: &str) -> String {
+    fn get_ref_bool_var_label(&self, var_name: &str) -> ValueLabel {
         let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
         assert_eq!(arg.var_name, var_name);
         assert!(matches!(arg.var_type, parser::VarType::RefBoolean));
@@ -658,7 +666,7 @@ impl Compiler {
                 | parser::VarType::Integer
                 | parser::VarType::RefInteger => {
                     let (label, _) = argument_labels.get(&arg.var_name).expect("BUG");
-                    statements.labeled(label.clone(), casl2::Command::Ds { size: 1 });
+                    statements.labeled(label.label(), casl2::Command::Ds { size: 1 });
                 }
                 parser::VarType::RefArrayOfBoolean(_) | parser::VarType::RefArrayOfInteger(_) => {
                     let (label, _) = arr_argument_labels.get(&arg.var_name).expect("BUG");
@@ -691,10 +699,10 @@ impl Compiler {
             .collect::<BTreeSet<_>>()
         {
             if first_var_label.is_none() {
-                first_var_label = Some(label.clone());
+                first_var_label = Some(label.label());
             }
             statements.comment(format!("Dim {} As Boolean", var_name));
-            statements.labeled(label, casl2::Command::Ds { size: 1 });
+            statements.labeled(label.label(), casl2::Command::Ds { size: 1 });
         }
 
         // 整数変数 I**
@@ -704,10 +712,10 @@ impl Compiler {
             .collect::<BTreeSet<_>>()
         {
             if first_var_label.is_none() {
-                first_var_label = Some(label.clone());
+                first_var_label = Some(label.label());
             }
             statements.comment(format!("Dim {} As Integer", var_name));
-            statements.labeled(label, casl2::Command::Ds { size: 1 });
+            statements.labeled(label.label(), casl2::Command::Ds { size: 1 });
         }
 
         // 文字列変数 SL** SB**
@@ -810,7 +818,7 @@ impl Compiler {
                     temp_statements.code(format!(
                         r#" ST {reg},{label}"#,
                         reg = arg.register1,
-                        label = label
+                        label = label.label()
                     ));
                 }
                 parser::VarType::RefArrayOfBoolean(_)
@@ -1213,7 +1221,7 @@ impl ArrayLabel {
                     r#" LD   {reg},{pos}
                         ST   {value},0,{reg}"#,
                     value = value,
-                    reg = extra,
+                    reg = casl2::IndexRegister::try_from(extra).expect("BUG"),
                     pos = label
                 )
             }
@@ -1322,6 +1330,68 @@ impl StrLabels {
                     len = self.len
                 )
             }
+        }
+    }
+}
+
+impl ValueLabel {
+    fn label(&self) -> String {
+        match self {
+            Self::VarBoolean(label)
+            | Self::VarInteger(label)
+            | Self::VarRefBoolean(label)
+            | Self::VarRefInteger(label) => label.clone(),
+        }
+    }
+
+    fn lad_pos(&self, reg: casl2::Register) -> String {
+        match self {
+            Self::VarBoolean(label) | Self::VarInteger(label) => {
+                format!(" LAD {reg},{label}", reg = reg, label = label)
+            }
+            Self::VarRefBoolean(label) | Self::VarRefInteger(label) => {
+                format!(" LD {reg},{label}", reg = reg, label = label)
+            }
+        }
+    }
+
+    fn ld_value(&self, reg: casl2::Register) -> String {
+        match self {
+            Self::VarBoolean(label) | Self::VarInteger(label) => {
+                format!(" LD {reg},{label}", reg = reg, label = label)
+            }
+            Self::VarRefBoolean(label) | Self::VarRefInteger(label) => {
+                format!(
+                    r#" LD {reg},{label}
+                        LD {reg},0,{reg}"#,
+                    reg = reg,
+                    label = label
+                )
+            }
+        }
+    }
+
+    fn st_value(&self, value: casl2::Register, extra: casl2::Register) -> String {
+        match self {
+            Self::VarBoolean(label) | Self::VarInteger(label) => {
+                format!(" ST {value},{label}", value = value, label = label)
+            }
+            Self::VarRefBoolean(label) | Self::VarRefInteger(label) => {
+                format!(
+                    r#" LD {extra},{label}
+                        ST {value},0,{extra}"#,
+                    extra = casl2::IndexRegister::try_from(extra).expect("BUG"),
+                    label = label,
+                    value = value
+                )
+            }
+        }
+    }
+
+    fn value_type(&self) -> parser::ExprType {
+        match self {
+            Self::VarBoolean(..) | Self::VarRefBoolean(..) => parser::ExprType::Boolean,
+            Self::VarInteger(..) | Self::VarRefInteger(..) => parser::ExprType::Integer,
         }
     }
 }

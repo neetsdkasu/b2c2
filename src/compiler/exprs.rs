@@ -777,15 +777,8 @@ impl Compiler {
 
         let var_label = self.get_int_var_label(var_name);
 
-        let adr = casl2::Adr::label(&var_label);
-
         // LD REG,VAR
-        self.code(casl2::Command::A {
-            code: casl2::A::Ld,
-            r: reg,
-            adr,
-            x: None,
-        });
+        self.code(var_label.ld_value(reg));
 
         reg
     }
@@ -797,15 +790,7 @@ impl Compiler {
 
         let var_label = self.get_ref_int_var_label(var_name);
 
-        // LD REG,VAR
-        // LD REG,0,REG
-        let src = format!(
-            r#" LD {reg},{var}
-                LD {reg},0,{reg}"#,
-            reg = reg,
-            var = var_label
-        );
-        self.code(src);
+        self.code(var_label.ld_value(reg));
 
         reg
     }
@@ -840,15 +825,8 @@ impl Compiler {
     pub(super) fn compile_variable_boolean(&mut self, var_name: &str) -> casl2::Register {
         let reg = self.get_idle_register();
         let var_label = self.get_bool_var_label(var_name);
-        let adr = casl2::Adr::label(&var_label);
 
-        // LD REG,VAR
-        self.code(casl2::Command::A {
-            code: casl2::A::Ld,
-            r: reg,
-            adr,
-            x: None,
-        });
+        self.code(var_label.ld_value(reg));
 
         reg
     }
@@ -859,12 +837,7 @@ impl Compiler {
         let reg = self.get_idle_register();
         let var_label = self.get_ref_bool_var_label(var_name);
 
-        self.code(format!(
-            r#" LD  {reg},{var}
-                LD  {reg},0,{reg}"#,
-            reg = reg,
-            var = var_label
-        ));
+        self.code(var_label.ld_value(reg));
 
         reg
     }

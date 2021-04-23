@@ -195,12 +195,13 @@ impl Compiler {
         let reg = self.get_idle_register();
 
         self.code(format!(
-            r#" LD    {reg},{var}
+            r#" {ld_reg_var}
                 SUBA  {reg},{value}
-                ST    {reg},{var}"#,
+                {st_reg_var}"#,
+            ld_reg_var = var_label.ld_value(reg),
             reg = reg,
-            var = var_label,
-            value = value_reg
+            value = value_reg,
+            st_reg_var = var_label.st_value(reg, value_reg)
         ));
 
         self.set_register_idle(reg);
@@ -218,25 +219,20 @@ impl Compiler {
 
         let value_reg = self.compile_int_expr(value);
 
-        let pos = self.get_idle_register();
-        assert_ne!(value_reg, pos);
         let reg = self.get_idle_register();
         assert_ne!(value_reg, reg);
-        assert_ne!(pos, reg);
 
         self.code(format!(
-            r#" LD    {pos},{var}
-                LD    {reg},0,{pos}
+            r#" {ld_reg_var}
                 SUBA  {reg},{value}
-                ST    {reg},0,{pos}"#,
-            pos = pos,
+                {st_reg_var}"#,
+            ld_reg_var = var_label.ld_value(reg),
             reg = reg,
-            var = var_label,
-            value = value_reg
+            value = value_reg,
+            st_reg_var = var_label.st_value(reg, value_reg)
         ));
 
         self.set_register_idle(reg);
-        self.set_register_idle(pos);
         self.set_register_idle(value_reg);
     }
 
@@ -248,16 +244,20 @@ impl Compiler {
         self.comment(format!("{var} += {value}", var = var_name, value = value));
 
         let value_reg = self.compile_int_expr(value);
+        let temp_reg = self.get_idle_register();
 
         let var_label = self.get_int_var_label(var_name);
 
         self.code(format!(
-            r#" ADDA  {reg},{var}
-                ST    {reg},{var}"#,
-            reg = value_reg,
-            var = var_label
+            r#" {lad_temp_var}
+                ADDA  {value},0,{temp}
+                ST    {value},0,{temp}"#,
+            lad_temp_var = var_label.lad_pos(temp_reg),
+            value = value_reg,
+            temp = temp_reg
         ));
 
+        self.set_register_idle(temp_reg);
         self.set_register_idle(value_reg);
     }
 
@@ -275,12 +275,12 @@ impl Compiler {
         let temp_reg = self.get_idle_register();
 
         self.code(format!(
-            r#" LD    {temp},{var}
+            r#" {lad_temp_var}
                 ADDA  {reg},0,{temp}
                 ST    {reg},0,{temp}"#,
+            lad_temp_var = var_label.lad_pos(temp_reg),
             temp = temp_reg,
-            reg = value_reg,
-            var = var_label
+            reg = value_reg
         ));
 
         self.set_register_idle(temp_reg);
@@ -294,19 +294,16 @@ impl Compiler {
 
         self.comment(format!("{var} = {value}", var = var_name, value = value));
 
-        let reg = self.compile_int_expr(value);
+        let value_reg = self.compile_int_expr(value);
+        let temp_reg = self.get_idle_register();
+        assert_ne!(value_reg, temp_reg);
+
         let var_label = self.get_bool_var_label(var_name);
-        let adr = casl2::Adr::label(&var_label);
 
-        // ST {reg},{var}
-        self.code(casl2::Command::A {
-            code: casl2::A::St,
-            r: reg,
-            adr,
-            x: None,
-        });
+        self.code(var_label.st_value(value_reg, temp_reg));
 
-        self.set_register_idle(reg);
+        self.set_register_idle(temp_reg);
+        self.set_register_idle(value_reg);
     }
 
     // Assign Ref Boolean ステートメント
@@ -321,13 +318,7 @@ impl Compiler {
         let temp_reg = self.get_idle_register();
         assert_ne!(value_reg, temp_reg);
 
-        self.code(format!(
-            r#" LD  {temp},{var}
-                ST  {value},0,{temp}"#,
-            temp = temp_reg,
-            var = var_label,
-            value = value_reg
-        ));
+        self.code(var_label.st_value(value_reg, temp_reg));
 
         self.set_register_idle(temp_reg);
         self.set_register_idle(value_reg);
@@ -409,21 +400,15 @@ impl Compiler {
     // ref_int_var = int_expr
     pub(super) fn compile_assign_ref_integer(&mut self, var_name: &str, value: &parser::Expr) {
         self.comment(format!("{var} = {value}", var = var_name, value = value));
+
         let value_reg = self.compile_int_expr(value);
-        let ref_reg = self.get_idle_register();
+        let temp_reg = self.get_idle_register();
 
         let var_label = self.get_ref_int_var_label(var_name);
 
-        let src = format!(
-            r#" LD {refvar},{var}
-                ST {value},0,{refvar}"#,
-            refvar = ref_reg,
-            var = var_label,
-            value = value_reg
-        );
-        self.code(src);
+        self.code(var_label.st_value(value_reg, temp_reg));
 
-        self.set_register_idle(ref_reg);
+        self.set_register_idle(temp_reg);
         self.set_register_idle(value_reg);
     }
 
@@ -431,20 +416,15 @@ impl Compiler {
     // int_var = int_expr
     pub(super) fn compile_assign_integer(&mut self, var_name: &str, value: &parser::Expr) {
         self.comment(format!("{var} = {value}", var = var_name, value = value));
-        let reg = self.compile_int_expr(value);
+
+        let value_reg = self.compile_int_expr(value);
+        let temp_reg = self.get_idle_register();
 
         let var_label = self.get_int_var_label(var_name);
 
-        let adr = casl2::Adr::label(&var_label);
+        self.code(var_label.st_value(value_reg, temp_reg));
 
-        // ST {reg},{var}
-        self.code(casl2::Command::A {
-            code: casl2::A::St,
-            r: reg,
-            adr,
-            x: None,
-        });
-
-        self.set_register_idle(reg);
+        self.set_register_idle(temp_reg);
+        self.set_register_idle(value_reg);
     }
 }

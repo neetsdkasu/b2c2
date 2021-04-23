@@ -915,9 +915,10 @@ J1                   NOP
                      JPL    J3
                                    ; Next i
 J2                   NOP
-                     LD     GR1,I1
-                     LAD    GR1,1,GR1
-                     ST     GR1,I1
+                     LAD    GR1,I1
+                     LD     GR2,0,GR1
+                     LAD    GR2,1,GR2
+                     ST     GR2,0,GR1
                      JUMP   J1
 J3                   NOP
 EXIT                 NOP
@@ -963,9 +964,10 @@ J1                   NOP
                      JPL    J3
                                    ; Next i
 J2                   NOP
-                     LD     GR1,I1
-                     LAD    GR1,1,GR1
-                     ST     GR1,I1
+                     LAD    GR1,I1
+                     LD     GR2,0,GR1
+                     LAD    GR2,1,GR2
+                     ST     GR2,0,GR1
                      JUMP   J1
 J3                   NOP
 EXIT                 NOP
@@ -1011,9 +1013,10 @@ J1                   NOP
                      JMI    J3
                                    ; Next i
 J2                   NOP
-                     LD     GR1,I1
-                     LAD    GR1,-2,GR1
-                     ST     GR1,I1
+                     LAD    GR1,I1
+                     LD     GR2,0,GR1
+                     LAD    GR2,-2,GR2
+                     ST     GR2,0,GR1
                      JUMP   J1
 J3                   NOP
 EXIT                 NOP
@@ -1064,15 +1067,17 @@ J1                   NOP
                      LD     GR1,I2
                      CPA    GR1,=10
                      JUMP   J3
-J2                   LAD     GR1,10
-                     CPA    GR1,I2
+J2                   LAD    GR0,10
+                     LAD    GR1,I2
+                     CPA    GR0,0,GR1
 J3                   NOP
                      JPL    J5
                                    ; Next I
 J4                   NOP
-                     LD     GR1,I2
-                     ADDA   GR1,T1
-                     ST     GR1,I2
+                     LAD    GR1,I2
+                     LD     GR0,0,GR1
+                     ADDA   GR0,T1
+                     ST     GR0,0,GR1
                      JUMP   J1
 J5                   NOP
 EXIT                 NOP
@@ -1632,7 +1637,7 @@ Print outStr
 
     eprintln!("TEST CODE");
     eprintln!("++++++++[>+++++++++[>+>++<<-]++[>>---<<-]<-]>>.>+++++.+++++++..+++.");
-    
+
     assert!(!statements.is_empty()); // dummy assert
 }
 

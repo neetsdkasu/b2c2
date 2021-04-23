@@ -57,23 +57,9 @@ impl Compiler {
         // calc {init} and assign to {counter}
         // 想定では GR7
         let init_reg = self.compile_int_expr(init);
-        if is_ref {
-            let reg = self.get_idle_register();
-            self.code(format!(
-                r#" LD  {reg},{var}
-                    ST  {init},0,{reg}"#,
-                reg = reg,
-                var = counter_var,
-                init = init_reg
-            ));
-            self.set_register_idle(reg);
-        } else {
-            self.code(format!(
-                r#" ST {init},{var}"#,
-                init = init_reg,
-                var = counter_var
-            ));
-        }
+        let temp_reg = self.get_idle_register();
+        self.code(counter_var.st_value(init_reg, temp_reg));
+        self.set_register_idle(temp_reg);
         self.set_register_idle(init_reg); // GR7 解放のはず
 
         // ラベルの準備
@@ -93,21 +79,17 @@ impl Compiler {
         self.code(saves);
         if let Some(end_var) = end_var.as_ref() {
             self.code(format!(
-                r#" LD    GR1,{counter}
-                    {ld_counter_if_ref}
+                r#" {ld_gr1_counter}
                     CPA   GR1,{end}"#,
-                counter = counter_var,
-                end = end_var,
-                ld_counter_if_ref = if is_ref { "LD GR1,0,GR1" } else { "" }
+                ld_gr1_counter = counter_var.ld_value(casl2::Register::Gr1),
+                end = end_var
             ));
         } else if let parser::Expr::LitInteger(end) = end {
             self.code(format!(
-                r#" LD    GR1,{counter}
-                    {ld_counter_if_ref}
+                r#" {ld_gr1_counter}
                     CPA   GR1,={end}"#,
-                counter = counter_var,
-                end = *end as i16,
-                ld_counter_if_ref = if is_ref { "LD GR1,0,GR1" } else { "" }
+                ld_gr1_counter = counter_var.ld_value(casl2::Register::Gr1),
+                end = *end as i16
             ));
         } else {
             unreachable!("BUG");
@@ -130,34 +112,20 @@ impl Compiler {
         self.comment(format!("Next {counter}", counter = counter));
 
         self.code(format!("{next} NOP", next = loop_label));
-        if is_ref {
-            let (saves, recovers) = {
-                use casl2::Register::*;
-                self.get_save_registers_src(&[Gr1, Gr2])
-            };
-            self.code(saves);
-            self.code(format!(
-                r#" LD    GR1,{counter}
-                    LD    GR2,0,GR1
-                    LAD   GR2,{step},GR2
-                    ST    GR2,0,GR1"#,
-                counter = counter_var,
-                step = step
-            ));
-            self.code(recovers);
-        } else {
-            let (saves, recovers) =
-                self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
-            self.code(saves);
-            self.code(format!(
-                r#" LD    GR1,{counter}
-                    LAD   GR1,{step},GR1
-                    ST    GR1,{counter}"#,
-                counter = counter_var,
-                step = step
-            ));
-            self.code(recovers);
-        }
+        let (saves, recovers) = {
+            use casl2::Register::*;
+            self.get_save_registers_src(&[Gr1, Gr2])
+        };
+        self.code(saves);
+        self.code(format!(
+            r#" {lad_gr1_counterpos}
+                LD    GR2,0,GR1
+                LAD   GR2,{step},GR2
+                ST    GR2,0,GR1"#,
+            lad_gr1_counterpos = counter_var.lad_pos(casl2::Register::Gr1),
+            step = step
+        ));
+        self.code(recovers);
         self.code(format!(" JUMP {cond}", cond = condition_label));
         self.code(format!("{exit} NOP", exit = exit_label));
 
@@ -230,23 +198,9 @@ impl Compiler {
         // calc {init} and assign to {counter}
         // 想定では GR7
         let init_reg = self.compile_int_expr(init);
-        if is_ref {
-            let reg = self.get_idle_register();
-            self.code(format!(
-                r#" LD  {reg},{var}
-                    ST  {init},0,{reg}"#,
-                reg = reg,
-                var = counter_var,
-                init = init_reg
-            ));
-            self.set_register_idle(reg);
-        } else {
-            self.code(format!(
-                r#" ST {init},{var}"#,
-                init = init_reg,
-                var = counter_var
-            ));
-        }
+        let temp_reg = self.get_idle_register();
+        self.code(counter_var.st_value(init_reg, temp_reg));
+        self.set_register_idle(temp_reg);
         self.set_register_idle(init_reg); // GR7 解放のはず
 
         // ラベルの準備
@@ -267,77 +221,41 @@ impl Compiler {
         self.code(format!("{cond} NOP", cond = condition_label));
         self.code(saves);
         if let Some(end_var) = end_var.as_ref() {
-            if is_ref {
-                self.code(format!(
-                    r#" LD    GR1,{step}
-                        JMI   {nega}
-                        LD    GR1,{counter}
-                        LD    GR1,0,GR1
-                        CPA   GR1,{end}
-                        JUMP  {block}
-{nega}                  LD    GR0,{end}
-                        LD    GR1,{counter}
-                        CPA   GR0,0,GR1
-{block}                 NOP"#,
-                    counter = counter_var,
-                    step = step_var,
-                    nega = negastep_label,
-                    end = end_var,
-                    block = blockhead_label
-                ));
-            } else {
-                self.code(format!(
-                    r#" LD    GR1,{step}
-                        JMI   {nega}
-                        LD    GR1,{counter}
-                        CPA   GR1,{end}
-                        JUMP  {block}
-{nega}                  LD    GR1,{end}
-                        CPA   GR1,{counter}
-{block}                 NOP"#,
-                    counter = counter_var,
-                    step = step_var,
-                    nega = negastep_label,
-                    end = end_var,
-                    block = blockhead_label
-                ));
-            }
+            self.code(format!(
+                r#" LD    GR1,{step}
+                    JMI   {nega}
+                    {ld_gr1_counter}
+                    CPA   GR1,{end}
+                    JUMP  {block}
+{nega}              LD    GR0,{end}
+                    {lad_gr1_counterpos}
+                    CPA   GR0,0,GR1
+{block}             NOP"#,
+                step = step_var,
+                nega = negastep_label,
+                ld_gr1_counter = counter_var.ld_value(casl2::Register::Gr1),
+                end = end_var,
+                block = blockhead_label,
+                lad_gr1_counterpos = counter_var.lad_pos(casl2::Register::Gr1)
+            ));
         } else if let parser::Expr::LitInteger(end) = end {
-            if is_ref {
-                self.code(format!(
-                    r#" LD    GR1,{step}
-                        JMI   {nega}
-                        LD    GR1,{counter}
-                        LD    GR1,0,GR1
-                        CPA   GR1,={end}
-                        JUMP  {block}
-{nega}                  LAD   GR0,{end}
-                        LD    GR1,{counter}
-                        CPA   GR0,0,GR1
-{block}                 NOP"#,
-                    counter = counter_var,
-                    step = step_var,
-                    nega = negastep_label,
-                    end = *end as i16,
-                    block = blockhead_label
-                ));
-            } else {
-                self.code(format!(
-                    r#" LD    GR1,{step}
-                        JMI   {nega}
-                        LD    GR1,{counter}
-                        CPA   GR1,={end}
-                        JUMP  {block}
-{nega}                  LAD   GR1,{end}
-                        CPA   GR1,{counter}
-{block}                 NOP"#,
-                    counter = counter_var,
-                    step = step_var,
-                    nega = negastep_label,
-                    end = *end as i16,
-                    block = blockhead_label
-                ));
-            }
+            self.code(format!(
+                r#" LD    GR1,{step}
+                    JMI   {nega}
+                    {ld_gr1_counter}
+                    CPA   GR1,={end}
+                    JUMP  {block}
+{nega}              LAD   GR0,{end}
+                    {lad_gr1_counterpos}
+                    CPA   GR0,0,GR1
+{block}             NOP"#,
+                step = step_var,
+                nega = negastep_label,
+                ld_gr1_counter = counter_var.ld_value(casl2::Register::Gr1),
+                end = *end as i16,
+                block = blockhead_label,
+                lad_gr1_counterpos = counter_var.lad_pos(casl2::Register::Gr1)
+            ));
         } else {
             unreachable!("BUG");
         }
@@ -360,24 +278,14 @@ impl Compiler {
         self.comment(format!("Next {counter}", counter = counter));
         self.code(format!("{next} NOP", next = loop_label));
         self.code(saves);
-        if is_ref {
-            self.code(format!(
-                r#" LD    GR1,{counter}
-                    LD    GR0,0,GR1
-                    ADDA  GR0,{step}
-                    ST    GR0,0,GR1"#,
-                counter = counter_var,
-                step = step_var
-            ));
-        } else {
-            self.code(format!(
-                r#" LD    GR1,{counter}
-                    ADDA  GR1,{step}
-                    ST    GR1,{counter}"#,
-                counter = counter_var,
-                step = step_var
-            ));
-        }
+        self.code(format!(
+            r#" {lad_gr1_counterpos}
+                LD    GR0,0,GR1
+                ADDA  GR0,{step}
+                ST    GR0,0,GR1"#,
+            lad_gr1_counterpos = counter_var.lad_pos(casl2::Register::Gr1),
+            step = step_var
+        ));
         self.code(recovers);
         self.code(format!(" JUMP {cond}", cond = condition_label));
         self.code(format!("{exit} NOP", exit = exit_label));

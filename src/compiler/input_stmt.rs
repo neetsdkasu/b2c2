@@ -191,12 +191,12 @@ impl Compiler {
                     CALL  EOF
                     XOR   GR2,GR2
 {ok}                CALL  {cint}
-                    ST    GR0,{var}"#,
+                    {st_gr0_var}"#,
                 pos = s_labels.pos,
                 len = s_labels.len,
                 ok = label,
                 cint = cint_label,
-                var = var_label
+                st_gr0_var = var_label.st_value(casl2::Register::Gr0, casl2::Register::Gr1)
             ));
         } else {
             self.code(format!(
@@ -210,12 +210,12 @@ impl Compiler {
                     ST    GR2,EOF
                     XOR   GR2,GR2
 {ok}                CALL  {cint}
-                    ST    GR0,{var}"#,
+                    {st_gr0_var}"#,
                 pos = s_labels.pos,
                 len = s_labels.len,
                 ok = label,
                 cint = cint_label,
-                var = var_label
+                st_gr0_var = var_label.st_value(casl2::Register::Gr0, casl2::Register::Gr1)
             ));
         }
         self.code(recovers);
@@ -460,13 +460,12 @@ impl Compiler {
                     CALL  EOF
                     XOR   GR2,GR2
 {ok}                CALL  {cint}
-                    LD    GR1,{var}
-                    ST    GR0,0,GR1"#,
+                    {st_gr0_var}"#,
                 pos = s_labels.pos,
                 len = s_labels.len,
                 ok = label,
                 cint = cint_label,
-                var = var_label
+                st_gr0_var = var_label.st_value(casl2::Register::Gr0, casl2::Register::Gr1)
             ));
         } else {
             self.code(format!(
@@ -480,13 +479,12 @@ impl Compiler {
                     ST    GR2,EOF
                     XOR   GR2,GR2
 {ok}                CALL  {cint}
-                    LD    GR1,{var}
-                    ST    GR0,0,GR1"#,
+                    {st_gr0_var}"#,
                 pos = s_labels.pos,
                 len = s_labels.len,
                 ok = label,
                 cint = cint_label,
-                var = var_label
+                st_gr0_var = var_label.st_value(casl2::Register::Gr0, casl2::Register::Gr1)
             ));
         }
         self.code(recovers);
