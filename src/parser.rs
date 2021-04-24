@@ -3273,16 +3273,20 @@ impl ArgumentInfo {
                 matches!(expr.return_type(), ExprType::Integer)
             }
             VarType::String | VarType::RefString => matches!(expr.return_type(), ExprType::String),
-            VarType::ArrayOfBoolean(size1) | VarType::RefArrayOfBoolean(size1) => match expr {
-                Expr::ReferenceOfVar(_, VarType::ArrayOfBoolean(size2))
-                | Expr::ReferenceOfVar(_, VarType::RefArrayOfBoolean(size2)) => size1 == *size2,
-                _ => false,
-            },
-            VarType::ArrayOfInteger(size1) | VarType::RefArrayOfInteger(size1) => match expr {
-                Expr::ReferenceOfVar(_, VarType::ArrayOfInteger(size2))
-                | Expr::ReferenceOfVar(_, VarType::RefArrayOfInteger(size2)) => size1 == *size2,
-                _ => false,
-            },
+            VarType::ArrayOfBoolean(size1) | VarType::RefArrayOfBoolean(size1) => {
+                match expr.return_type() {
+                    ExprType::ReferenceOfVar(VarType::ArrayOfBoolean(size2))
+                    | ExprType::ReferenceOfVar(VarType::RefArrayOfBoolean(size2)) => size1 == size2,
+                    _ => false,
+                }
+            }
+            VarType::ArrayOfInteger(size1) | VarType::RefArrayOfInteger(size1) => {
+                match expr.return_type() {
+                    ExprType::ReferenceOfVar(VarType::ArrayOfInteger(size2))
+                    | ExprType::ReferenceOfVar(VarType::RefArrayOfInteger(size2)) => size1 == size2,
+                    _ => false,
+                }
+            }
         }
     }
 }
