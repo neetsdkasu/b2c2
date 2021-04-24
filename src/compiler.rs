@@ -33,6 +33,7 @@ mod utils;
 #[cfg(test)]
 mod test;
 
+pub const MAX_ALLOCATION_SIZE: usize = 30000;
 pub const MAX_ARRAY_SIZE: usize = 256;
 
 type CompileError = String;
@@ -249,6 +250,15 @@ struct Compiler {
 
     // EOF情報の保持場所が外部プログラムかどうか
     option_external_eof: bool,
+
+    // アロケータを使うかどうか
+    option_use_allocator: bool,
+
+    // ローカルアロケータの場合の予約領域のサイズ
+    option_local_allocation_size: Option<usize>,
+
+    // アロケートされたメモリ上の各変数の相対位置計算用
+    allocate_memory_relative_position: usize,
 }
 
 // コンパイラの初期化
@@ -298,6 +308,9 @@ impl Compiler {
             option_restore_registers: true,
             option_initialize_variables: true,
             option_external_eof: false,
+            option_use_allocator: false,
+            option_local_allocation_size: None,
+            allocate_memory_relative_position: 0,
         })
     }
 }

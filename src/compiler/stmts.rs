@@ -5,6 +5,18 @@ impl Compiler {
     // Option
     pub(super) fn set_option(&mut self, option: &parser::CompileOption) {
         match option {
+            parser::CompileOption::Allocator {
+                enabled,
+                common,
+                size,
+            } => {
+                if *enabled {
+                    self.option_use_allocator = true;
+                    if !*common {
+                        self.option_local_allocation_size = Some(*size);
+                    }
+                }
+            }
             parser::CompileOption::ArraySize { .. } => {}
             parser::CompileOption::Eof { common } => {
                 self.option_external_eof = *common;

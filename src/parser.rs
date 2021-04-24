@@ -1,5 +1,5 @@
 use crate::casl2::IndexRegister;
-use crate::compiler::{is_valid_program_name, MAX_ARRAY_SIZE};
+use crate::compiler::{is_valid_program_name, MAX_ALLOCATION_SIZE, MAX_ARRAY_SIZE};
 use crate::tokenizer::*;
 use crate::SyntaxError;
 use std::collections::HashMap;
@@ -43,6 +43,18 @@ pub fn parse<R: BufRead>(reader: R) -> io::Result<Result<Vec<Statement>, SyntaxE
                 )))
             }
         }
+    }
+
+    if !parser.is_valid_allocation() {
+        return Ok(Err(SyntaxError::new(
+            parser.line_number + 1,
+            0,
+            format!(
+                "invalid Allocation Size: {} / {}",
+                parser.variable_area_size + parser.maximum_allocate_temporary_area_size,
+                parser.maximum_variable_area_size
+            ),
+        )));
     }
 
     if !parser.is_valid() {
@@ -145,6 +157,10 @@ struct Parser {
     temp_call_with_arguments: Vec<(String, Expr)>,
     declare_array_with_length: Option<bool>,
     use_bound_for_array_function: bool,
+    maximum_variable_area_size: usize,
+    variable_area_size: usize,
+    maximum_allocate_temporary_area_size: usize,
+    allocate_temporary_area_size: usize,
 }
 
 impl Parser {
@@ -169,7 +185,16 @@ impl Parser {
             temp_call_with_arguments: Vec::new(),
             declare_array_with_length: None,
             use_bound_for_array_function: false,
+            maximum_variable_area_size: MAX_ALLOCATION_SIZE,
+            variable_area_size: 0,
+            maximum_allocate_temporary_area_size: 0,
+            allocate_temporary_area_size: 0,
         }
+    }
+
+    fn is_valid_allocation(&self) -> bool {
+        self.variable_area_size + self.maximum_allocate_temporary_area_size
+            <= self.maximum_variable_area_size
     }
 
     fn parse_size_for_array_function(&self, size: usize, value: i32) -> Option<usize> {
@@ -616,6 +641,8 @@ impl Parser {
             return Err(self.syntax_error("invalid Call argument statement".into()));
         };
 
+        let temp_area: usize;
+
         if let Some(arg) = self
             .callables
             .get(self.temp_progam_name.as_ref().expect("BUG"))
@@ -626,9 +653,24 @@ impl Parser {
             if !arg.is_valid_type(&value) {
                 return Err(self.syntax_error(format!("invalid Call argument: {} {}", name, value)));
             }
+            if !value.can_access_variable() && arg.var_type.is_reference() {
+                if let Some(size) = arg.var_type.get_array_size() {
+                    temp_area = size;
+                } else if arg.var_type.is_string() {
+                    temp_area = 257;
+                } else if arg.var_type.is_boolean() || arg.var_type.is_integer() {
+                    temp_area = 1;
+                } else {
+                    unreachable!("BUG");
+                }
+            } else {
+                temp_area = 0;
+            }
         } else {
             return Err(self.syntax_error(format!("invalid Call argument name: {}", name)));
         }
+
+        self.allocate_temporary_area_size += temp_area;
 
         self.temp_call_with_arguments
             .push((name.to_string(), value));
@@ -735,7 +777,7 @@ impl Parser {
 
     // Option Array { UBound / Length } [ { All / Declare / Function } ]
     // Option EOF { Special / Common }
-    // Option Recursion { Disable / Enable }
+    // Option Allocator { Disabled / Enabled / Special }
     // Option Register { Restore / Dirty }
     // Option Variable { Initialize / Uninitialize }
     fn parse_option(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
@@ -764,6 +806,14 @@ impl Parser {
                 let mut length = false;
                 let mut all = true;
                 match value {
+                    Token::Name(value) if "Default".eq_ignore_ascii_case(value) => {
+                        all = false;
+                        if extra.is_some() {
+                            return Err(
+                                self.syntax_error_pos(*pv, "invalid Option statement".into())
+                            );
+                        }
+                    }
                     Token::Name(value)
                         if "Bound".eq_ignore_ascii_case(value)
                             || "Bounds".eq_ignore_ascii_case(value)
@@ -808,6 +858,137 @@ impl Parser {
                     option: CompileOption::ArraySize { length, all },
                 });
             }
+            Token::Name(target)
+                if "Allocator".eq_ignore_ascii_case(target)
+                    || "Allocate".eq_ignore_ascii_case(target)
+                    || "Allocation".eq_ignore_ascii_case(target)
+                    || "Recursion".eq_ignore_ascii_case(target)
+                    || "Recursive".eq_ignore_ascii_case(target) =>
+            {
+                for stmt in self.statements.first().expect("BUG").iter() {
+                    if let Statement::CompileOption {
+                        option: CompileOption::Allocator { .. },
+                    } = stmt
+                    {
+                        return Err(self.syntax_error_pos(*pt, "invalid Option statement".into()));
+                    }
+                }
+                match value {
+                    Token::Boolean(true) => {
+                        if extra.is_some() {
+                            return Err(
+                                self.syntax_error_pos(*pv, "invalid Option statement".into())
+                            );
+                        }
+                        self.add_statement(Statement::CompileOption {
+                            option: CompileOption::Allocator {
+                                enabled: true,
+                                common: true,
+                                size: MAX_ALLOCATION_SIZE,
+                            },
+                        });
+                    }
+                    Token::Name(value)
+                        if "Common".eq_ignore_ascii_case(value)
+                            || "Shared".eq_ignore_ascii_case(value)
+                            || "External".eq_ignore_ascii_case(value)
+                            || "Global".eq_ignore_ascii_case(value)
+                            || "Public".eq_ignore_ascii_case(value)
+                            || "On".eq_ignore_ascii_case(value)
+                            || "Enable".eq_ignore_ascii_case(value)
+                            || "Enabled".eq_ignore_ascii_case(value) =>
+                    {
+                        if extra.is_some() {
+                            return Err(
+                                self.syntax_error_pos(*pv, "invalid Option statement".into())
+                            );
+                        }
+                        self.add_statement(Statement::CompileOption {
+                            option: CompileOption::Allocator {
+                                enabled: true,
+                                common: true,
+                                size: MAX_ALLOCATION_SIZE,
+                            },
+                        });
+                    }
+                    Token::Boolean(false) => {
+                        if extra.is_some() {
+                            return Err(
+                                self.syntax_error_pos(*pv, "invalid Option statement".into())
+                            );
+                        }
+                        self.add_statement(Statement::CompileOption {
+                            option: CompileOption::Allocator {
+                                enabled: false,
+                                common: false,
+                                size: 0,
+                            },
+                        });
+                    }
+                    Token::Name(value)
+                        if "Default".eq_ignore_ascii_case(value)
+                            || "Disable".eq_ignore_ascii_case(value)
+                            || "Disabled".eq_ignore_ascii_case(value)
+                            || "Off".eq_ignore_ascii_case(value)
+                            || "No".eq_ignore_ascii_case(value)
+                            || "Nothing".eq_ignore_ascii_case(value)
+                            || "None".eq_ignore_ascii_case(value) =>
+                    {
+                        if extra.is_some() {
+                            return Err(
+                                self.syntax_error_pos(*pv, "invalid Option statement".into())
+                            );
+                        }
+                        self.add_statement(Statement::CompileOption {
+                            option: CompileOption::Allocator {
+                                enabled: false,
+                                common: false,
+                                size: 0,
+                            },
+                        });
+                    }
+                    Token::Name(value)
+                        if "Special".eq_ignore_ascii_case(value)
+                            || "Intern".eq_ignore_ascii_case(value)
+                            || "Internal".eq_ignore_ascii_case(value)
+                            || "Local".eq_ignore_ascii_case(value)
+                            || "Private".eq_ignore_ascii_case(value)
+                            || "Personal".eq_ignore_ascii_case(value)
+                            || "Own".eq_ignore_ascii_case(value)
+                            || "Owned".eq_ignore_ascii_case(value) =>
+                    {
+                        match extra {
+                            None => {
+                                self.add_statement(Statement::CompileOption {
+                                    option: CompileOption::Allocator {
+                                        enabled: true,
+                                        common: true,
+                                        size: MAX_ALLOCATION_SIZE,
+                                    },
+                                });
+                            }
+                            Some((_, Token::Integer(size)))
+                                if !(1..=MAX_ALLOCATION_SIZE as i32).contains(size) =>
+                            {
+                                self.maximum_variable_area_size = *size as usize;
+                                self.add_statement(Statement::CompileOption {
+                                    option: CompileOption::Allocator {
+                                        enabled: true,
+                                        common: false,
+                                        size: *size as usize,
+                                    },
+                                });
+                            }
+                            Some((pv, _)) => {
+                                return Err(
+                                    self.syntax_error_pos(*pv, "invalid Option statement".into())
+                                )
+                            }
+                        }
+                    }
+                    _ => return Err(self.syntax_error_pos(*pt, "invalid Option statement".into())),
+                }
+            }
             _ if extra.is_some() => {
                 let (pe, _) = extra.unwrap();
                 return Err(self.syntax_error_pos(*pe, "invalid Option statement".into()));
@@ -839,12 +1020,15 @@ impl Parser {
                         });
                     }
                     Token::Name(value)
-                        if "Special".eq_ignore_ascii_case(value)
+                        if "Default".eq_ignore_ascii_case(value)
+                            || "Special".eq_ignore_ascii_case(value)
                             || "Intern".eq_ignore_ascii_case(value)
                             || "Internal".eq_ignore_ascii_case(value)
                             || "Local".eq_ignore_ascii_case(value)
                             || "Personal".eq_ignore_ascii_case(value)
-                            || "Private".eq_ignore_ascii_case(value) =>
+                            || "Private".eq_ignore_ascii_case(value)
+                            || "Own".eq_ignore_ascii_case(value)
+                            || "Owned".eq_ignore_ascii_case(value) =>
                     {
                         self.add_statement(Statement::CompileOption {
                             option: CompileOption::Eof { common: false },
@@ -853,7 +1037,6 @@ impl Parser {
                     _ => return Err(self.syntax_error_pos(*pv, "invalid Option statement".into())),
                 }
             }
-            Token::Name(target) if "Recursion".eq_ignore_ascii_case(target) => todo!(),
             Token::Name(target) if "Register".eq_ignore_ascii_case(target) => {
                 for stmt in self.statements.first().expect("BUG").iter() {
                     if let Statement::CompileOption {
@@ -875,7 +1058,8 @@ impl Parser {
                 // Leave は呼び出し前を残しておくのか、終了状態を残しておくのか、(Leaveは後者な雰囲気はある)
                 match value {
                     Token::Name(value)
-                        if "Recover".eq_ignore_ascii_case(value)
+                        if "Default".eq_ignore_ascii_case(value)
+                            || "Recover".eq_ignore_ascii_case(value)
                             || "Restore".eq_ignore_ascii_case(value)
                             || "Back".eq_ignore_ascii_case(value) =>
                     {
@@ -886,6 +1070,7 @@ impl Parser {
                     Token::Name(value)
                         if "Break".eq_ignore_ascii_case(value)
                             || "Dirty".eq_ignore_ascii_case(value)
+                            || "Unclear".eq_ignore_ascii_case(value)
                             || "Unclean".eq_ignore_ascii_case(value) =>
                     {
                         self.add_statement(Statement::CompileOption {
@@ -905,12 +1090,24 @@ impl Parser {
                     }
                 }
                 match value {
-                    Token::Name(value) if "Initialize".eq_ignore_ascii_case(value) => {
+                    Token::Name(value)
+                        if "Default".eq_ignore_ascii_case(value)
+                            || "Initialize".eq_ignore_ascii_case(value)
+                            || "Format".eq_ignore_ascii_case(value)
+                            || "Clear".eq_ignore_ascii_case(value)
+                            || "Clean".eq_ignore_ascii_case(value)
+                            || "Zero".eq_ignore_ascii_case(value) =>
+                    {
                         self.add_statement(Statement::CompileOption {
                             option: CompileOption::Variable { initialize: true },
                         });
                     }
-                    Token::Name(value) if "Uninitialize".eq_ignore_ascii_case(value) => {
+                    Token::Name(value)
+                        if "Uninitialize".eq_ignore_ascii_case(value)
+                            || "Unclear".eq_ignore_ascii_case(value)
+                            || "Unclean".eq_ignore_ascii_case(value)
+                            || "Dirty".eq_ignore_ascii_case(value) =>
+                    {
                         self.add_statement(Statement::CompileOption {
                             option: CompileOption::Variable { initialize: false },
                         });
@@ -1024,9 +1221,11 @@ impl Parser {
                 assert!(!self.in_call_with);
                 self.temp_progam_name = Some(name.clone());
                 self.in_call_with = true;
+                self.allocate_temporary_area_size = 0;
             }
             [(pn, Token::Name(name)), rest @ ..] => {
                 let param = self.parse_expr(rest)?;
+                let mut temp_area: usize = 0;
                 let arguments = if let Some(args) = self.callables.get(name) {
                     if let Expr::ParamList(list) = param {
                         if list.len() != args.len() {
@@ -1040,6 +1239,17 @@ impl Parser {
                                     arg.var_name, expr
                                 )));
                             }
+                            if !expr.can_access_variable() && arg.var_type.is_reference() {
+                                if let Some(size) = arg.var_type.get_array_size() {
+                                    temp_area += size;
+                                } else if arg.var_type.is_string() {
+                                    temp_area += 257;
+                                } else if arg.var_type.is_boolean() || arg.var_type.is_integer() {
+                                    temp_area += 1;
+                                } else {
+                                    unreachable!("BUG");
+                                }
+                            }
                             arguments.push((arg.var_name.clone(), expr));
                         }
                         arguments
@@ -1051,6 +1261,17 @@ impl Parser {
                                 arg.var_name, param
                             )));
                         }
+                        if !param.can_access_variable() && arg.var_type.is_reference() {
+                            if let Some(size) = arg.var_type.get_array_size() {
+                                temp_area += size;
+                            } else if arg.var_type.is_string() {
+                                temp_area += 257;
+                            } else if arg.var_type.is_boolean() || arg.var_type.is_integer() {
+                                temp_area += 1;
+                            } else {
+                                unreachable!("BUG");
+                            }
+                        }
                         vec![(arg.var_name.clone(), param)]
                     } else {
                         return Err(self.syntax_error_pos(*pn, "invalid Call arguments".into()));
@@ -1058,6 +1279,8 @@ impl Parser {
                 } else {
                     return Err(self.syntax_error_pos(*pn, format!("invalid Call name: {}", name)));
                 };
+                self.maximum_allocate_temporary_area_size =
+                    self.maximum_allocate_temporary_area_size.max(temp_area);
                 self.add_statement(Statement::Call {
                     name: name.clone(),
                     arguments,
@@ -1145,6 +1368,7 @@ impl Parser {
         use Operator::{CloseBracket as Cb, Comma as Co, OpenBracket as Ob};
         use Token::{Integer as I, Keyword as K, Name as N, Operator as Op, TypeName as T};
         use TypeName as Tn;
+        self.variable_area_size += 1;
         let ((pn, var_name), var_type, (pf, flow), (pr1, reg1), reg2) = match pos_and_tokens {
             [(pn, N(name)), (_, K(As)), (_, T(Tn::Boolean)), (pf, K(flow)), (pr, N(reg))] => {
                 ((pn, name), VarType::RefBoolean, (pf, flow), (pr, reg), None)
@@ -1154,6 +1378,7 @@ impl Parser {
             }
             [(pn, N(name)), (_, K(As)), (_, T(Tn::String)), (pf, K(flow)), (pr1, N(reg1)), (_, Op(Co)), (pr2, N(reg2))] =>
             {
+                self.variable_area_size += 1;
                 let reg2 = Some((pr2, reg2));
                 let var_type = VarType::RefString;
                 ((pn, name), var_type, (pf, flow), (pr1, reg1), reg2)
@@ -1244,13 +1469,16 @@ impl Parser {
         use TypeName as Tn;
         let ((pn, var_name), var_type, (pf, flow), (pr1, reg1), reg2) = match pos_and_tokens {
             [(pn, N(name)), (_, K(As)), (_, T(Tn::Boolean)), (pf, K(flow)), (pr, N(reg))] => {
+                self.variable_area_size += 1;
                 ((pn, name), VarType::Boolean, (pf, flow), (pr, reg), None)
             }
             [(pn, N(name)), (_, K(As)), (_, T(Tn::Integer)), (pf, K(flow)), (pr, N(reg))] => {
+                self.variable_area_size += 1;
                 ((pn, name), VarType::Integer, (pf, flow), (pr, reg), None)
             }
             [(pn, N(name)), (_, K(As)), (_, T(Tn::String)), (pf, K(flow)), (pr1, N(reg1)), (_, Op(Co)), (pr2, N(reg2))] =>
             {
+                self.variable_area_size += 257;
                 let reg2 = Some((pr2, reg2));
                 let var_type = VarType::String;
                 ((pn, name), var_type, (pf, flow), (pr1, reg1), reg2)
@@ -1260,6 +1488,7 @@ impl Parser {
                 let size = self.parse_declare_array_size(*ubound).ok_or_else(|| {
                     self.syntax_error_pos(*pu, "invalid array size in ByVal statement".into())
                 })?;
+                self.variable_area_size += size;
                 let var_type = VarType::ArrayOfBoolean(size);
                 ((pn, name), var_type, (pf, flow), (pr, reg), None)
             }
@@ -1268,6 +1497,7 @@ impl Parser {
                 let size = self.parse_declare_array_size(*ubound).ok_or_else(|| {
                     self.syntax_error_pos(*pu, "invalid array size in ByVal statement".into())
                 })?;
+                self.variable_area_size += size;
                 let var_type = VarType::ArrayOfInteger(size);
                 ((pn, name), var_type, (pf, flow), (pr, reg), None)
             }
@@ -1455,6 +1685,10 @@ impl Parser {
         if self.callables.get(&name).expect("BUG").len() != arguments.len() {
             return Err(self.syntax_error("invalid Call arguments".into()));
         }
+
+        self.maximum_allocate_temporary_area_size = self
+            .maximum_allocate_temporary_area_size
+            .max(self.allocate_temporary_area_size);
 
         self.add_statement(Statement::Call { name, arguments });
 
@@ -2299,10 +2533,14 @@ impl Parser {
                         self.syntax_error_pos(*pos, format!("already defined variable: {}", name))
                     );
                 }
+                self.variable_area_size += 1;
                 let var_type = match type_name {
                     TypeName::Boolean => VarType::Boolean,
                     TypeName::Integer => VarType::Integer,
-                    TypeName::String => VarType::String,
+                    TypeName::String => {
+                        self.variable_area_size += 256;
+                        VarType::String
+                    }
                 };
                 self.variables.insert(name.clone(), var_type);
                 self.add_statement(Statement::Dim {
@@ -2320,6 +2558,7 @@ impl Parser {
                 let size = self.parse_declare_array_size(*size).ok_or_else(|| {
                     self.syntax_error_pos(*pos_s, "invalid Array Size in Dim statement".into())
                 })?;
+                self.variable_area_size += size;
                 let var_type = match type_name {
                     TypeName::Boolean => VarType::ArrayOfBoolean(size),
                     TypeName::Integer => VarType::ArrayOfInteger(size),
@@ -3050,10 +3289,24 @@ impl ArgumentInfo {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum CompileOption {
-    ArraySize { length: bool, all: bool },
-    Eof { common: bool },
-    Register { restore: bool },
-    Variable { initialize: bool },
+    ArraySize {
+        length: bool,
+        all: bool,
+    },
+    Eof {
+        common: bool,
+    },
+    Register {
+        restore: bool,
+    },
+    Allocator {
+        enabled: bool,
+        common: bool,
+        size: usize,
+    },
+    Variable {
+        initialize: bool,
+    },
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -3438,6 +3691,123 @@ pub enum Expr {
     ParamList(Vec<Expr>),
 }
 
+impl VarType {
+    pub fn is_reference(&self) -> bool {
+        use VarType::*;
+        match self {
+            Boolean | Integer | String | ArrayOfBoolean(..) | ArrayOfInteger(..) => false,
+
+            RefBoolean | RefInteger | RefString | RefArrayOfBoolean(..) | RefArrayOfInteger(..) => {
+                true
+            }
+        }
+    }
+
+    pub fn get_array_size(&self) -> Option<usize> {
+        use VarType::*;
+        match self {
+            Boolean | Integer | String | RefBoolean | RefInteger | RefString => None,
+
+            ArrayOfBoolean(size)
+            | ArrayOfInteger(size)
+            | RefArrayOfBoolean(size)
+            | RefArrayOfInteger(size) => Some(*size),
+        }
+    }
+
+    pub fn is_array(&self) -> bool {
+        use VarType::*;
+        match self {
+            Boolean | Integer | String | RefBoolean | RefInteger | RefString => false,
+
+            ArrayOfBoolean(..)
+            | ArrayOfInteger(..)
+            | RefArrayOfBoolean(..)
+            | RefArrayOfInteger(..) => true,
+        }
+    }
+
+    pub fn is_boolean_array(&self) -> bool {
+        use VarType::*;
+        match self {
+            Boolean
+            | Integer
+            | String
+            | RefBoolean
+            | RefInteger
+            | RefString
+            | ArrayOfInteger(..)
+            | RefArrayOfInteger(..) => false,
+
+            ArrayOfBoolean(..) | RefArrayOfBoolean(..) => true,
+        }
+    }
+
+    pub fn is_integer_array(&self) -> bool {
+        use VarType::*;
+        match self {
+            Boolean
+            | Integer
+            | String
+            | RefBoolean
+            | RefInteger
+            | RefString
+            | ArrayOfBoolean(..)
+            | RefArrayOfBoolean(..) => false,
+
+            ArrayOfInteger(..) | RefArrayOfInteger(..) => true,
+        }
+    }
+
+    pub fn is_boolean(&self) -> bool {
+        use VarType::*;
+        match self {
+            Boolean | RefBoolean => true,
+
+            Integer
+            | String
+            | RefInteger
+            | RefString
+            | ArrayOfBoolean(..)
+            | ArrayOfInteger(..)
+            | RefArrayOfBoolean(..)
+            | RefArrayOfInteger(..) => false,
+        }
+    }
+
+    pub fn is_integer(&self) -> bool {
+        use VarType::*;
+        match self {
+            Integer | RefInteger => true,
+
+            Boolean
+            | RefBoolean
+            | String
+            | RefString
+            | ArrayOfBoolean(..)
+            | ArrayOfInteger(..)
+            | RefArrayOfBoolean(..)
+            | RefArrayOfInteger(..) => false,
+        }
+    }
+
+    pub fn is_string(&self) -> bool {
+        use VarType::*;
+        match self {
+            String | RefString => true,
+
+            Boolean
+            | RefBoolean
+            | Integer
+            | RefInteger
+            | ArrayOfBoolean(..)
+            | ArrayOfInteger(..)
+            | RefArrayOfBoolean(..)
+            | RefArrayOfInteger(..) => false,
+        }
+    }
+}
+
 impl ExprType {
     pub fn match_for_bin_op(&self, other: &Self) -> bool {
         match self {
@@ -3614,6 +3984,42 @@ impl Expr {
             }
 
             ReferenceOfVar(_, var_type) => ExprType::ReferenceOfVar(*var_type),
+        }
+    }
+
+    pub fn can_access_variable(&self) -> bool {
+        use Expr::*;
+        match self {
+            BinaryOperatorBoolean(..)
+            | BinaryOperatorInteger(..)
+            | BinaryOperatorString(..)
+            | FunctionBoolean(..)
+            | FunctionInteger(..)
+            | FunctionString(..)
+            | FunctionBooleanArray(..)
+            | FunctionIntegerArray(..)
+            | LitBoolean(..)
+            | LitInteger(..)
+            | LitCharacter(..)
+            | LitString(..)
+            | CharOfLitString(..)
+            | UnaryOperatorBoolean(..)
+            | UnaryOperatorInteger(..)
+            | ParamList(..) => false,
+
+            CharOfVarString(..)
+            | CharOfVarRefString(..)
+            | VarBoolean(..)
+            | VarRefBoolean(..)
+            | VarArrayOfBoolean(..)
+            | VarRefArrayOfBoolean(..)
+            | VarInteger(..)
+            | VarRefInteger(..)
+            | VarArrayOfInteger(..)
+            | VarRefArrayOfInteger(..)
+            | VarString(..)
+            | VarRefString(..)
+            | ReferenceOfVar(..) => true,
         }
     }
 }

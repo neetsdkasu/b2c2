@@ -1,3 +1,4 @@
+use super::utils::to_external;
 use super::*;
 
 // コメントの除去
@@ -226,28 +227,8 @@ pub(super) fn split_subroutines(
     let mut ret = Vec::<(String, Vec<casl2::Statement>)>::new();
 
     while let Some((name_label, i)) = indexes.pop() {
-        let mut routine = statements.split_off(i);
-        if !matches!(
-            routine.last(),
-            Some(casl2::Statement::Code {
-                command: casl2::Command::End,
-                ..
-            })
-        ) {
-            routine.code(casl2::Command::End);
-        }
-        for stmt in routine.iter_mut() {
-            if let casl2::Statement::Code { label, .. } = stmt {
-                if matches!(label, Some(label) if label.as_str() == name_label.as_str()) {
-                    *label = None;
-                    break;
-                }
-            }
-        }
-        routine.insert(
-            0,
-            casl2::Statement::labeled(&name_label, casl2::Command::Start { entry_point: None }),
-        );
+        let routine = statements.split_off(i);
+        let routine = to_external(&name_label, routine);
         ret.push((name_label, routine));
     }
 

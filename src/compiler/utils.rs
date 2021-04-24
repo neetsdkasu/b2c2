@@ -3,8 +3,10 @@ use super::*;
 // プログラム名のラベルとしての正当性チェック
 pub fn is_valid_program_name(program_name: &str) -> bool {
     // 予約済みラベル
-    // EOF  Inputステートメント、EOF()関数で使用
-    // EXIT Endステートメントで使用
+    // EOF    Inputステートメント、EOF()関数で使用
+    // EXIT   Endステートメントで使用
+    // MEM    Allocatorが確保したメモリのアドレスを保持する領域
+    // ALLOC  Allocatorのサブルーチン名
     // 自動生成のラベルとの重複を避けるチェックが必要
     // B** 真理値変数
     // I** 整数変数
@@ -23,7 +25,7 @@ pub fn is_valid_program_name(program_name: &str) -> bool {
     // TB** 式展開時の一時的な文字列変数の内容位置
     // ARG* プログラム引数
     casl2::Label::from(program_name).is_valid()
-        && !(matches!(program_name, "EOF" | "EXIT")
+        && !(matches!(program_name, "EOF" | "EXIT" | "MEM" | "ALLOC")
             || ((program_name.chars().count() >= 2)
                 && ["B", "I", "T", "V", "J", "C"]
                     .iter()
@@ -37,4 +39,33 @@ pub fn is_valid_program_name(program_name: &str) -> bool {
             || ((program_name.chars().count() == 4)
                 && program_name.starts_with("ARG")
                 && program_name.chars().skip(3).all(|ch| ch.is_ascii_digit())))
+}
+
+// 分割保存対象のサブルーチンのコードの先頭と末尾にSTARTとENDを付与するための処理
+pub fn to_external(name: &str, mut statements: Vec<casl2::Statement>) -> Vec<casl2::Statement> {
+    if !matches!(
+        statements.last(),
+        Some(casl2::Statement::Code {
+            command: casl2::Command::End,
+            ..
+        })
+    ) {
+        statements.code(casl2::Command::End);
+    }
+
+    for stmt in statements.iter_mut() {
+        if let casl2::Statement::Code { label, .. } = stmt {
+            if matches!(label, Some(label) if label.as_str() == name) {
+                *label = None;
+                break;
+            }
+        }
+    }
+
+    statements.insert(
+        0,
+        casl2::Statement::labeled(name, casl2::Command::Start { entry_point: None }),
+    );
+
+    statements
 }

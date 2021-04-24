@@ -21,11 +21,11 @@ fn it_works() {
     let src = r#"
     Rem TEST PROGRAM
     Rem コンパイル通るかのチェックだけで、正しくコンパイルされてるかはチェックしていないという…
-    Option Array UBound Declare ' Length
-    Option EOF Internal ' External
-    ' Option Recursion Disable ' Enable
-    Option Register Restore ' Dirty
-    Option Variable Initialize ' Uninitialize
+    Option Allocator Default  ' Off / On / Special
+    Option Array     Default  ' UBound / Length
+    Option EOF       Default  ' Internal / External
+    Option Register  Default  ' Restore / Dirty
+    Option Variable  Default  ' Initialize / Uninitialize
     Extern Sub PROC1
     Extern Sub PROC2 With
     End Sub
@@ -2200,17 +2200,7 @@ End Program
         assert!(!statements.is_empty()); // dummy assert
     }
 
-    let mut eof_stmt = vec![casl2::Statement::labeled(
-        "EOF",
-        casl2::Command::Start { entry_point: None },
-    )];
-    let mut gen = Gen {
-        jump: vec!["J1"],
-        var: vec!["V1"],
-    };
-    let src = subroutine::get_src(&mut gen, subroutine::Id::UtilEofStore);
-    eof_stmt.extend(src.statements);
-    eof_stmt.push(casl2::Statement::code(casl2::Command::End));
+    let eof_stmt = subroutine::get_util_eof_store_code();
     eof_stmt.iter().for_each(|line| {
         eprintln!("{}", line);
     });
@@ -2220,7 +2210,7 @@ End Program
 fn non_safe_recur_works() {
     let src1 = r#"
 Option Register Dirty
-Option Variable Uninitialize
+Option Variable Initialize
 Program TEST
     Dim x As Integer
     Print "Before: " & CStr(x)

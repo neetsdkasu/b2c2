@@ -18,7 +18,6 @@ pub enum Id {
     UtilCopyStr,
     UtilCopyToOffsetStr,
     UtilDivMod,
-    UtilEofStore,
     UtilFill,
     UtilLoadElement,
     UtilMul,
@@ -58,7 +57,6 @@ pub fn get_src<T: Gen>(gen: &mut T, id: Id) -> Src {
         Id::UtilCopyStr => get_util_copy_str(gen, id),
         Id::UtilCopyToOffsetStr => get_util_copy_to_offset_str(gen, id),
         Id::UtilDivMod => get_util_div_mod(gen, id),
-        Id::UtilEofStore => get_util_eof_store(gen, id),
         Id::UtilFill => get_util_fill(gen, id),
         Id::UtilLoadElement => get_util_load_element(gen, id),
         Id::UtilMul => get_util_mul(gen, id),
@@ -67,30 +65,53 @@ pub fn get_src<T: Gen>(gen: &mut T, id: Id) -> Src {
 }
 
 // Util: EOF Store
-fn get_util_eof_store<T: Gen>(gen: &mut T, id: Id) -> Src {
+pub fn get_util_eof_store_code() -> Vec<casl2::Statement> {
+    // 外部コードにする前提なのでSTART/ENDが含まれている
     // 引数も戻り値もGR0
-    // GR0 .. 0 ... store EOF=0, 1 ... load EOF, -1 .. store EOF=-1
-    // GR0 .. ret = EOF
-    Src {
-        dependencies: Vec::new(),
-        statements: casl2::parse(&format!(
-            r#"
-                                   ; {comment}
-{prog}   AND   GR0,GR0
+    // 引数 GR0 == 0 のとき
+    //    EOF未到達(0)を記憶
+    // 引数 GR0 == 1 のとき
+    //    戻り値 GR0 .. EOF到達状態を取得 (EOF未到達なら0、EOF到達なら-1)
+    // 引数 GR0 == -1 のとき
+    //    EOF到達(-1)を記憶
+    casl2::parse(&format!(
+        r#"
+EOF      START
+                                   ; UtilEofStore
+         AND   GR0,GR0
          JPL   {load}
          ST    GR0,{value}
          RET
 {load}   LD    GR0,{value}
          RET
 {value}  DS    1
+         END
 "#,
-            comment = format!("{:?}", id),
-            prog = id.label(),
-            load = gen.jump_label(),
-            value = gen.var_label()
-        ))
-        .unwrap(),
-    }
+        load = "J1",
+        value = "V1"
+    ))
+    .unwrap()
+}
+
+// Util: Allocator
+pub fn get_util_allocator_code<T: Gen>(gen: &mut T, size: usize) -> Vec<casl2::Statement> {
+    // スタック的な呼び出しが想定されてる
+    // 引数 GR0 == 0 のとき
+    //   引数  GR1 .. 確保するメモリ
+    //   戻り値 GR0 .. 確保したメモリの先頭アドレス
+    // 引数 GR0 != 0 のとき
+    //   引数  GR1 .. 解放するメモリの先頭アドレス
+    casl2::parse(&format!(
+        r#"
+                                   ; UtilAllocator
+ALLOC  NOP
+       RET
+{mem}  DS   {size}
+"#,
+        mem = gen.var_label(),
+        size = size
+    ))
+    .unwrap()
 }
 
 // Func: Abs
