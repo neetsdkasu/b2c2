@@ -480,71 +480,139 @@ impl Compiler {
         for arg in arguments.iter() {
             match arg.var_type {
                 parser::VarType::Boolean => {
-                    let label = ValueLabel::VarBoolean(format!("ARG{}", arg.register1 as isize));
+                    let label = if self.option_use_allocator {
+                        let offset = self.allocate_memory_relative_position;
+                        self.allocate_memory_relative_position += 1;
+                        ValueLabel::MemBoolean(offset)
+                    } else {
+                        ValueLabel::VarBoolean(format!("ARG{}", arg.register1 as isize))
+                    };
                     self.argument_labels
                         .insert(arg.var_name.clone(), (label, arg.clone()));
                 }
                 parser::VarType::RefBoolean => {
-                    let label = ValueLabel::VarRefBoolean(format!("ARG{}", arg.register1 as isize));
+                    let label = if self.option_use_allocator {
+                        let offset = self.allocate_memory_relative_position;
+                        self.allocate_memory_relative_position += 1;
+                        ValueLabel::MemRefBoolean(offset)
+                    } else {
+                        ValueLabel::VarRefBoolean(format!("ARG{}", arg.register1 as isize))
+                    };
                     self.argument_labels
                         .insert(arg.var_name.clone(), (label, arg.clone()));
                 }
                 parser::VarType::Integer => {
-                    let label = ValueLabel::VarInteger(format!("ARG{}", arg.register1 as isize));
+                    let label = if self.option_use_allocator {
+                        let offset = self.allocate_memory_relative_position;
+                        self.allocate_memory_relative_position += 1;
+                        ValueLabel::MemInteger(offset)
+                    } else {
+                        ValueLabel::VarInteger(format!("ARG{}", arg.register1 as isize))
+                    };
                     self.argument_labels
                         .insert(arg.var_name.clone(), (label, arg.clone()));
                 }
                 parser::VarType::RefInteger => {
-                    let label = ValueLabel::VarRefInteger(format!("ARG{}", arg.register1 as isize));
+                    let label = if self.option_use_allocator {
+                        let offset = self.allocate_memory_relative_position;
+                        self.allocate_memory_relative_position += 1;
+                        ValueLabel::MemRefInteger(offset)
+                    } else {
+                        ValueLabel::VarRefInteger(format!("ARG{}", arg.register1 as isize))
+                    };
                     self.argument_labels
                         .insert(arg.var_name.clone(), (label, arg.clone()));
                 }
                 parser::VarType::ArrayOfBoolean(size) => {
-                    let label = ArrayLabel::VarArrayOfBoolean(
-                        format!("ARG{}", arg.register1 as isize),
-                        size,
-                    );
+                    let label = if self.option_use_allocator {
+                        let offset = self.allocate_memory_relative_position;
+                        self.allocate_memory_relative_position += size;
+                        ArrayLabel::MemArrayOfBoolean { offset, size }
+                    } else {
+                        ArrayLabel::VarArrayOfBoolean(
+                            format!("ARG{}", arg.register1 as isize),
+                            size,
+                        )
+                    };
                     self.arr_argument_labels
                         .insert(arg.var_name.clone(), (label, arg.clone()));
                 }
                 parser::VarType::RefArrayOfBoolean(size) => {
-                    let label = ArrayLabel::VarRefArrayOfBoolean(
-                        format!("ARG{}", arg.register1 as isize),
-                        size,
-                    );
+                    let label = if self.option_use_allocator {
+                        let offset = self.allocate_memory_relative_position;
+                        self.allocate_memory_relative_position += 1;
+                        ArrayLabel::MemRefArrayOfBoolean { offset, size }
+                    } else {
+                        ArrayLabel::VarRefArrayOfBoolean(
+                            format!("ARG{}", arg.register1 as isize),
+                            size,
+                        )
+                    };
                     self.arr_argument_labels
                         .insert(arg.var_name.clone(), (label, arg.clone()));
                 }
                 parser::VarType::ArrayOfInteger(size) => {
-                    let label = ArrayLabel::VarArrayOfInteger(
-                        format!("ARG{}", arg.register1 as isize),
-                        size,
-                    );
+                    let label = if self.option_use_allocator {
+                        let offset = self.allocate_memory_relative_position;
+                        self.allocate_memory_relative_position += size;
+                        ArrayLabel::MemArrayOfInteger { offset, size }
+                    } else {
+                        ArrayLabel::VarArrayOfInteger(
+                            format!("ARG{}", arg.register1 as isize),
+                            size,
+                        )
+                    };
                     self.arr_argument_labels
                         .insert(arg.var_name.clone(), (label, arg.clone()));
                 }
                 parser::VarType::RefArrayOfInteger(size) => {
-                    let label = ArrayLabel::VarRefArrayOfInteger(
-                        format!("ARG{}", arg.register1 as isize),
-                        size,
-                    );
+                    let label = if self.option_use_allocator {
+                        let offset = self.allocate_memory_relative_position;
+                        self.allocate_memory_relative_position += 1;
+                        ArrayLabel::MemRefArrayOfInteger { offset, size }
+                    } else {
+                        ArrayLabel::VarRefArrayOfInteger(
+                            format!("ARG{}", arg.register1 as isize),
+                            size,
+                        )
+                    };
                     self.arr_argument_labels
                         .insert(arg.var_name.clone(), (label, arg.clone()));
                 }
                 parser::VarType::String => {
-                    let labels = StrLabels {
-                        len: format!("ARG{}", arg.register1 as isize),
-                        pos: format!("ARG{}", arg.register2.expect("BUG") as isize),
-                        label_type: StrLabelType::ArgVal,
+                    let labels = if self.option_use_allocator {
+                        let offset = self.allocate_memory_relative_position;
+                        self.allocate_memory_relative_position += 257;
+                        StrLabels {
+                            len: "*Str:MemVal:len*".to_string(),
+                            pos: "*Str:MemVal:pos*".to_string(),
+                            label_type: StrLabelType::MemVal(offset),
+                        }
+                    } else {
+                        StrLabels {
+                            len: format!("ARG{}", arg.register1 as isize),
+                            pos: format!("ARG{}", arg.register2.expect("BUG") as isize),
+                            label_type: StrLabelType::ArgVal,
+                        }
                     };
                     self.str_argument_labels
                         .insert(arg.var_name.clone(), (labels, arg.clone()));
                 }
                 parser::VarType::RefString => {
-                    let labels = StrLabels {
-                        len: format!("ARG{}", arg.register1 as isize),
-                        pos: format!("ARG{}", arg.register2.expect("BUG") as isize),
-                        label_type: StrLabelType::ArgRef,
+                    let labels = if self.option_use_allocator {
+                        let offset = self.allocate_memory_relative_position;
+                        self.allocate_memory_relative_position += 2;
+                        StrLabels {
+                            len: "*Str:MemRef:len*".to_string(),
+                            pos: "*Str:MemRef:pos*".to_string(),
+                            label_type: StrLabelType::MemRef(offset),
+                        }
+                    } else {
+                        StrLabels {
+                            len: format!("ARG{}", arg.register1 as isize),
+                            pos: format!("ARG{}", arg.register2.expect("BUG") as isize),
+                            label_type: StrLabelType::ArgRef,
+                        }
                     };
                     self.str_argument_labels
                         .insert(arg.var_name.clone(), (labels, arg.clone()));
@@ -820,33 +888,73 @@ impl Compiler {
         self.var_id += 1;
         match var_type {
             VarType::Boolean => {
-                let label = ValueLabel::VarBoolean(format!("B{}", self.var_id));
+                let label = if self.option_use_allocator {
+                    let offset = self.allocate_memory_relative_position;
+                    self.allocate_memory_relative_position += 1;
+                    ValueLabel::MemBoolean(offset)
+                } else {
+                    ValueLabel::VarBoolean(format!("B{}", self.var_id))
+                };
                 self.bool_var_labels.insert(var_name.into(), label);
                 self.var_total_size += 1;
             }
             VarType::Integer => {
-                let label = ValueLabel::VarInteger(format!("I{}", self.var_id));
+                let label = if self.option_use_allocator {
+                    let offset = self.allocate_memory_relative_position;
+                    self.allocate_memory_relative_position += 1;
+                    ValueLabel::MemInteger(offset)
+                } else {
+                    ValueLabel::VarInteger(format!("I{}", self.var_id))
+                };
                 self.int_var_labels.insert(var_name.into(), label);
                 self.var_total_size += 1;
             }
             VarType::String => {
-                let len_label = format!("SL{}", self.var_id);
-                let pos_label = format!("SB{}", self.var_id);
-                let labels = StrLabels {
-                    len: len_label,
-                    pos: pos_label,
-                    label_type: StrLabelType::Var,
+                let labels = if self.option_use_allocator {
+                    let offset = self.allocate_memory_relative_position;
+                    self.allocate_memory_relative_position += 257;
+                    StrLabels {
+                        len: "*Str:MemVal:len*".to_string(),
+                        pos: "*Str:MemVal:pos*".to_string(),
+                        label_type: StrLabelType::MemVal(offset),
+                    }
+                } else {
+                    let len_label = format!("SL{}", self.var_id);
+                    let pos_label = format!("SB{}", self.var_id);
+                    StrLabels {
+                        len: len_label,
+                        pos: pos_label,
+                        label_type: StrLabelType::Var,
+                    }
                 };
                 self.str_var_labels.insert(var_name.into(), labels);
                 self.var_total_size += 257;
             }
             VarType::ArrayOfBoolean(size) => {
-                let label = ArrayLabel::VarArrayOfBoolean(format!("BA{}", self.var_id), *size);
+                let label = if self.option_use_allocator {
+                    let offset = self.allocate_memory_relative_position;
+                    self.allocate_memory_relative_position += *size;
+                    ArrayLabel::MemArrayOfBoolean {
+                        offset,
+                        size: *size,
+                    }
+                } else {
+                    ArrayLabel::VarArrayOfBoolean(format!("BA{}", self.var_id), *size)
+                };
                 self.bool_arr_labels.insert(var_name.into(), label);
                 self.var_total_size += size;
             }
             VarType::ArrayOfInteger(size) => {
-                let label = ArrayLabel::VarArrayOfInteger(format!("IA{}", self.var_id), *size);
+                let label = if self.option_use_allocator {
+                    let offset = self.allocate_memory_relative_position;
+                    self.allocate_memory_relative_position += *size;
+                    ArrayLabel::MemArrayOfInteger {
+                        offset,
+                        size: *size,
+                    }
+                } else {
+                    ArrayLabel::VarArrayOfInteger(format!("IA{}", self.var_id), *size)
+                };
                 self.int_arr_labels.insert(var_name.into(), label);
                 self.var_total_size += size;
             }

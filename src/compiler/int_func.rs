@@ -162,6 +162,8 @@ impl Compiler {
                     ok = ok
                 ));
             }
+            StrLabelType::MemVal(..) => todo!(),
+            StrLabelType::MemRef(..) => todo!(),
         }
 
         self.return_temp_str_var_label(labels);

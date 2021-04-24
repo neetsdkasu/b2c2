@@ -104,11 +104,42 @@ pub fn get_util_allocator_code<T: Gen>(gen: &mut T, size: usize) -> Vec<casl2::S
     casl2::parse(&format!(
         r#"
                                    ; UtilAllocator
-ALLOC  NOP
-       RET
-{mem}  DS   {size}
+ALLOC   AND   GR0,GR0
+        JNZ   {free}
+        LAD   GR0,{mem}
+        ADDL  GR0,{cnt}
+        CPL   GR0,{pos}
+        JZE   {next}
+{init}  ST    GR1,{cnt}
+        LAD   GR0,{mem}
+        ADDL  GR1,GR0
+        ST    GR1,{pos}
+        RET
+{next}  ADDL  GR0,GR1
+        CPL   GR0,{end}
+        JPL   {init}
+        ST    GR0,{pos}
+        SUBL  GR0,GR1
+        ADDL  GR1,{cnt}
+        ST    GR1,{cnt}
+        RET
+{free}  ST    GR1,{pos}
+        LAD   GR0,{mem}
+        SUBL  GR1,GR0
+        ST    GR1,{cnt}
+        RET
+{cnt}   DS    1
+{pos}   DS    1
+{mem}   DS    {size}
+{end}   DC    {end}
 "#,
+        init = gen.jump_label(),
+        next = gen.jump_label(),
+        free = gen.jump_label(),
+        cnt = gen.var_label(),
+        pos = gen.var_label(),
         mem = gen.var_label(),
+        end = gen.var_label(),
         size = size
     ))
     .unwrap()

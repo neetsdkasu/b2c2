@@ -116,6 +116,8 @@ enum StrLabelType {
     Var,           // 文字列変数 SB**/SL**
     ArgRef,        // 引数(参照型) ARG*/ARG*
     ArgVal,        // 引数 ARG*/ARG*
+    MemRef(usize), // メモリ(MEMからのオフセット)
+    MemVal(usize),
 }
 
 // 文字列のラベル
@@ -136,6 +138,10 @@ enum ArrayLabel {
     VarArrayOfInteger(String, usize),
     VarRefArrayOfBoolean(String, usize),
     VarRefArrayOfInteger(String, usize),
+    MemArrayOfBoolean { offset: usize, size: usize },
+    MemArrayOfInteger { offset: usize, size: usize },
+    MemRefArrayOfBoolean { offset: usize, size: usize },
+    MemRefArrayOfInteger { offset: usize, size: usize },
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
@@ -144,6 +150,10 @@ enum ValueLabel {
     VarInteger(String),
     VarRefBoolean(String),
     VarRefInteger(String),
+    MemBoolean(usize),
+    MemInteger(usize),
+    MemRefBoolean(usize),
+    MemRefInteger(usize),
 }
 
 struct Compiler {
@@ -631,9 +641,16 @@ impl Compiler {
 impl Compiler {
     // コンパイル最終工程
     fn finish(mut self) -> Vec<casl2::Statement> {
+        // 初期化用のサブルーチンのロード
         if self.var_total_size > 1 {
             self.load_subroutine(subroutine::Id::UtilFill);
         }
+        // Allocatorのサブルーチンを取得
+        let allocator_code = if let Some(size) = self.option_local_allocation_size {
+            Some(subroutine::get_util_allocator_code(&mut self, size))
+        } else {
+            None
+        };
         let Self {
             program_name,
             arguments,
@@ -656,11 +673,21 @@ impl Compiler {
             option_restore_registers,
             option_initialize_variables,
             option_external_eof,
+            option_use_allocator,
             ..
         } = self;
 
         // プログラム終了ポイント
         statements.labeled("EXIT", casl2::Command::Nop);
+
+        // メモリの解放
+        if option_use_allocator {
+            statements.code(
+                r#" LAD   GR0,1
+                    LD    GR1,MEM
+                    CALL  ALLOC"#,
+            );
+        }
 
         // プログラム開始時のレジスタの状態の復帰
         if option_restore_registers {
@@ -670,34 +697,43 @@ impl Compiler {
         // プログラムの終了
         statements.code(casl2::Command::Ret);
 
-        // 引数の値を保持する領域の設定 ARG*
-        for arg in arguments.iter() {
-            statements.comment(arg.to_string());
-            match arg.var_type {
-                parser::VarType::Boolean
-                | parser::VarType::RefBoolean
-                | parser::VarType::Integer
-                | parser::VarType::RefInteger => {
-                    let (label, _) = argument_labels.get(&arg.var_name).expect("BUG");
-                    statements.labeled(label.label(), casl2::Command::Ds { size: 1 });
-                }
-                parser::VarType::RefArrayOfBoolean(_) | parser::VarType::RefArrayOfInteger(_) => {
-                    let (label, _) = arr_argument_labels.get(&arg.var_name).expect("BUG");
-                    statements.labeled(label.label(), casl2::Command::Ds { size: 1 });
-                }
-                parser::VarType::ArrayOfBoolean(size) | parser::VarType::ArrayOfInteger(size) => {
-                    let (label, _) = arr_argument_labels.get(&arg.var_name).expect("BUG");
-                    statements.labeled(label.label(), casl2::Command::Ds { size: size as u16 });
-                }
-                parser::VarType::String => {
-                    let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
-                    statements.labeled(&labels.len, casl2::Command::Ds { size: 1 });
-                    statements.labeled(&labels.pos, casl2::Command::Ds { size: 256 });
-                }
-                parser::VarType::RefString => {
-                    let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
-                    statements.labeled(&labels.len, casl2::Command::Ds { size: 1 });
-                    statements.labeled(&labels.pos, casl2::Command::Ds { size: 1 });
+        // Allocator埋め込みの場合
+        if let Some(src) = allocator_code {
+            statements.code(src);
+        }
+
+        if !option_use_allocator {
+            // 引数の値を保持する領域の設定 ARG*
+            for arg in arguments.iter() {
+                statements.comment(arg.to_string());
+                match arg.var_type {
+                    parser::VarType::Boolean
+                    | parser::VarType::RefBoolean
+                    | parser::VarType::Integer
+                    | parser::VarType::RefInteger => {
+                        let (label, _) = argument_labels.get(&arg.var_name).expect("BUG");
+                        statements.labeled(label.label(), casl2::Command::Ds { size: 1 });
+                    }
+                    parser::VarType::RefArrayOfBoolean(_)
+                    | parser::VarType::RefArrayOfInteger(_) => {
+                        let (label, _) = arr_argument_labels.get(&arg.var_name).expect("BUG");
+                        statements.labeled(label.label(), casl2::Command::Ds { size: 1 });
+                    }
+                    parser::VarType::ArrayOfBoolean(size)
+                    | parser::VarType::ArrayOfInteger(size) => {
+                        let (label, _) = arr_argument_labels.get(&arg.var_name).expect("BUG");
+                        statements.labeled(label.label(), casl2::Command::Ds { size: size as u16 });
+                    }
+                    parser::VarType::String => {
+                        let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
+                        statements.labeled(&labels.len, casl2::Command::Ds { size: 1 });
+                        statements.labeled(&labels.pos, casl2::Command::Ds { size: 256 });
+                    }
+                    parser::VarType::RefString => {
+                        let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
+                        statements.labeled(&labels.len, casl2::Command::Ds { size: 1 });
+                        statements.labeled(&labels.pos, casl2::Command::Ds { size: 1 });
+                    }
                 }
             }
         }
@@ -705,86 +741,93 @@ impl Compiler {
         // 初期化が必要な変数領域の最初のラベル
         let mut first_var_label: Option<String> = None;
 
-        // 真理値変数 B**
-        for (label, var_name) in bool_var_labels
-            .into_iter()
-            .map(|(k, v)| (v, k))
-            .collect::<BTreeSet<_>>()
-        {
-            if first_var_label.is_none() {
-                first_var_label = Some(label.label());
+        if !option_use_allocator {
+            // 真理値変数 B**
+            for (label, var_name) in bool_var_labels
+                .into_iter()
+                .map(|(k, v)| (v, k))
+                .collect::<BTreeSet<_>>()
+            {
+                if first_var_label.is_none() {
+                    first_var_label = Some(label.label());
+                }
+                statements.comment(format!("Dim {} As Boolean", var_name));
+                statements.labeled(label.label(), casl2::Command::Ds { size: 1 });
             }
-            statements.comment(format!("Dim {} As Boolean", var_name));
-            statements.labeled(label.label(), casl2::Command::Ds { size: 1 });
-        }
 
-        // 整数変数 I**
-        for (label, var_name) in int_var_labels
-            .into_iter()
-            .map(|(k, v)| (v, k))
-            .collect::<BTreeSet<_>>()
-        {
-            if first_var_label.is_none() {
-                first_var_label = Some(label.label());
+            // 整数変数 I**
+            for (label, var_name) in int_var_labels
+                .into_iter()
+                .map(|(k, v)| (v, k))
+                .collect::<BTreeSet<_>>()
+            {
+                if first_var_label.is_none() {
+                    first_var_label = Some(label.label());
+                }
+                statements.comment(format!("Dim {} As Integer", var_name));
+                statements.labeled(label.label(), casl2::Command::Ds { size: 1 });
             }
-            statements.comment(format!("Dim {} As Integer", var_name));
-            statements.labeled(label.label(), casl2::Command::Ds { size: 1 });
-        }
 
-        // 文字列変数 SL** SB**
-        for (labels, var_name) in str_var_labels
-            .into_iter()
-            .map(|(k, v)| (v, k))
-            .collect::<BTreeSet<_>>()
-        {
-            if first_var_label.is_none() {
-                first_var_label = Some(labels.len.clone());
+            // 文字列変数 SL** SB**
+            for (labels, var_name) in str_var_labels
+                .into_iter()
+                .map(|(k, v)| (v, k))
+                .collect::<BTreeSet<_>>()
+            {
+                if first_var_label.is_none() {
+                    first_var_label = Some(labels.len.clone());
+                }
+                let StrLabels { pos, len, .. } = labels;
+                statements.comment(format!("Dim {} As String", var_name));
+                statements.labeled(len, casl2::Command::Ds { size: 1 });
+                statements.labeled(pos, casl2::Command::Ds { size: 256 });
             }
-            let StrLabels { pos, len, .. } = labels;
-            statements.comment(format!("Dim {} As String", var_name));
-            statements.labeled(len, casl2::Command::Ds { size: 1 });
-            statements.labeled(pos, casl2::Command::Ds { size: 256 });
-        }
 
-        // 真理値配列(固定長) BA**
-        for (label, var_name) in bool_arr_labels
-            .into_iter()
-            .map(|(k, v)| (v, k))
-            .collect::<BTreeSet<_>>()
-        {
-            if first_var_label.is_none() {
-                first_var_label = Some(label.label());
+            // 真理値配列(固定長) BA**
+            for (label, var_name) in bool_arr_labels
+                .into_iter()
+                .map(|(k, v)| (v, k))
+                .collect::<BTreeSet<_>>()
+            {
+                if first_var_label.is_none() {
+                    first_var_label = Some(label.label());
+                }
+                statements.comment(format!("Dim {}({}) As Boolean", var_name, label.size() - 1));
+                statements.labeled(
+                    label.label(),
+                    casl2::Command::Ds {
+                        size: label.size() as u16,
+                    },
+                );
             }
-            statements.comment(format!("Dim {}({}) As Boolean", var_name, label.size() - 1));
-            statements.labeled(
-                label.label(),
-                casl2::Command::Ds {
-                    size: label.size() as u16,
-                },
-            );
-        }
 
-        // 整数配列(固定長) IA**
-        for (label, var_name) in int_arr_labels
-            .into_iter()
-            .map(|(k, v)| (v, k))
-            .collect::<BTreeSet<_>>()
-        {
-            if first_var_label.is_none() {
-                first_var_label = Some(label.label());
+            // 整数配列(固定長) IA**
+            for (label, var_name) in int_arr_labels
+                .into_iter()
+                .map(|(k, v)| (v, k))
+                .collect::<BTreeSet<_>>()
+            {
+                if first_var_label.is_none() {
+                    first_var_label = Some(label.label());
+                }
+                statements.comment(format!("Dim {}({}) As Integer", var_name, label.size() - 1));
+                statements.labeled(
+                    label.label(),
+                    casl2::Command::Ds {
+                        size: label.size() as u16,
+                    },
+                );
             }
-            statements.comment(format!("Dim {}({}) As Integer", var_name, label.size() - 1));
-            statements.labeled(
-                label.label(),
-                casl2::Command::Ds {
-                    size: label.size() as u16,
-                },
-            );
         }
 
         // EOFを扱う場合
         if has_eof && !option_external_eof {
             statements.labeled("EOF", casl2::Command::Ds { size: 1 });
+        }
+
+        // Allocatorを使用する場合
+        if option_use_allocator {
+            statements.labeled("MEM", casl2::Command::Ds { size: 1 });
         }
 
         // プログラム冒頭のコードをまとめる用
@@ -817,6 +860,11 @@ impl Compiler {
         // プログラム開始時のレジスタの状態の保存
         if option_restore_registers {
             temp_statements.code(casl2::Command::Rpush);
+        }
+
+        if option_use_allocator {
+            // メモリの確保コード
+            todo!()
         }
 
         // 引数であるレジスタの値の保存
@@ -1197,6 +1245,11 @@ impl ArrayLabel {
             | VarArrayOfInteger(label, _)
             | VarRefArrayOfBoolean(label, _)
             | VarRefArrayOfInteger(label, _) => label.clone(),
+
+            MemArrayOfBoolean { .. }
+            | MemArrayOfInteger { .. }
+            | MemRefArrayOfBoolean { .. }
+            | MemRefArrayOfInteger { .. } => unreachable!("BUG"),
         }
     }
 
@@ -1217,6 +1270,23 @@ impl ArrayLabel {
                     pos = label
                 )
             }
+            MemArrayOfBoolean { offset, .. } | MemArrayOfInteger { offset, .. } => {
+                format!(
+                    r#" LD   {reg},MEM
+                        LD   {reg},{offset},{reg}"#,
+                    reg = reg,
+                    offset = offset
+                )
+            }
+            MemRefArrayOfBoolean { offset, .. } | MemRefArrayOfInteger { offset, .. } => {
+                format!(
+                    r#" LD   {reg},MEM
+                        LD   {reg},{offset},{reg}
+                        LD   {reg},0,{reg}"#,
+                    reg = reg,
+                    offset = offset
+                )
+            }
         }
     }
 
@@ -1230,12 +1300,34 @@ impl ArrayLabel {
                 format!(r#" ST  {value},{pos}"#, value = value, pos = label)
             }
             VarRefArrayOfBoolean(label, _) | VarRefArrayOfInteger(label, _) => {
+                assert!(!matches!(extra, casl2::Register::Gr0));
                 format!(
                     r#" LD   {reg},{pos}
                         ST   {value},0,{reg}"#,
                     value = value,
-                    reg = casl2::IndexRegister::try_from(extra).expect("BUG"),
+                    reg = extra,
                     pos = label
+                )
+            }
+            MemArrayOfBoolean { offset, .. } | MemArrayOfInteger { offset, .. } => {
+                assert!(!matches!(extra, casl2::Register::Gr0));
+                format!(
+                    r#" LD   {reg},MEM
+                        ST   {value},{offset},{reg}"#,
+                    reg = extra,
+                    value = value,
+                    offset = offset
+                )
+            }
+            MemRefArrayOfBoolean { offset, .. } | MemRefArrayOfInteger { offset, .. } => {
+                assert!(!matches!(extra, casl2::Register::Gr0));
+                format!(
+                    r#" LD   {reg},MEM
+                        LD   {reg},{offset},{reg}
+                        ST   {value},0,{reg}"#,
+                    reg = extra,
+                    value = value,
+                    offset = offset
                 )
             }
         }
@@ -1253,6 +1345,24 @@ impl ArrayLabel {
             VarRefArrayOfBoolean(label, _) | VarRefArrayOfInteger(label, _) => {
                 format!(r#" LD   {reg},{pos}"#, reg = reg, pos = label)
             }
+            MemArrayOfBoolean { offset, .. } | MemArrayOfInteger { offset, .. } => {
+                assert!(!matches!(reg, casl2::Register::Gr0));
+                format!(
+                    r#" LD   {reg},MEM
+                        LAD  {reg},{offset},{reg}"#,
+                    reg = reg,
+                    offset = offset
+                )
+            }
+            MemRefArrayOfBoolean { offset, .. } | MemRefArrayOfInteger { offset, .. } => {
+                assert!(!matches!(reg, casl2::Register::Gr0));
+                format!(
+                    r#" LD   {reg},MEM
+                        LD   {reg},{offset},{reg}"#,
+                    reg = reg,
+                    offset = offset
+                )
+            }
         }
     }
 
@@ -1264,7 +1374,11 @@ impl ArrayLabel {
             | VarArrayOfBoolean(_, size)
             | VarArrayOfInteger(_, size)
             | VarRefArrayOfBoolean(_, size)
-            | VarRefArrayOfInteger(_, size) => *size,
+            | VarRefArrayOfInteger(_, size)
+            | MemArrayOfBoolean { size, .. }
+            | MemArrayOfInteger { size, .. }
+            | MemRefArrayOfBoolean { size, .. }
+            | MemRefArrayOfInteger { size, .. } => *size,
         }
     }
 
@@ -1272,22 +1386,32 @@ impl ArrayLabel {
         use ArrayLabel::*;
         match self {
             TempArrayOfBoolean(labels, _) | TempArrayOfInteger(labels, _) => Some(labels),
+
             VarArrayOfBoolean(..)
             | VarArrayOfInteger(..)
             | VarRefArrayOfBoolean(..)
-            | VarRefArrayOfInteger(..) => None,
+            | VarRefArrayOfInteger(..)
+            | MemArrayOfBoolean { .. }
+            | MemArrayOfInteger { .. }
+            | MemRefArrayOfBoolean { .. }
+            | MemRefArrayOfInteger { .. } => None,
         }
     }
 
     fn element_type(&self) -> parser::ExprType {
         use ArrayLabel::*;
         match self {
-            TempArrayOfBoolean(..) | VarArrayOfBoolean(..) | VarRefArrayOfBoolean(..) => {
-                parser::ExprType::Boolean
-            }
-            TempArrayOfInteger(..) | VarArrayOfInteger(..) | VarRefArrayOfInteger(..) => {
-                parser::ExprType::Integer
-            }
+            TempArrayOfBoolean(..)
+            | VarArrayOfBoolean(..)
+            | VarRefArrayOfBoolean(..)
+            | MemArrayOfBoolean { .. }
+            | MemRefArrayOfBoolean { .. } => parser::ExprType::Boolean,
+
+            TempArrayOfInteger(..)
+            | VarArrayOfInteger(..)
+            | VarRefArrayOfInteger(..)
+            | MemArrayOfInteger { .. }
+            | MemRefArrayOfInteger { .. } => parser::ExprType::Integer,
         }
     }
 }
@@ -1305,6 +1429,12 @@ impl StrLabels {
             StrLabelType::ArgRef => {
                 format!(r#" LD {reg},{pos}"#, reg = reg, pos = self.pos)
             }
+            StrLabelType::MemVal(..) => {
+                todo!()
+            }
+            StrLabelType::MemRef(..) => {
+                todo!()
+            }
         }
     }
 
@@ -1319,6 +1449,12 @@ impl StrLabels {
             }
             StrLabelType::ArgRef => {
                 format!(r#" LD {reg},{len}"#, reg = reg, len = self.len)
+            }
+            StrLabelType::MemVal(..) => {
+                todo!()
+            }
+            StrLabelType::MemRef(..) => {
+                todo!()
             }
         }
     }
@@ -1336,12 +1472,19 @@ impl StrLabels {
                 format!(r#" LD {reg},{len}"#, reg = reg, len = self.len)
             }
             StrLabelType::ArgRef => {
+                assert!(!matches!(reg, casl2::Register::Gr0));
                 format!(
                     r#" LD {reg},{len}
                         LD {reg},0,{reg}"#,
                     reg = reg,
                     len = self.len
                 )
+            }
+            StrLabelType::MemVal(..) => {
+                todo!()
+            }
+            StrLabelType::MemRef(..) => {
+                todo!()
             }
         }
     }
@@ -1354,6 +1497,11 @@ impl ValueLabel {
             | Self::VarInteger(label)
             | Self::VarRefBoolean(label)
             | Self::VarRefInteger(label) => label.clone(),
+
+            Self::MemBoolean(..)
+            | Self::MemInteger(..)
+            | Self::MemRefBoolean(..)
+            | Self::MemRefInteger(..) => unreachable!("BUG"),
         }
     }
 
@@ -1365,6 +1513,24 @@ impl ValueLabel {
             Self::VarRefBoolean(label) | Self::VarRefInteger(label) => {
                 format!(" LD {reg},{label}", reg = reg, label = label)
             }
+            Self::MemBoolean(offset) | Self::MemInteger(offset) => {
+                assert!(!matches!(reg, casl2::Register::Gr0));
+                format!(
+                    r#" LD   {reg},MEM
+                        LAD  {reg},{offset},{reg}"#,
+                    reg = reg,
+                    offset = offset
+                )
+            }
+            Self::MemRefBoolean(offset) | Self::MemRefInteger(offset) => {
+                assert!(!matches!(reg, casl2::Register::Gr0));
+                format!(
+                    r#" LD   {reg},MEM
+                        LD   {reg},{offset},{reg}"#,
+                    reg = reg,
+                    offset = offset
+                )
+            }
         }
     }
 
@@ -1374,11 +1540,31 @@ impl ValueLabel {
                 format!(" LD {reg},{label}", reg = reg, label = label)
             }
             Self::VarRefBoolean(label) | Self::VarRefInteger(label) => {
+                assert!(!matches!(reg, casl2::Register::Gr0));
                 format!(
                     r#" LD {reg},{label}
                         LD {reg},0,{reg}"#,
                     reg = reg,
                     label = label
+                )
+            }
+            Self::MemBoolean(offset) | Self::MemInteger(offset) => {
+                assert!(!matches!(reg, casl2::Register::Gr0));
+                format!(
+                    r#" LD   {reg},MEM
+                        LD   {reg},{offset},{reg}"#,
+                    reg = reg,
+                    offset = offset
+                )
+            }
+            Self::MemRefBoolean(offset) | Self::MemRefInteger(offset) => {
+                assert!(!matches!(reg, casl2::Register::Gr0));
+                format!(
+                    r#" LD   {reg},MEM
+                        LD   {reg},{offset},{reg}
+                        LD   {reg},0,{reg}"#,
+                    reg = reg,
+                    offset = offset
                 )
             }
         }
@@ -1390,11 +1576,33 @@ impl ValueLabel {
                 format!(" ST {value},{label}", value = value, label = label)
             }
             Self::VarRefBoolean(label) | Self::VarRefInteger(label) => {
+                assert!(!matches!(extra, casl2::Register::Gr0));
                 format!(
                     r#" LD {extra},{label}
                         ST {value},0,{extra}"#,
-                    extra = casl2::IndexRegister::try_from(extra).expect("BUG"),
+                    extra = extra,
                     label = label,
+                    value = value
+                )
+            }
+            Self::MemBoolean(offset) | Self::MemInteger(offset) => {
+                assert!(!matches!(extra, casl2::Register::Gr0));
+                format!(
+                    r#" LD   {extra},MEM
+                        ST   {value},{offset},{extra}"#,
+                    extra = extra,
+                    value = value,
+                    offset = offset
+                )
+            }
+            Self::MemRefBoolean(offset) | Self::MemRefInteger(offset) => {
+                assert!(!matches!(extra, casl2::Register::Gr0));
+                format!(
+                    r#" LD   {extra},MEM
+                        LD   {extra},{offset},{extra}
+                        ST   {value},0,{extra}"#,
+                    extra = extra,
+                    offset = offset,
                     value = value
                 )
             }
@@ -1403,8 +1611,15 @@ impl ValueLabel {
 
     fn value_type(&self) -> parser::ExprType {
         match self {
-            Self::VarBoolean(..) | Self::VarRefBoolean(..) => parser::ExprType::Boolean,
-            Self::VarInteger(..) | Self::VarRefInteger(..) => parser::ExprType::Integer,
+            Self::VarBoolean(..)
+            | Self::VarRefBoolean(..)
+            | Self::MemBoolean(..)
+            | Self::MemRefBoolean(..) => parser::ExprType::Boolean,
+
+            Self::VarInteger(..)
+            | Self::VarRefInteger(..)
+            | Self::MemInteger(..)
+            | Self::MemRefInteger(..) => parser::ExprType::Integer,
         }
     }
 }
