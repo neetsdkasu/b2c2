@@ -968,7 +968,7 @@ impl Parser {
                                 });
                             }
                             Some((_, Token::Integer(size)))
-                                if !(1..=MAX_ALLOCATION_SIZE as i32).contains(size) =>
+                                if (1..=MAX_ALLOCATION_SIZE as i32).contains(size) =>
                             {
                                 self.maximum_variable_area_size = *size as usize;
                                 self.add_statement(Statement::CompileOption {
