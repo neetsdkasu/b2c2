@@ -2239,3 +2239,103 @@ End Program
         assert!(!statements.is_empty()); // dummy assert
     }
 }
+
+#[test]
+fn allocator_1_works() {
+    let src1 = r#"
+OPTION ALLOCATOR INTERNAL 2000
+PROGRAM TEST
+    ARGUMENT
+        BYVAL X AS INTEGER FROM GR1
+    END ARGUMENT
+    DIM B AS BOOLEAN
+    DIM I AS INTEGER
+    DIM S AS STRING
+    B = X = 0
+    I = 123 + X
+    S = "ABC" & CSTR(X)
+    IF X <> 987 THEN
+        IF X > 0 THEN
+            CALL TEST(987)
+        ELSE
+            CALL TEST(777)
+            CALL TEST(7)
+        END IF
+    END IF
+    PRINT B
+    PRINT I
+    PRINT S
+    PRINT X
+END PROGRAM
+"#;
+
+    for src in [src1].iter() {
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile(None, &code[..]).unwrap();
+
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
+
+        eprintln!("{}", crate::stat::analyze(&statements));
+
+        assert!(!statements.is_empty()); // dummy assert
+    }
+}
+
+#[test]
+fn allocator_2_works() {
+    let src1 = r#"
+Extern Sub FIB With
+    ByVal n As Integer To GR1
+    ByRef r As Integer To GR2
+End Sub
+Program TEST
+    Dim i As Integer
+    Dim x As Integer
+    For i = 0 To 20
+        Call FIB(i, x)
+        Print "FIB(" & CStr(i) & ") = " & CStr(x)
+    Next i
+End Program
+"#;
+
+    let src2 = r#"
+Option Allocator Internal 100
+Program FIB
+    Argument
+        ByVal n As Integer From GR1
+        ByRef r As Integer From GR2
+    End Argument
+    Dim t As Integer
+    If n <= 0 Then
+        r = 0
+    ElseIf n = 1 Then
+        r = 1
+    Else
+        Call FIB(n - 1, r)
+        Call FIB(n - 2, t)
+        r += t
+    End If
+End Program
+"#;
+
+    for src in [src1, src2].iter() {
+        let mut cursor = std::io::Cursor::new(src);
+
+        let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+        let statements = compile(None, &code[..]).unwrap();
+
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
+
+        eprintln!("{}", crate::stat::analyze(&statements));
+
+        assert!(!statements.is_empty()); // dummy assert
+    }
+}

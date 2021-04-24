@@ -269,6 +269,12 @@ struct Compiler {
 
     // アロケートされたメモリ上の各変数の相対位置計算用
     allocate_memory_relative_position: usize,
+
+    // アロケートされたメモリ上の引数用途の合計サイズ
+    allocate_arguments_size: usize,
+
+    // Callで使用するアロケートメモリの最大サイズ
+    maximum_allocate_temporary_area_size: usize,
 }
 
 // コンパイラの初期化
@@ -321,6 +327,8 @@ impl Compiler {
             option_use_allocator: false,
             option_local_allocation_size: None,
             allocate_memory_relative_position: 0,
+            allocate_arguments_size: 0,
+            maximum_allocate_temporary_area_size: 0,
         })
     }
 }
@@ -674,6 +682,9 @@ impl Compiler {
             option_initialize_variables,
             option_external_eof,
             option_use_allocator,
+            allocate_memory_relative_position,
+            allocate_arguments_size,
+            maximum_allocate_temporary_area_size,
             ..
         } = self;
 
@@ -682,10 +693,13 @@ impl Compiler {
 
         // メモリの解放
         if option_use_allocator {
+            statements.comment("Release Memory");
             statements.code(
                 r#" LAD   GR0,1
                     LD    GR1,MEM
-                    CALL  ALLOC"#,
+                    CALL  ALLOC
+                    POP   GR1
+                    ST    GR1,MEM"#,
             );
         }
 
@@ -696,11 +710,6 @@ impl Compiler {
 
         // プログラムの終了
         statements.code(casl2::Command::Ret);
-
-        // Allocator埋め込みの場合
-        if let Some(src) = allocator_code {
-            statements.code(src);
-        }
 
         if !option_use_allocator {
             // 引数の値を保持する領域の設定 ARG*
@@ -864,8 +873,49 @@ impl Compiler {
 
         if option_use_allocator {
             // メモリの確保コード
-            todo!()
+            let use_gr1 = arguments.iter().any(|arg| {
+                matches!(arg.register1, casl2::IndexRegister::Gr1)
+                    || matches!(arg.register2, Some(casl2::IndexRegister::Gr1))
+            });
+            temp_statements.comment("Allocate Memory");
+            if use_gr1 {
+                temp_statements.code(
+                    r#" LD    GR0,GR1
+                        LD    GR1,MEM
+                        PUSH  0,GR1
+                        LD    GR1,GR0
+                        PUSH  0,GR1"#,
+                );
+            } else {
+                temp_statements.code(
+                    r#" LD    GR1,MEM
+                        PUSH  0,GR1"#,
+                );
+            }
+            let size = allocate_memory_relative_position + maximum_allocate_temporary_area_size;
+            temp_statements.code(format!(
+                r#" XOR   GR0,GR0
+                    LAD   GR1,{size}
+                    CALL  ALLOC
+                    ST    GR0,MEM"#,
+                size = size
+            ));
+            if use_gr1 {
+                temp_statements.code(" POP GR1");
+            }
         }
+
+        let mut idle_register = {
+            use casl2::IndexRegister::*;
+            let mut regs = vec![Gr1, Gr2, Gr3, Gr4, Gr5, Gr6, Gr7];
+            for arg in arguments.iter() {
+                regs.retain(|r| *r != arg.register1);
+                if let Some(r2) = arg.register2 {
+                    regs.retain(|r| *r != r2);
+                }
+            }
+            regs.pop()
+        };
 
         // 引数であるレジスタの値の保存
         for arg in arguments.iter() {
@@ -876,33 +926,107 @@ impl Compiler {
                 | parser::VarType::Integer
                 | parser::VarType::RefInteger => {
                     let (label, _) = argument_labels.get(&arg.var_name).expect("BUG");
-                    temp_statements.code(format!(
-                        r#" ST {reg},{label}"#,
-                        reg = arg.register1,
-                        label = label.label()
-                    ));
+                    if option_use_allocator {
+                        if let Some(reg) = idle_register {
+                            temp_statements.code(format!(
+                                r#" LD   {reg},MEM
+                                    LAD  {reg},{offset},{reg}
+                                    ST   {arg},0,{reg}"#,
+                                reg = reg,
+                                offset = label.get_offset().expect("BUG"),
+                                arg = arg.register1
+                            ));
+                        } else {
+                            temp_statements.code(format!(
+                                r#" LD   GR0,{reg}
+                                    LD   {reg},MEM
+                                    LAD  {reg},{offset},{reg}
+                                    ST   GR0,0,{reg}"#,
+                                reg = arg.register1,
+                                offset = label.get_offset().expect("BUG")
+                            ));
+                            idle_register = Some(arg.register1);
+                        }
+                    } else {
+                        temp_statements.code(format!(
+                            r#" ST {reg},{label}"#,
+                            reg = arg.register1,
+                            label = label.label()
+                        ));
+                    }
                 }
                 parser::VarType::RefArrayOfBoolean(_)
                 | parser::VarType::ArrayOfBoolean(_)
                 | parser::VarType::ArrayOfInteger(_)
                 | parser::VarType::RefArrayOfInteger(_) => {
                     let (label, _) = arr_argument_labels.get(&arg.var_name).expect("BUG");
-                    temp_statements.code(format!(
-                        r#" ST {reg},{label}"#,
-                        reg = arg.register1,
-                        label = label.label()
-                    )); // todo!("ALLOCモードで.label()が定義されない！")
+                    if option_use_allocator {
+                        if let Some(reg) = idle_register {
+                            temp_statements.code(format!(
+                                r#" LD   {reg},MEM
+                                    LAD  {reg},{offset},{reg}
+                                    ST   {arg},0,{reg}"#,
+                                reg = reg,
+                                offset = label.get_offset().expect("BUG"),
+                                arg = arg.register1
+                            ));
+                        } else {
+                            temp_statements.code(format!(
+                                r#" LD   GR0,{reg}
+                                    LD   {reg},MEM
+                                    LAD  {reg},{offset},{reg}
+                                    ST   GR0,0,{reg}"#,
+                                reg = arg.register1,
+                                offset = label.get_offset().expect("BUG")
+                            ));
+                            idle_register = Some(arg.register1);
+                        }
+                    } else {
+                        temp_statements.code(format!(
+                            r#" ST {reg},{label}"#,
+                            reg = arg.register1,
+                            label = label.label()
+                        ));
+                    }
                 }
                 parser::VarType::String | parser::VarType::RefString => {
                     let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
-                    temp_statements.code(format!(
-                        r#" ST {reglen},{len}
-                            ST {regpos},{pos}"#,
-                        reglen = arg.register1,
-                        len = labels.len,
-                        regpos = arg.register2.expect("BUG"),
-                        pos = labels.pos
-                    ));
+                    if option_use_allocator {
+                        if let Some(reg) = idle_register {
+                            temp_statements.code(format!(
+                                r#" LD  {reg},MEM
+                                    LAD {reg},{lenoff},{reg}
+                                    ST  {reglen},0,{reg}
+                                    ST  {regpos},1,{reg}"#,
+                                lenoff = labels.get_offset().expect("BUG"),
+                                reglen = arg.register1,
+                                reg = reg,
+                                regpos = arg.register2.expect("BUG")
+                            ));
+                        } else {
+                            let reg = arg.register1;
+                            temp_statements.code(format!(
+                                r#" LD  GR0,{reg}
+                                    LD  {reg},MEM
+                                    LAD {reg},{lenoff},{reg}
+                                    ST  GR0,0,{reg}
+                                    ST  {regpos},1,{reg}"#,
+                                lenoff = labels.get_offset().expect("BUG"),
+                                reg = reg,
+                                regpos = arg.register2.expect("BUG")
+                            ));
+                            idle_register = Some(reg);
+                        }
+                    } else {
+                        temp_statements.code(format!(
+                            r#" ST {reglen},{len}
+                                ST {regpos},{pos}"#,
+                            reglen = arg.register1,
+                            len = labels.len,
+                            regpos = arg.register2.expect("BUG"),
+                            pos = labels.pos
+                        ));
+                    }
                 }
             }
         }
@@ -921,64 +1045,121 @@ impl Compiler {
                 parser::VarType::ArrayOfBoolean(size) | parser::VarType::ArrayOfInteger(size) => {
                     temp_statements.comment(format!("Copy Into {}", arg.var_name));
                     let (label, _) = arr_argument_labels.get(&arg.var_name).expect("BUG");
-                    temp_statements.code(format!(
-                        r#" LAD   GR1,{label}
-                            LAD   GR2,{label}
-                            LD    GR3,{label}
-                            LAD   GR4,{size}
-                            CALL  {copy}"#,
-                        label = label.label(),
-                        size = size,
-                        copy = subroutine::Id::UtilCopyStr.label()
-                    )); // todo!("ALLOCモードで.label()が定義されない！")
+                    if option_use_allocator {
+                        temp_statements.code(format!(
+                            r#" LD    GR1,MEM
+                                LAD   GR1,{offset},GR1
+                                LD    GR2,GR1
+                                LD    GR3,0,GR1
+                                LAD   GR4,{size}
+                                CALL  {copy}"#,
+                            offset = label.get_offset().expect("BUG"),
+                            size = size,
+                            copy = subroutine::Id::UtilCopyStr.label()
+                        ));
+                    } else {
+                        temp_statements.code(format!(
+                            r#" LAD   GR1,{label}
+                                LD    GR2,GR1
+                                LD    GR3,0,GR1
+                                LAD   GR4,{size}
+                                CALL  {copy}"#,
+                            label = label.label(),
+                            size = size,
+                            copy = subroutine::Id::UtilCopyStr.label()
+                        ));
+                    }
                 }
                 parser::VarType::String => {
                     temp_statements.comment(format!("Copy Into {}", arg.var_name));
                     let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
-                    temp_statements.code(format!(
-                        r#" LAD   GR1,{pos}
-                            LAD   GR2,{len}
-                            LD    GR3,{pos}
-                            LD    GR4,{len}
-                            CALL  {copy}"#,
-                        pos = labels.pos,
-                        len = labels.len,
-                        copy = subroutine::Id::UtilCopyStr.label()
-                    ));
+                    if option_use_allocator {
+                        temp_statements.code(format!(
+                            r#" LD    GR1,MEM
+                                LAD   GR1,{offset},GR1
+                                LAD   GR2,1,GR1
+                                LD    GR3,0,GR1
+                                LD    GR4,0,GR2
+                                CALL  {copy}"#,
+                            offset = labels.get_offset().expect("BUG"),
+                            copy = subroutine::Id::UtilCopyStr.label()
+                        ));
+                    } else {
+                        temp_statements.code(format!(
+                            r#" LAD   GR1,{pos}
+                                LAD   GR2,{len}
+                                LD    GR3,0,GR1
+                                LD    GR4,0,GR2
+                                CALL  {copy}"#,
+                            pos = labels.pos,
+                            len = labels.len,
+                            copy = subroutine::Id::UtilCopyStr.label()
+                        ));
+                    }
                 }
             }
         }
 
         // 変数領域の初期化処理のコード
         if option_initialize_variables {
-            match first_var_label {
-                Some(label) if var_total_size == 1 => {
-                    temp_statements.comment("Init Variable");
-                    temp_statements.extend(
-                        casl2::parse(&format!(
-                            r#" XOR   GR0,GR0
-                                ST    GR0,{label}"#,
-                            label = label
-                        ))
-                        .unwrap(),
-                    );
-                }
-                Some(label) => {
-                    temp_statements.comment("Init Variables");
-                    temp_statements.extend(
-                        casl2::parse(&format!(
-                            r#" LAD   GR1,{start}
-                                XOR   GR2,GR2
-                                LAD   GR3,{size}
-                                CALL  {fill}"#,
-                            start = label,
+            if option_use_allocator {
+                use std::cmp::Ordering;
+                match var_total_size.cmp(&1) {
+                    Ordering::Equal => {
+                        temp_statements.comment("Init Variable");
+                        temp_statements.code(format!(
+                            r#" XOR  GR0,GR0
+                            LD   GR1,MEM
+                            LAD  GR1,{offset},GR1
+                            ST   GR0,0,GR1"#,
+                            offset = allocate_arguments_size
+                        ));
+                    }
+                    Ordering::Greater => {
+                        temp_statements.comment("Init Variables");
+                        temp_statements.code(format!(
+                            r#" LD    GR1,MEM
+                            LAD   GR1,{offset},GR1
+                            XOR   GR2,GR2
+                            LAD   GR3,{size}
+                            CALL  {fill}"#,
+                            offset = allocate_arguments_size,
                             size = var_total_size,
                             fill = subroutine::Id::UtilFill.label()
-                        ))
-                        .unwrap(),
-                    );
+                        ));
+                    }
+                    _ => {}
                 }
-                _ => {}
+            } else {
+                match first_var_label {
+                    Some(label) if var_total_size == 1 => {
+                        temp_statements.comment("Init Variable");
+                        temp_statements.extend(
+                            casl2::parse(&format!(
+                                r#" XOR   GR0,GR0
+                                    ST    GR0,{label}"#,
+                                label = label
+                            ))
+                            .unwrap(),
+                        );
+                    }
+                    Some(label) => {
+                        temp_statements.comment("Init Variables");
+                        temp_statements.extend(
+                            casl2::parse(&format!(
+                                r#" LAD   GR1,{start}
+                                    XOR   GR2,GR2
+                                    LAD   GR3,{size}
+                                    CALL  {fill}"#,
+                                start = label,
+                                size = var_total_size,
+                                fill = subroutine::Id::UtilFill.label()
+                            ))
+                            .unwrap(),
+                        );
+                    }
+                    _ => {}
+                }
             }
         }
 
@@ -1021,6 +1202,11 @@ impl Compiler {
                     },
                 );
             }
+        }
+
+        // Allocator埋め込みの場合
+        if let Some(src) = allocator_code {
+            statements.code(src);
         }
 
         // 組み込みサブルーチンのコード
@@ -1414,6 +1600,23 @@ impl ArrayLabel {
             | MemRefArrayOfInteger { .. } => parser::ExprType::Integer,
         }
     }
+
+    fn get_offset(&self) -> Option<usize> {
+        use ArrayLabel::*;
+        match self {
+            TempArrayOfBoolean(..)
+            | VarArrayOfBoolean(..)
+            | VarRefArrayOfBoolean(..)
+            | TempArrayOfInteger(..)
+            | VarArrayOfInteger(..)
+            | VarRefArrayOfInteger(..) => None,
+
+            MemArrayOfBoolean { offset, .. }
+            | MemRefArrayOfBoolean { offset, .. }
+            | MemArrayOfInteger { offset, .. }
+            | MemRefArrayOfInteger { offset, .. } => Some(*offset),
+        }
+    }
 }
 
 impl StrLabels {
@@ -1429,11 +1632,21 @@ impl StrLabels {
             StrLabelType::ArgRef => {
                 format!(r#" LD {reg},{pos}"#, reg = reg, pos = self.pos)
             }
-            StrLabelType::MemVal(..) => {
-                todo!()
+            StrLabelType::MemVal(offset) => {
+                format!(
+                    r#" LD   {reg},MEM
+                        LAD  {reg},{offset},{reg}"#,
+                    reg = reg,
+                    offset = *offset + 1
+                )
             }
-            StrLabelType::MemRef(..) => {
-                todo!()
+            StrLabelType::MemRef(offset) => {
+                format!(
+                    r#" LD  {reg},MEM
+                        LD  {reg},{offset},{reg}"#,
+                    reg = reg,
+                    offset = *offset + 1
+                )
             }
         }
     }
@@ -1450,11 +1663,21 @@ impl StrLabels {
             StrLabelType::ArgRef => {
                 format!(r#" LD {reg},{len}"#, reg = reg, len = self.len)
             }
-            StrLabelType::MemVal(..) => {
-                todo!()
+            StrLabelType::MemVal(offset) => {
+                format!(
+                    r#" LD   {reg},MEM
+                        LAD  {reg},{offset},{reg}"#,
+                    reg = reg,
+                    offset = *offset
+                )
             }
-            StrLabelType::MemRef(..) => {
-                todo!()
+            StrLabelType::MemRef(offset) => {
+                format!(
+                    r#" LD  {reg},MEM
+                        LD  {reg},{offset},{reg}"#,
+                    reg = reg,
+                    offset = *offset
+                )
             }
         }
     }
@@ -1480,12 +1703,36 @@ impl StrLabels {
                     len = self.len
                 )
             }
-            StrLabelType::MemVal(..) => {
-                todo!()
+            StrLabelType::MemVal(offset) => {
+                format!(
+                    r#" LD  {reg},MEM
+                        LD  {reg},{offset},{reg}"#,
+                    reg = reg,
+                    offset = *offset
+                )
             }
-            StrLabelType::MemRef(..) => {
-                todo!()
+            StrLabelType::MemRef(offset) => {
+                format!(
+                    r#" LD  {reg},MEM
+                        LD  {reg},{offset},{reg}
+                        LD  {reg},0,{reg}"#,
+                    reg = reg,
+                    offset = *offset
+                )
             }
+        }
+    }
+
+    fn get_offset(&self) -> Option<usize> {
+        match &self.label_type {
+            StrLabelType::Const(_)
+            | StrLabelType::Lit(_)
+            | StrLabelType::Temp
+            | StrLabelType::Var
+            | StrLabelType::ArgVal
+            | StrLabelType::ArgRef => None,
+
+            StrLabelType::MemVal(offset) | StrLabelType::MemRef(offset) => Some(*offset),
         }
     }
 }
@@ -1606,6 +1853,20 @@ impl ValueLabel {
                     value = value
                 )
             }
+        }
+    }
+
+    fn get_offset(&self) -> Option<usize> {
+        match self {
+            Self::VarBoolean(..)
+            | Self::VarRefBoolean(..)
+            | Self::VarInteger(..)
+            | Self::VarRefInteger(..) => None,
+
+            Self::MemBoolean(offset)
+            | Self::MemRefBoolean(offset)
+            | Self::MemInteger(offset)
+            | Self::MemRefInteger(offset) => Some(*offset),
         }
     }
 

@@ -334,15 +334,15 @@ impl Compiler {
         let var_label = self.get_str_var_labels(var_name);
 
         let src = format!(
-            r#" LAD   GR1,{dstpos}
-                LAD   GR2,{dstlen}
-                {lad_srcpos}
-                {ld_srclen}
+            r#" {lad_gr1_dstpos}
+                {lad_gr2_dstlen}
+                {lad_gr3_srcpos}
+                {ld_gr4_srclen}
                 CALL  {copystr}"#,
-            dstpos = var_label.pos,
-            dstlen = var_label.len,
-            lad_srcpos = value_label.lad_pos(casl2::Register::Gr3),
-            ld_srclen = value_label.ld_len(casl2::Register::Gr4),
+            lad_gr1_dstpos = var_label.lad_pos(casl2::Register::Gr1),
+            lad_gr2_dstlen = var_label.lad_len(casl2::Register::Gr2),
+            lad_gr3_srcpos = value_label.lad_pos(casl2::Register::Gr3),
+            ld_gr4_srclen = value_label.ld_len(casl2::Register::Gr4),
             copystr = copystr
         );
 
@@ -370,15 +370,15 @@ impl Compiler {
         let var_labels = self.get_ref_str_var_labels(var_name);
 
         let src = format!(
-            r#" LD    GR1,{dstpos}
-                LD    GR2,{dstlen}
-                {lad_srcpos}
-                {ld_srclen}
+            r#" {lad_gr1_dstpos}
+                {lad_gr2_dstlen}
+                {lad_gr3_srcpos}
+                {ld_gr4_srclen}
                 CALL  {copystr}"#,
-            dstpos = var_labels.pos,
-            dstlen = var_labels.len,
-            lad_srcpos = value_label.lad_pos(casl2::Register::Gr3),
-            ld_srclen = value_label.ld_len(casl2::Register::Gr4),
+            lad_gr1_dstpos = var_labels.lad_pos(casl2::Register::Gr1),
+            lad_gr2_dstlen = var_labels.lad_len(casl2::Register::Gr2),
+            lad_gr3_srcpos = value_label.lad_pos(casl2::Register::Gr3),
+            ld_gr4_srclen = value_label.ld_len(casl2::Register::Gr4),
             copystr = copystr
         );
 

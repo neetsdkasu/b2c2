@@ -40,12 +40,38 @@ impl Compiler {
     // Print <str_var>ステートメント
     // 文字列変数の画面出力
     pub(super) fn compile_print_var_string(&mut self, var_name: &str) {
-        let StrLabels { len, pos, .. } = self.get_str_var_labels(var_name);
+        let labels = self.get_str_var_labels(var_name);
         self.comment(format!("Print {}", var_name));
-        self.code(casl2::Command::Out {
-            pos: pos.into(),
-            len: len.into(),
-        });
+        if self.option_use_allocator {
+            let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
+            let temp_labels = self.get_temp_str_var_label();
+            let (saves, recovers) = {
+                use casl2::Register::*;
+                self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+            };
+            self.code(saves);
+            self.code(format!(
+                r#" LAD   GR1,{temppos}
+                    LAD   GR2,{templen}
+                    {lad_gr3_srcpos}
+                    {ld_gr4_srclen}
+                    CALL  {copy}
+                    OUT   {temppos},{templen}"#,
+                temppos = temp_labels.pos,
+                templen = temp_labels.len,
+                lad_gr3_srcpos = labels.lad_pos(casl2::Register::Gr3),
+                ld_gr4_srclen = labels.ld_len(casl2::Register::Gr4),
+                copy = copystr
+            ));
+            self.code(recovers);
+            self.return_temp_str_var_label(temp_labels);
+        } else {
+            let StrLabels { pos, len, .. } = labels;
+            self.code(casl2::Command::Out {
+                pos: pos.into(),
+                len: len.into(),
+            });
+        }
     }
 
     // Print <bool_expr>ステートメント

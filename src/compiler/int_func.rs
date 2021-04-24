@@ -162,8 +162,38 @@ impl Compiler {
                     ok = ok
                 ));
             }
-            StrLabelType::MemVal(..) => todo!(),
-            StrLabelType::MemRef(..) => todo!(),
+            StrLabelType::MemVal(offset) => {
+                let ok = self.get_new_jump_label();
+                self.code(format!(
+                    r#" LD   {reg},MEM
+                        LD   {reg},{len_offset},{reg}
+                        JZE  {ok}
+                        LD   {reg},MEM
+                        LD   {reg},{pos_offset},{reg}
+{ok}                    NOP"#,
+                    reg = reg,
+                    len_offset = *offset,
+                    ok = ok,
+                    pos_offset = *offset + 1
+                ));
+            }
+            StrLabelType::MemRef(offset) => {
+                let ok = self.get_new_jump_label();
+                self.code(format!(
+                    r#" LD   {reg},MEM
+                        LD   {reg},{len_offset},{reg}
+                        LD   {reg},0,{reg}
+                        JZE  {ok}
+                        LD   {reg},MEM
+                        LD   {reg},{pos_offset},{reg}
+                        LD   {reg},0,{reg}
+{ok}                    NOP"#,
+                    reg = reg,
+                    len_offset = *offset,
+                    ok = ok,
+                    pos_offset = *offset + 1
+                ));
+            }
         }
 
         self.return_temp_str_var_label(labels);

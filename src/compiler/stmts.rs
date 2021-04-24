@@ -51,6 +51,8 @@ impl Compiler {
         let mut temp_int_labels = Vec::<String>::new();
         let mut str_labels = Vec::<StrLabels>::new();
 
+        let mut alloc_pos = self.allocate_memory_relative_position;
+
         self.comment(format!("Call {}", name));
 
         for (arg_name, value) in arguments.iter() {
@@ -156,23 +158,46 @@ impl Compiler {
                         }
                         _ => {
                             let value_reg = self.compile_int_expr(value);
-                            let temp_label = self.get_temp_int_var_label();
-                            self.code(format!(
-                                r#" ST {reg},{temp}"#,
-                                reg = value_reg,
-                                temp = temp_label
-                            ));
-                            self.set_register_idle(value_reg);
-                            temp_int_labels.push(temp_label.clone());
-                            set_argument_codes.push((
-                                arg.register1,
-                                format!(
-                                    " {cmd} {reg},{temp}",
-                                    cmd = if is_byref { "LAD" } else { "LD" },
-                                    reg = arg.register1,
+                            if is_byref && self.option_use_allocator {
+                                let offset = alloc_pos;
+                                alloc_pos += 1;
+                                let temp_reg = self.get_idle_register();
+                                self.code(format!(
+                                    r#" LD  {temp},MEM
+                                        ST  {value},{offset},{temp}"#,
+                                    temp = temp_reg,
+                                    value = value_reg,
+                                    offset = offset
+                                ));
+                                self.set_register_idle(temp_reg);
+                                set_argument_codes.push((
+                                    arg.register1,
+                                    format!(
+                                        " LD  {reg},MEM
+                                          LAD {reg},{offset},{reg}",
+                                        reg = arg.register1,
+                                        offset = offset
+                                    ),
+                                ));
+                            } else {
+                                let temp_label = self.get_temp_int_var_label();
+                                self.code(format!(
+                                    r#" ST {reg},{temp}"#,
+                                    reg = value_reg,
                                     temp = temp_label
-                                ),
-                            ));
+                                ));
+                                temp_int_labels.push(temp_label.clone());
+                                set_argument_codes.push((
+                                    arg.register1,
+                                    format!(
+                                        " {cmd} {reg},{temp}",
+                                        cmd = if is_byref { "LAD" } else { "LD" },
+                                        reg = arg.register1,
+                                        temp = temp_label
+                                    ),
+                                ));
+                            }
+                            self.set_register_idle(value_reg);
                         }
                     }
                 }
@@ -331,23 +356,46 @@ impl Compiler {
                         }
                         _ => {
                             let value_reg = self.compile_int_expr(value);
-                            let temp_label = self.get_temp_int_var_label();
-                            self.code(format!(
-                                r#" ST {reg},{temp}"#,
-                                reg = value_reg,
-                                temp = temp_label
-                            ));
-                            self.set_register_idle(value_reg);
-                            temp_int_labels.push(temp_label.clone());
-                            set_argument_codes.push((
-                                arg.register1,
-                                format!(
-                                    " {cmd} {reg},{temp}",
-                                    cmd = if is_byref { "LAD" } else { "LD" },
-                                    reg = arg.register1,
+                            if is_byref && self.option_use_allocator {
+                                let offset = alloc_pos;
+                                alloc_pos += 1;
+                                let temp_reg = self.get_idle_register();
+                                self.code(format!(
+                                    r#" LD  {temp},MEM
+                                        ST  {value},{offset},{temp}"#,
+                                    temp = temp_reg,
+                                    value = value_reg,
+                                    offset = offset
+                                ));
+                                self.set_register_idle(temp_reg);
+                                set_argument_codes.push((
+                                    arg.register1,
+                                    format!(
+                                        " LD  {reg},MEM
+                                          LAD {reg},{offset},{reg}",
+                                        reg = arg.register1,
+                                        offset = offset
+                                    ),
+                                ));
+                            } else {
+                                let temp_label = self.get_temp_int_var_label();
+                                self.code(format!(
+                                    r#" ST {reg},{temp}"#,
+                                    reg = value_reg,
                                     temp = temp_label
-                                ),
-                            ));
+                                ));
+                                temp_int_labels.push(temp_label.clone());
+                                set_argument_codes.push((
+                                    arg.register1,
+                                    format!(
+                                        " {cmd} {reg},{temp}",
+                                        cmd = if is_byref { "LAD" } else { "LD" },
+                                        reg = arg.register1,
+                                        temp = temp_label
+                                    ),
+                                ));
+                            }
+                            self.set_register_idle(value_reg);
                         }
                     }
                 }
@@ -358,46 +406,119 @@ impl Compiler {
                         VarType::RefString => true,
                         _ => unreachable!("BUG"),
                     };
-                    let labels = self.compile_str_expr(value);
                     let reg1 = arg.register1;
                     let reg2 = arg.register2.expect("BUG");
-                    set_argument_codes.push((
-                        reg1,
-                        if is_byref {
-                            labels.lad_len(reg1.into())
-                        } else {
-                            labels.ld_len(reg1.into())
-                        },
-                    ));
-                    set_argument_codes.push((reg2, labels.lad_pos(reg2.into())));
-                    str_labels.push(labels);
+                    let labels = self.compile_str_expr(value);
+                    match labels.label_type {
+                        StrLabelType::Const(_) | StrLabelType::Lit(_) | StrLabelType::Temp
+                            if is_byref && self.option_use_allocator =>
+                        {
+                            let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
+                            let temp_labels = StrLabels {
+                                len: "".to_string(),
+                                pos: "".to_string(),
+                                label_type: StrLabelType::MemVal(alloc_pos),
+                            };
+                            alloc_pos += 257;
+                            let (saves, recovers) = {
+                                use casl2::Register::*;
+                                self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+                            };
+                            self.code(saves);
+                            self.code(temp_labels.lad_pos(casl2::Register::Gr1));
+                            self.code(temp_labels.lad_len(casl2::Register::Gr2));
+                            self.code(labels.lad_pos(casl2::Register::Gr3));
+                            self.code(labels.ld_len(casl2::Register::Gr4));
+                            self.code(format!(" CALL {copy}", copy = copystr));
+                            self.code(recovers);
+                            set_argument_codes.push((reg1, temp_labels.lad_len(reg1.into())));
+                            set_argument_codes.push((reg2, temp_labels.lad_pos(reg2.into())));
+                            self.return_temp_str_var_label(labels);
+                        }
+                        StrLabelType::Const(_) | StrLabelType::Lit(_) if is_byref => {
+                            let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
+                            let temp_labels = self.get_temp_str_var_label();
+                            let (saves, recovers) = {
+                                use casl2::Register::*;
+                                self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+                            };
+                            self.code(saves);
+                            self.code(temp_labels.lad_pos(casl2::Register::Gr1));
+                            self.code(temp_labels.lad_len(casl2::Register::Gr2));
+                            self.code(labels.lad_pos(casl2::Register::Gr3));
+                            self.code(labels.ld_len(casl2::Register::Gr4));
+                            self.code(format!(" CALL {copy}", copy = copystr));
+                            self.code(recovers);
+                            set_argument_codes.push((reg1, temp_labels.lad_len(reg1.into())));
+                            set_argument_codes.push((reg2, temp_labels.lad_pos(reg2.into())));
+                            str_labels.push(temp_labels);
+                        }
+                        _ => {
+                            set_argument_codes.push((
+                                reg1,
+                                if is_byref {
+                                    labels.lad_len(reg1.into())
+                                } else {
+                                    labels.ld_len(reg1.into())
+                                },
+                            ));
+                            set_argument_codes.push((reg2, labels.lad_pos(reg2.into())));
+                            str_labels.push(labels);
+                        }
+                    }
                 }
 
                 ExprType::ReferenceOfVar(VarType::ArrayOfBoolean(size1))
                 | ExprType::ReferenceOfVar(VarType::RefArrayOfBoolean(size1)) => {
-                    match arg.var_type {
-                        VarType::ArrayOfBoolean(size2) | VarType::RefArrayOfBoolean(size2)
-                            if size1 == size2 => {}
+                    let is_byref = match arg.var_type {
+                        VarType::ArrayOfBoolean(size2) if size1 == size2 => false,
+                        VarType::RefArrayOfBoolean(size2) if size1 == size2 => true,
                         _ => unreachable!("BUG"),
-                    }
+                    };
                     let label = self.compile_ref_arr_expr(value);
-                    match label {
-                        ArrayLabel::TempArrayOfBoolean(labels, size3) if size1 == size3 => {
+                    match &label {
+                        ArrayLabel::TempArrayOfBoolean(labels, size3)
+                            if is_byref && self.option_use_allocator =>
+                        {
+                            assert_eq!(size1, *size3);
+                            let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
+                            let temp_label = ArrayLabel::MemArrayOfBoolean {
+                                offset: alloc_pos,
+                                size: size1,
+                            };
+                            alloc_pos += size1;
+                            let (saves, recovers) = {
+                                use casl2::Register::*;
+                                self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+                            };
+                            self.code(saves);
+                            self.code(temp_label.lad_pos(casl2::Register::Gr1));
+                            self.code(labels.lad_len(casl2::Register::Gr2));
+                            self.code(labels.lad_pos(casl2::Register::Gr3));
+                            self.code(format!(
+                                r#" LAD   GR4,{size}
+                                    CALL  {copy}"#,
+                                size = size1,
+                                copy = copystr
+                            ));
+                            self.code(recovers);
+                            self.return_temp_str_var_label(labels.clone());
+                            set_argument_codes
+                                .push((arg.register1, temp_label.lad_pos(arg.register1.into())));
+                        }
+                        ArrayLabel::TempArrayOfBoolean(labels, size3) => {
+                            assert_eq!(size1, *size3);
                             set_argument_codes
                                 .push((arg.register1, labels.lad_pos(arg.register1.into())));
                             str_labels.push(labels.clone());
                         }
-                        ArrayLabel::VarArrayOfBoolean(label, size3) if size1 == size3 => {
-                            set_argument_codes.push((
-                                arg.register1,
-                                format!(" LAD {reg},{arr}", reg = arg.register1, arr = label),
-                            ));
-                        }
-                        ArrayLabel::VarRefArrayOfBoolean(label, size3) if size1 == size3 => {
-                            set_argument_codes.push((
-                                arg.register1,
-                                format!(" LD {reg},{arr}", reg = arg.register1, arr = label),
-                            ));
+                        ArrayLabel::VarArrayOfBoolean(_, size3)
+                        | ArrayLabel::VarRefArrayOfBoolean(_, size3)
+                        | ArrayLabel::MemArrayOfBoolean { size: size3, .. }
+                        | ArrayLabel::MemRefArrayOfBoolean { size: size3, .. } => {
+                            assert_eq!(size1, *size3);
+                            set_argument_codes
+                                .push((arg.register1, label.lad_pos(arg.register1.into())));
                         }
                         _ => unreachable!("BUG"),
                     }
@@ -405,29 +526,55 @@ impl Compiler {
 
                 ExprType::ReferenceOfVar(VarType::ArrayOfInteger(size1))
                 | ExprType::ReferenceOfVar(VarType::RefArrayOfInteger(size1)) => {
-                    match arg.var_type {
-                        VarType::ArrayOfInteger(size2) | VarType::RefArrayOfInteger(size2)
-                            if size1 == size2 => {}
+                    let is_byref = match arg.var_type {
+                        VarType::ArrayOfInteger(size2) if size1 == size2 => false,
+                        VarType::RefArrayOfInteger(size2) if size1 == size2 => true,
                         _ => unreachable!("BUG"),
-                    }
+                    };
                     let label = self.compile_ref_arr_expr(value);
-                    match label {
-                        ArrayLabel::TempArrayOfInteger(labels, size3) if size1 == size3 => {
+                    match &label {
+                        ArrayLabel::TempArrayOfInteger(labels, size3)
+                            if is_byref && self.option_use_allocator =>
+                        {
+                            assert_eq!(size1, *size3);
+                            let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
+                            let temp_label = ArrayLabel::MemArrayOfInteger {
+                                offset: alloc_pos,
+                                size: size1,
+                            };
+                            alloc_pos += size1;
+                            let (saves, recovers) = {
+                                use casl2::Register::*;
+                                self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+                            };
+                            self.code(saves);
+                            self.code(temp_label.lad_pos(casl2::Register::Gr1));
+                            self.code(labels.lad_len(casl2::Register::Gr2));
+                            self.code(labels.lad_pos(casl2::Register::Gr3));
+                            self.code(format!(
+                                r#" LAD   GR4,{size}
+                                    CALL  {copy}"#,
+                                size = size1,
+                                copy = copystr
+                            ));
+                            self.code(recovers);
+                            self.return_temp_str_var_label(labels.clone());
+                            set_argument_codes
+                                .push((arg.register1, temp_label.lad_pos(arg.register1.into())));
+                        }
+                        ArrayLabel::TempArrayOfInteger(labels, size3) => {
+                            assert_eq!(size1, *size3);
                             set_argument_codes
                                 .push((arg.register1, labels.lad_pos(arg.register1.into())));
-                            str_labels.push(labels);
+                            str_labels.push(labels.clone());
                         }
-                        ArrayLabel::VarArrayOfInteger(label, size3) if size1 == size3 => {
-                            set_argument_codes.push((
-                                arg.register1,
-                                format!(" LAD {reg},{arr}", reg = arg.register1, arr = label),
-                            ));
-                        }
-                        ArrayLabel::VarRefArrayOfInteger(label, size3) if size1 == size3 => {
-                            set_argument_codes.push((
-                                arg.register1,
-                                format!(" LD {reg},{arr}", reg = arg.register1, arr = label),
-                            ));
+                        ArrayLabel::VarArrayOfInteger(_, size3)
+                        | ArrayLabel::VarRefArrayOfInteger(_, size3)
+                        | ArrayLabel::MemArrayOfInteger { size: size3, .. }
+                        | ArrayLabel::MemRefArrayOfInteger { size: size3, .. } => {
+                            assert_eq!(size1, *size3);
+                            set_argument_codes
+                                .push((arg.register1, label.lad_pos(arg.register1.into())));
                         }
                         _ => unreachable!("BUG"),
                     }
@@ -435,6 +582,13 @@ impl Compiler {
 
                 ExprType::ReferenceOfVar(..) | ExprType::ParamList => unreachable!("BUG"),
             }
+        }
+
+        let temp_allocate_size = alloc_pos - self.allocate_memory_relative_position;
+        if temp_allocate_size > 0 {
+            self.maximum_allocate_temporary_area_size = self
+                .maximum_allocate_temporary_area_size
+                .max(temp_allocate_size);
         }
 
         if !arguments.is_empty() {
@@ -619,6 +773,8 @@ impl Compiler {
                 }
             }
         }
+
+        self.allocate_arguments_size = self.allocate_memory_relative_position;
 
         if let Some(name) = self.program_name.clone() {
             self.callables.insert(name, arguments.into());
