@@ -962,7 +962,7 @@ impl Parser {
                                 self.add_statement(Statement::CompileOption {
                                     option: CompileOption::Allocator {
                                         enabled: true,
-                                        common: true,
+                                        common: false,
                                         size: MAX_ALLOCATION_SIZE,
                                     },
                                 });
