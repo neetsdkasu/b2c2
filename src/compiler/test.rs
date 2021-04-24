@@ -2207,16 +2207,17 @@ End Program
 }
 
 #[test]
-fn non_safe_recur_works() {
+fn danger_recursion_works() {
     let src1 = r#"
 Option Register Dirty
-Option Variable Initialize
+Option Variable Uninitialize ' Initializeするとx=0のままなので無限ループする…
 Program TEST
     Dim x As Integer
     Print "Before: " & CStr(x)
     If x < 10 Then
         x += 1
         Call TEST
+        x -= 1
     End If
     Print "After: " & CStr(x)
 End Program
