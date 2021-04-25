@@ -21,11 +21,11 @@ fn it_works() {
     let src = r#"
     Rem TEST PROGRAM
     Rem コンパイル通るかのチェックだけで、正しくコンパイルされてるかはチェックしていないという…
-    Option Allocator Enable   ' Disable / Enable / Special
-    Option Array     Default  ' UBound / Length
-    Option EOF       Default  ' Internal / External
-    Option Register  Default  ' Restore / Dirty
-    Option Variable  Default  ' Initialize / Uninitialize
+    Option Allocator Default  ' Default / Disable / Enable / Special
+    Option Array     Default  ' Default / UBound / Length
+    Option EOF       Default  ' Default / Internal / External
+    Option Register  Default  ' Default / Restore / Dirty
+    Option Variable  Default  ' Default / Initialize / Uninitialize
     Extern Sub PROC1
     Extern Sub PROC2 With
     End Sub
