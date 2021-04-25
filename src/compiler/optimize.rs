@@ -1,4 +1,3 @@
-use super::utils::to_external;
 use super::*;
 
 // コメントの除去
@@ -194,71 +193,183 @@ pub fn remove_unreferenced_label(statements: &[casl2::Statement]) -> Vec<casl2::
     ret
 }
 
-// 組み込みルーチンを分離する
-pub(super) fn split_subroutines(
-    mut statements: Vec<casl2::Statement>,
-) -> Vec<(String, Vec<casl2::Statement>)> {
-    let mut indexes: Vec<(String, usize)> = vec![];
-
-    for (i, stmt) in statements.iter().enumerate() {
-        let label = if let casl2::Statement::Code {
-            label: Some(label), ..
-        } = stmt
-        {
-            label
-        } else {
-            continue;
-        };
-        let label = label.as_str();
-        if !(label.chars().count() >= 2
-            && label.starts_with('C')
-            && label.chars().skip(1).all(|ch| ch.is_ascii_digit()))
-        {
-            continue;
-        }
-        let label = label.to_string();
-        if let Some(casl2::Statement::Comment { .. }) = statements.get(i - 1) {
-            indexes.push((label, i - 1));
-        } else {
-            indexes.push((label, i));
-        }
-    }
-
-    let mut ret = Vec::<(String, Vec<casl2::Statement>)>::new();
-
-    while let Some((name_label, i)) = indexes.pop() {
-        let routine = statements.split_off(i);
-        let routine = to_external(&name_label, routine);
-        ret.push((name_label, routine));
-    }
-
-    if !matches!(
-        statements.last(),
-        Some(casl2::Statement::Code {
-            command: casl2::Command::End,
+// スニペット化できるステートメントの判定用
+impl casl2::Statement {
+    fn is_jump_code(&self) -> bool {
+        if let casl2::Statement::Code {
+            command: casl2::Command::P { code, .. },
             ..
-        })
-    ) {
-        statements.code(casl2::Command::End);
+        } = self
+        {
+            use casl2::P::*;
+            match code {
+                Jpl | Jmi | Jnz | Jze | Jov | Jump => true,
+                Push | Call | Svc => false,
+            }
+        } else {
+            false
+        }
     }
 
-    let program_name = statements
-        .iter()
-        .find_map(|stmt| {
+    fn is_push_code(&self) -> bool {
+        matches!(
+            self,
+            casl2::Statement::Code {
+                command: casl2::Command::P {
+                    code: casl2::P::Push,
+                    ..
+                },
+                ..
+            }
+        )
+    }
+
+    fn is_pop_code(&self) -> bool {
+        matches!(
+            self,
+            casl2::Statement::Code {
+                command: casl2::Command::Pop { .. },
+                ..
+            }
+        )
+    }
+}
+
+fn can_include_snippet(stmt: &casl2::Statement) -> bool {
+    stmt.is_code() && !stmt.is_jump_code()
+}
+
+// 共通コードのスニペットをサブルーチンとしてまとめる
+pub(super) fn collect_duplicates(mut statements: Vec<casl2::Statement>) -> Vec<casl2::Statement> {
+    let mut snippets = vec![];
+    let mut id = 0;
+
+    loop {
+        let end = {
+            let mut end = statements.len();
+            for (i, stmt) in statements.iter().enumerate() {
+                if let casl2::Statement::Code {
+                    command: casl2::Command::Ret,
+                    ..
+                } = stmt
+                {
+                    end = i;
+                    break;
+                }
+            }
+            end
+        };
+
+        let mut hset = std::collections::HashSet::new();
+
+        let mut best: Option<(usize, usize, Vec<usize>)> = None;
+
+        for i in 0..end {
+            if !can_include_snippet(&statements[i]) {
+                continue;
+            }
+            let mut stack: i32 = 0;
+            if statements[i].is_pop_code() {
+                continue;
+            } else if statements[i].is_push_code() {
+                stack += 1;
+            }
+            for r in i + 1..end {
+                if !can_include_snippet(&statements[r]) {
+                    break;
+                }
+                if statements[r].is_pop_code() {
+                    stack -= 1;
+                    if stack < 0 {
+                        break;
+                    }
+                } else if statements[r].is_push_code() {
+                    stack += 1;
+                }
+                if stack != 0 {
+                    continue;
+                }
+                let len = r - i + 1;
+                if hset.contains(&(i, len)) {
+                    continue;
+                }
+                let mut dups = vec![i];
+                for k in r + 1..end - len {
+                    if statements[i..=r] != statements[k..k + len] {
+                        continue;
+                    }
+                    if hset.insert((k, len)) {
+                        dups.push(k);
+                    }
+                }
+                if dups.len() < 2 {
+                    continue;
+                }
+                let before_cost = len * dups.len();
+                let after_cost = len + 1 + dups.len();
+                if after_cost >= before_cost {
+                    continue;
+                }
+                let score = before_cost - after_cost;
+                if let Some((best_score, best_len, _)) = best.as_ref() {
+                    if *best_score > score {
+                        continue;
+                    }
+                    if *best_score == score && *best_len <= len {
+                        continue;
+                    }
+                }
+                best = Some((score, len, dups));
+            }
+        }
+
+        if let Some((_, len, mut dups)) = best {
+            id += 1;
+            let name = format!("F{}", id);
+            let mut snippet = None;
+            while let Some(pos) = dups.pop() {
+                let rest = statements.split_off(pos + len);
+                if snippet.is_none() {
+                    let code = statements.split_off(pos);
+                    snippet = Some(code);
+                } else {
+                    statements.truncate(pos);
+                }
+                statements.code(format!(" CALL {}", name));
+                statements.extend(rest);
+            }
+            if let Some(mut snippet) = snippet {
+                if let Some(casl2::Statement::Code { label, .. }) = snippet.first_mut() {
+                    *label = Some(name.into());
+                }
+                snippet.code(casl2::Command::Ret);
+                snippets.push(snippet);
+            }
+        } else {
+            break;
+        }
+    }
+
+    let rest = {
+        let mut end = statements.len();
+        for (i, stmt) in statements.iter().enumerate() {
             if let casl2::Statement::Code {
-                label: Some(label),
-                command: casl2::Command::Start { .. },
+                command: casl2::Command::Ret,
                 ..
             } = stmt
             {
-                Some(label.as_str().to_string())
-            } else {
-                None
+                end = i + 1;
+                break;
             }
-        })
-        .expect("BUG");
+        }
+        statements.split_off(end)
+    };
 
-    ret.push((program_name, statements));
+    for snippet in snippets {
+        statements.extend(snippet);
+    }
 
-    ret
+    statements.extend(rest);
+
+    statements
 }

@@ -2339,3 +2339,305 @@ End Program
         assert!(!statements.is_empty()); // dummy assert
     }
 }
+
+#[test]
+fn utils_split_subroutines_works() {
+    let src = r#"
+' *** PRINT PRIMES ***
+Dim flag(255) As Boolean
+Dim prime(90) As Integer
+Dim count As Integer
+Dim i As Integer
+Dim j As Integer
+Dim s As String
+For i = 2 To 255
+    flag(i) = False
+Next i
+count = 0
+For i = 2 To 255
+    If flag(i) Then
+        Continue For
+    End If
+    prime(count) = i
+    count += 1
+    For j = i + i To 255 Step i
+        flag(j) = True
+    Next j
+Next i
+Print "PRIMES: " & CStr(count)
+s = ""
+For i = 0 To count - 1
+    If prime(i) < 10 Then
+        s = s & Space(2)
+    ElseIf prime(i) < 100 Then
+        s = s & Space(1)
+    End If
+    s = s & CStr(prime(i)) & ","
+    If i Mod 10 = 9 Then
+        Print s
+        s = ""
+    End If
+Next i
+If Len(s) > 0 Then
+    Print s
+End If
+"#;
+
+    let mut cursor = std::io::Cursor::new(src);
+
+    let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+    let statements = compile(None, &code[..]).unwrap();
+
+    let list = super::utils::split_subroutines(statements);
+
+    for (name, statements) in list.iter() {
+        eprintln!();
+        eprintln!("[[ NAME: {} ]]", name);
+        eprintln!("[[ FILE: {}.cas ]]", name);
+        statements.iter().for_each(|line| {
+            eprintln!("{}", line);
+        });
+        eprintln!();
+    }
+}
+
+#[test]
+fn optimize_remove_comment_works() {
+    let src = r#"
+' *** PRINT PRIMES ***
+Dim flag(255) As Boolean
+Dim prime(90) As Integer
+Dim count As Integer
+Dim i As Integer
+Dim j As Integer
+Dim s As String
+For i = 2 To 255
+    flag(i) = False
+Next i
+count = 0
+For i = 2 To 255
+    If flag(i) Then
+        Continue For
+    End If
+    prime(count) = i
+    count += 1
+    For j = i + i To 255 Step i
+        flag(j) = True
+    Next j
+Next i
+Print "PRIMES: " & CStr(count)
+s = ""
+For i = 0 To count - 1
+    If prime(i) < 10 Then
+        s = s & Space(2)
+    ElseIf prime(i) < 100 Then
+        s = s & Space(1)
+    End If
+    s = s & CStr(prime(i)) & ","
+    If i Mod 10 = 9 Then
+        Print s
+        s = ""
+    End If
+Next i
+If Len(s) > 0 Then
+    Print s
+End If
+"#;
+
+    let mut cursor = std::io::Cursor::new(src);
+
+    let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+    let statements = compile(None, &code[..]).unwrap();
+
+    eprintln!("{}", crate::stat::analyze(&statements));
+
+    let statements = super::optimize::remove_comment(&statements);
+
+    eprintln!("{}", crate::stat::analyze(&statements));
+
+    statements.iter().for_each(|line| {
+        eprintln!("{}", line);
+    });
+}
+
+#[test]
+fn optimize_remove_nop_works() {
+    let src = r#"
+' *** PRINT PRIMES ***
+Dim flag(255) As Boolean
+Dim prime(90) As Integer
+Dim count As Integer
+Dim i As Integer
+Dim j As Integer
+Dim s As String
+For i = 2 To 255
+    flag(i) = False
+Next i
+count = 0
+For i = 2 To 255
+    If flag(i) Then
+        Continue For
+    End If
+    prime(count) = i
+    count += 1
+    For j = i + i To 255 Step i
+        flag(j) = True
+    Next j
+Next i
+Print "PRIMES: " & CStr(count)
+s = ""
+For i = 0 To count - 1
+    If prime(i) < 10 Then
+        s = s & Space(2)
+    ElseIf prime(i) < 100 Then
+        s = s & Space(1)
+    End If
+    s = s & CStr(prime(i)) & ","
+    If i Mod 10 = 9 Then
+        Print s
+        s = ""
+    End If
+Next i
+If Len(s) > 0 Then
+    Print s
+End If
+"#;
+
+    let mut cursor = std::io::Cursor::new(src);
+
+    let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+    let statements = compile(None, &code[..]).unwrap();
+
+    eprintln!("{}", crate::stat::analyze(&statements));
+
+    let statements = super::optimize::remove_nop(&statements);
+
+    eprintln!("{}", crate::stat::analyze(&statements));
+
+    statements.iter().for_each(|line| {
+        eprintln!("{}", line);
+    });
+}
+
+#[test]
+fn optimize_remove_unreferenced_label_works() {
+    let src = r#"
+' *** PRINT PRIMES ***
+Dim flag(255) As Boolean
+Dim prime(90) As Integer
+Dim count As Integer
+Dim i As Integer
+Dim j As Integer
+Dim s As String
+For i = 2 To 255
+    flag(i) = False
+Next i
+count = 0
+For i = 2 To 255
+    If flag(i) Then
+        Continue For
+    End If
+    prime(count) = i
+    count += 1
+    For j = i + i To 255 Step i
+        flag(j) = True
+    Next j
+Next i
+Print "PRIMES: " & CStr(count)
+s = ""
+For i = 0 To count - 1
+    If prime(i) < 10 Then
+        s = s & Space(2)
+    ElseIf prime(i) < 100 Then
+        s = s & Space(1)
+    End If
+    s = s & CStr(prime(i)) & ","
+    If i Mod 10 = 9 Then
+        Print s
+        s = ""
+    End If
+Next i
+If Len(s) > 0 Then
+    Print s
+End If
+"#;
+
+    let mut cursor = std::io::Cursor::new(src);
+
+    let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+    let statements = compile(None, &code[..]).unwrap();
+
+    eprintln!("{}", crate::stat::analyze(&statements));
+
+    let statements = super::optimize::remove_unreferenced_label(&statements);
+
+    eprintln!("{}", crate::stat::analyze(&statements));
+
+    statements.iter().for_each(|line| {
+        eprintln!("{}", line);
+    });
+}
+
+#[test]
+fn optimize_collect_duplicates_works() {
+    let src = r#"
+' *** PRINT PRIMES ***
+Dim flag(255) As Boolean
+Dim prime(90) As Integer
+Dim count As Integer
+Dim i As Integer
+Dim j As Integer
+Dim s As String
+For i = 2 To 255
+    flag(i) = False
+Next i
+count = 0
+For i = 2 To 255
+    If flag(i) Then
+        Continue For
+    End If
+    prime(count) = i
+    count += 1
+    For j = i + i To 255 Step i
+        flag(j) = True
+    Next j
+Next i
+Print "PRIMES: " & CStr(count)
+s = ""
+For i = 0 To count - 1
+    If prime(i) < 10 Then
+        s = s & Space(2)
+    ElseIf prime(i) < 100 Then
+        s = s & Space(1)
+    End If
+    s = s & CStr(prime(i)) & ","
+    If i Mod 10 = 9 Then
+        Print s
+        s = ""
+    End If
+Next i
+If Len(s) > 0 Then
+    Print s
+End If
+"#;
+
+    let mut cursor = std::io::Cursor::new(src);
+
+    let code = parser::parse(&mut cursor).unwrap().unwrap();
+
+    let statements = compile(None, &code[..]).unwrap();
+
+    eprintln!("{}", crate::stat::analyze(&statements));
+
+    let statements = super::optimize::collect_duplicates(statements);
+
+    eprintln!("{}", crate::stat::analyze(&statements));
+
+    statements.iter().for_each(|line| {
+        eprintln!("{}", line);
+    });
+}

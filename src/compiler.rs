@@ -62,8 +62,10 @@ pub struct Flag {
     pub remove_unreferenced_label: bool,
     // サブルーチンを分割
     pub split_subroutines: bool,
-
+    // プログラム名の指定
     pub program_name: Option<String>,
+    // 重複コードのスニペット化を試みる
+    pub try_make_snippets: bool,
 }
 
 // 条件付き(?)コンパイル
@@ -77,12 +79,16 @@ pub fn compile_with_flag(
         statements = optimize::remove_comment(&statements);
     }
 
-    if flag.remove_nop {
-        statements = optimize::remove_nop(&statements);
-    }
-
     if flag.remove_unreferenced_label {
         statements = optimize::remove_unreferenced_label(&statements);
+    }
+
+    if flag.try_make_snippets {
+        statements = optimize::collect_duplicates(statements);
+    }
+
+    if flag.remove_nop {
+        statements = optimize::remove_nop(&statements);
     }
 
     if !flag.split_subroutines {
@@ -104,7 +110,7 @@ pub fn compile_with_flag(
         return Ok(vec![(name, statements)]);
     }
 
-    Ok(optimize::split_subroutines(statements))
+    Ok(utils::split_subroutines(statements))
 }
 
 // 文字列ラベルのタイプ判定に使う
