@@ -781,15 +781,20 @@ impl Compiler {
         self.code(saves);
         self.code(format!(
             r#" LD    GR1,{index}
-                LD    GR2,{size}
+                {ld_gr2_len}
                 CALL  {fit}"#,
             index = index_reg,
-            size = str_labels.len,
+            ld_gr2_len = str_labels.ld_len(casl2::Register::Gr2),
             fit = safe_index
         ));
         self.code(recovers);
 
-        self.code(format!(" LD {index},GR0", index = index_reg));
+        self.code(format!(
+            r#" {lad_index_pos}
+                ADDL {index},GR0"#,
+            lad_index_pos = str_labels.lad_pos(index_reg),
+            index = index_reg
+        ));
 
         // 想定では GR6
         let value_reg = self.compile_int_expr(value);
@@ -800,9 +805,8 @@ impl Compiler {
         // index=0は文字列変数のバッファ予約領域なので書き込んでも無問題
 
         self.code(format!(
-            r#" ST {value},{arr},{index}"#,
+            r#" ST {value},0,{index}"#,
             value = value_reg,
-            arr = str_labels.pos,
             index = casl2::IndexRegister::try_from(index_reg).expect("BUG")
         ));
 
@@ -846,16 +850,20 @@ impl Compiler {
         self.code(saves);
         self.code(format!(
             r#" LD    GR1,{index}
-                LD    GR2,{len}
-                LD    GR2,0,GR2
+                {ld_gr2_len}
                 CALL  {fit}"#,
             index = index_reg,
-            len = str_labels.len,
+            ld_gr2_len = str_labels.ld_len(casl2::Register::Gr2),
             fit = safe_index
         ));
         self.code(recovers);
 
-        self.code(format!(" LD {index},GR0", index = index_reg));
+        self.code(format!(
+            r#" {lad_index_pos}
+                ADDL {index},GR0"#,
+            lad_index_pos = str_labels.lad_pos(index_reg),
+            index = index_reg
+        ));
 
         // 想定では GR6
         let value_reg = self.compile_int_expr(value);
@@ -866,10 +874,8 @@ impl Compiler {
         // index=0は文字列変数のバッファ予約領域なので書き込んでも無問題
 
         self.code(format!(
-            r#" ADDL  {index},{arr}
-                ST    {value},0,{index}"#,
+            r#" ST  {value},0,{index}"#,
             value = value_reg,
-            arr = str_labels.pos,
             index = casl2::IndexRegister::try_from(index_reg).expect("BUG")
         ));
 
