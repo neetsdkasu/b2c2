@@ -21,7 +21,7 @@ fn it_works() {
     let src = r#"
     Rem TEST PROGRAM
     Rem コンパイル通るかのチェックだけで、正しくコンパイルされてるかはチェックしていないという…
-    Option Allocator Default  ' Off / On / Special
+    Option Allocator Enable   ' Disable / Enable / Special
     Option Array     Default  ' UBound / Length
     Option EOF       Default  ' Internal / External
     Option Register  Default  ' Restore / Dirty

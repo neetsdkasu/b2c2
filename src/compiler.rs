@@ -588,7 +588,10 @@ impl Compiler {
                 let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
                 assert_eq!(arg.var_name, var_name);
                 assert!(matches!(arg.var_type, parser::VarType::String));
-                assert!(matches!(labels.label_type, StrLabelType::ArgVal));
+                assert!(matches!(
+                    labels.label_type,
+                    StrLabelType::ArgVal | StrLabelType::MemVal(..)
+                ));
                 labels.clone()
             })
     }
@@ -598,7 +601,10 @@ impl Compiler {
         let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
         assert_eq!(arg.var_name, var_name);
         assert!(matches!(arg.var_type, parser::VarType::RefString));
-        assert!(matches!(labels.label_type, StrLabelType::ArgRef));
+        assert!(matches!(
+            labels.label_type,
+            StrLabelType::ArgRef | StrLabelType::MemRef(..)
+        ));
         labels.clone()
     }
 
@@ -610,7 +616,10 @@ impl Compiler {
             .unwrap_or_else(|| {
                 let (label, arg) = self.arr_argument_labels.get(var_name).expect("BUG");
                 assert_eq!(arg.var_name, var_name);
-                assert!(matches!(label, ArrayLabel::VarArrayOfBoolean(..)));
+                assert!(matches!(
+                    label,
+                    ArrayLabel::VarArrayOfBoolean(..) | ArrayLabel::MemArrayOfBoolean { .. }
+                ));
                 label.clone()
             })
     }
@@ -619,7 +628,10 @@ impl Compiler {
     fn get_ref_bool_arr_label(&self, var_name: &str) -> ArrayLabel {
         let (label, arg) = self.arr_argument_labels.get(var_name).expect("BUG");
         assert_eq!(arg.var_name, var_name);
-        assert!(matches!(label, ArrayLabel::VarRefArrayOfBoolean(..)));
+        assert!(matches!(
+            label,
+            ArrayLabel::VarRefArrayOfBoolean(..) | ArrayLabel::MemRefArrayOfBoolean { .. }
+        ));
         label.clone()
     }
 
@@ -631,7 +643,10 @@ impl Compiler {
             .unwrap_or_else(|| {
                 let (label, arg) = self.arr_argument_labels.get(var_name).expect("BUG");
                 assert_eq!(arg.var_name, var_name);
-                assert!(matches!(label, ArrayLabel::VarArrayOfInteger(..)));
+                assert!(matches!(
+                    label,
+                    ArrayLabel::VarArrayOfInteger(..) | ArrayLabel::MemArrayOfInteger { .. }
+                ));
                 label.clone()
             })
     }
@@ -640,7 +655,10 @@ impl Compiler {
     fn get_ref_int_arr_label(&self, var_name: &str) -> ArrayLabel {
         let (label, arg) = self.arr_argument_labels.get(var_name).expect("BUG");
         assert_eq!(arg.var_name, var_name);
-        assert!(matches!(label, ArrayLabel::VarRefArrayOfInteger(..)));
+        assert!(matches!(
+            label,
+            ArrayLabel::VarRefArrayOfInteger(..) | ArrayLabel::MemRefArrayOfInteger { .. }
+        ));
         label.clone()
     }
 }
