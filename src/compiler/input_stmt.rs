@@ -226,43 +226,106 @@ impl Compiler {
     // Input <str_var> ステートメント
     // 文字列変数へのコンソール入力
     pub(super) fn compile_input_string(&mut self, var_name: &str) {
-        let StrLabels { len, pos, .. } = self.get_str_var_labels(var_name);
+        let str_labels = self.get_str_var_labels(var_name);
         let label = self.get_new_jump_label();
         self.has_eof = true;
         self.comment(format!("Input {}", var_name));
-        if self.option_external_eof {
-            self.code(format!(
-                r#" IN    {pos},{len}
-                    XOR   GR0,GR0
-                    CALL  EOF
-                    LD    GR0,{len}
-                    JPL   {ok}
-                    JZE   {ok}
-                    CALL  EOF
-                    XOR   GR0,GR0
-                    ST    GR0,{len}
-{ok}                NOP"#,
-                pos = pos,
-                len = len,
-                ok = label
-            ));
+
+        if self.option_use_allocator {
+            let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
+            let temp_labels = self.get_temp_str_var_label();
+
+            let (saves, recovers) = {
+                use casl2::Register::*;
+                self.get_save_registers_src(&[Gr1, Gr2, Gr3, Gr4])
+            };
+
+            self.code(saves);
+            if self.option_external_eof {
+                self.code(format!(
+                    r#" IN    {pos},{len}
+                        XOR   GR0,GR0
+                        CALL  EOF
+                        LD    GR4,{len}
+                        JPL   {ok}
+                        JZE   {ok}
+                        LD    GR0,GR4
+                        CALL  EOF
+                        XOR   GR4,GR4
+{ok}                    {lad_gr1_strpos}
+                        {lad_gr2_strlen}
+                        LAD   GR3,{pos}
+                        CALL  {copy}
+    "#,
+                    pos = temp_labels.pos,
+                    len = temp_labels.len,
+                    ok = label,
+                    lad_gr1_strpos = str_labels.lad_pos(casl2::Register::Gr1),
+                    lad_gr2_strlen = str_labels.lad_len(casl2::Register::Gr2),
+                    copy = copystr
+                ));
+            } else {
+                self.code(format!(
+                    r#" IN    {pos},{len}
+                        XOR   GR0,GR0
+                        ST    GR0,EOF
+                        LD    GR4,{len}
+                        JPL   {ok}
+                        JZE   {ok}
+                        ST    GR4,EOF
+                        XOR   GR4,GR4
+{ok}                    {lad_gr1_strpos}
+                        {lad_gr2_strlen}
+                        LAD   GR3,{pos}
+                        CALL  {copy}
+"#,
+                    pos = temp_labels.pos,
+                    len = temp_labels.len,
+                    ok = label,
+                    lad_gr1_strpos = str_labels.lad_pos(casl2::Register::Gr1),
+                    lad_gr2_strlen = str_labels.lad_len(casl2::Register::Gr2),
+                    copy = copystr
+                ));
+            }
+            self.code(recovers);
+            self.return_temp_str_var_label(temp_labels);
         } else {
-            // IN {var_pos},{var_len}
-            self.code(format!(
-                r#" IN   {pos},{len}
-                    XOR  GR0,GR0
-                    ST   GR0,EOF
-                    LD   GR0,{len}
-                    JPL  {ok}
-                    JZE  {ok}
-                    ST   GR0,EOF
-                    XOR  GR0,GR0
-                    ST   GR0,{len}
-{ok}                NOP"#,
-                pos = pos,
-                len = len,
-                ok = label
-            ));
+            // 通常処理
+
+            if self.option_external_eof {
+                self.code(format!(
+                    r#" IN    {pos},{len}
+                        XOR   GR0,GR0
+                        CALL  EOF
+                        LD    GR0,{len}
+                        JPL   {ok}
+                        JZE   {ok}
+                        CALL  EOF
+                        XOR   GR0,GR0
+                        ST    GR0,{len}
+{ok}                    NOP"#,
+                    pos = str_labels.pos,
+                    len = str_labels.len,
+                    ok = label
+                ));
+            } else {
+                // IN {var_pos},{var_len}
+                self.code(format!(
+                    r#" IN   {pos},{len}
+                        XOR  GR0,GR0
+                        ST   GR0,EOF
+                        LD   GR0,{len}
+                        JPL  {ok}
+                        JZE  {ok}
+                        ST   GR0,EOF
+                        XOR  GR0,GR0
+                        ST   GR0,{len}
+{ok}                    NOP"#,
+                    pos = str_labels.pos,
+                    len = str_labels.len,
+                    ok = label
+                ));
+            }
         }
     }
 
@@ -497,7 +560,7 @@ impl Compiler {
     pub(super) fn compile_input_ref_string(&mut self, var_name: &str) {
         let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
 
-        let StrLabels { len, pos, .. } = self.get_ref_str_var_labels(var_name);
+        let str_labels = self.get_ref_str_var_labels(var_name);
 
         let temp_labels = self.get_temp_str_var_label();
 
@@ -524,16 +587,16 @@ impl Compiler {
                     LD    GR0,GR4
                     CALL  EOF
                     XOR   GR4,GR4
-{ok}                LD    GR1,{strpos}
-                    LD    GR2,{strlen}
+{ok}                {lad_gr1_strpos}
+                    {lad_gr2_strlen}
                     LAD   GR3,{pos}
                     CALL  {copy}
 "#,
                 pos = temp_labels.pos,
                 len = temp_labels.len,
                 ok = label,
-                strpos = pos,
-                strlen = len,
+                lad_gr1_strpos = str_labels.lad_pos(casl2::Register::Gr1),
+                lad_gr2_strlen = str_labels.lad_len(casl2::Register::Gr2),
                 copy = copystr
             ));
         } else {
@@ -546,16 +609,16 @@ impl Compiler {
                     JZE   {ok}
                     ST    GR4,EOF
                     XOR   GR4,GR4
-{ok}                LD    GR1,{strpos}
-                    LD    GR2,{strlen}
+{ok}                {lad_gr1_strpos}
+                    {lad_gr2_strlen}
                     LAD   GR3,{pos}
                     CALL  {copy}
 "#,
                 pos = temp_labels.pos,
                 len = temp_labels.len,
                 ok = label,
-                strpos = pos,
-                strlen = len,
+                lad_gr1_strpos = str_labels.lad_pos(casl2::Register::Gr1),
+                lad_gr2_strlen = str_labels.lad_len(casl2::Register::Gr2),
                 copy = copystr
             ));
         }
