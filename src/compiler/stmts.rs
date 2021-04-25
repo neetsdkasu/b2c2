@@ -338,11 +338,12 @@ impl Compiler {
                                 r#" LD    GR1,{index}
                                     {ld_gr2_strlen}
                                     CALL  {fit}
-                                    ADDL  GR0,{strpos}
+                                    {lad_gr1_strpos}
+                                    ADDL  GR0,GR1
                                     ST    GR0,{temp}"#,
                                 index = index_reg,
                                 ld_gr2_strlen = labels.ld_len(casl2::Register::Gr2),
-                                strpos = labels.pos,
+                                lad_gr1_strpos = labels.lad_pos(casl2::Register::Gr1),
                                 fit = safe_index,
                                 temp = temp_label
                             ));
