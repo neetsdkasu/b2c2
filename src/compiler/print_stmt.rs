@@ -122,16 +122,9 @@ impl Compiler {
 
         let labels = self.compile_str_expr(value);
 
-        let labels = match &labels {
-            StrLabels {
-                label_type: StrLabelType::Lit(s),
-                ..
-            } => self.get_lit_str_labels(&s),
-            StrLabels {
-                pos,
-                len,
-                label_type: StrLabelType::ArgRef,
-            } => {
+        let labels = match &labels.label_type {
+            StrLabelType::Lit(s) => self.get_lit_str_labels(&s),
+            StrLabelType::ArgRef | StrLabelType::MemVal(..) | StrLabelType::MemRef(..) => {
                 let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
                 let temp_labels = self.get_temp_str_var_label();
                 let (saves, recovers) = {
@@ -142,15 +135,14 @@ impl Compiler {
                 self.code(format!(
                     r#" LAD   GR1,{tmppos}
                         LAD   GR2,{tmplen}
-                        LD    GR3,{pos}
-                        LD    GR4,{len}
-                        LD    GR4,0,GR4
+                        {lad_gr3_pos}
+                        {lad_gr4_len}
                         CALL  {copy}
                     "#,
                     tmppos = temp_labels.pos,
                     tmplen = temp_labels.len,
-                    pos = pos,
-                    len = len,
+                    lad_gr3_pos = labels.lad_pos(casl2::Register::Gr3),
+                    lad_gr4_len = labels.lad_len(casl2::Register::Gr4),
                     copy = copystr
                 ));
                 self.code(recovers);
