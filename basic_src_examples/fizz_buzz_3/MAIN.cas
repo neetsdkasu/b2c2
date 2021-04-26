@@ -1,0 +1,135 @@
+MAIN      START
+          RPUSH
+                                   ; Init Variables
+          LAD       GR1,I1
+          XOR       GR2,GR2
+          LAD       GR3,515
+          CALL      C14
+                                   ; t = ""
+          LAD       GR1,SB3
+          LAD       GR2,SL3
+          LAD       GR3,=0
+          XOR       GR4,GR4
+          CALL      C11
+                                   ; For i = 1 To 20 Step 1
+          LAD       GR7,1
+          ST        GR7,I1
+J3        NOP
+          LD        GR1,I1
+          CPA       GR1,=20
+          JPL       J5
+                                   ; Call FIZZBUZZ
+                                   ;   ByVal num As Integer [GR1]
+                                   ;   num = i
+                                   ;   ByRef fizzBuzzStr As String [GR2,GR3]
+                                   ;   fizzBuzzStr = s
+                                   ;   Set Arguments And Call FIZZBUZZ
+          LD        GR1,I1
+          LAD       GR2,SL2
+          LAD       GR3,SB2
+          CALL      FIZZBUZZ
+                                   ; t = ((t & s) & ", ")
+          LAD       GR1,TB1
+          LAD       GR2,TL1
+          LAD       GR3,SB3
+          LD        GR4,SL3
+          CALL      C11
+          LAD       GR1,TB1
+          LAD       GR2,TL1
+          LAD       GR3,SB2
+          LD        GR4,SL2
+          CALL      C9
+          LAD       GR1,TB1
+          LAD       GR2,TL1
+          LAD       GR3,=', '
+          LAD       GR4,2
+          CALL      C9
+          LAD       GR1,SB3
+          LAD       GR2,SL3
+          LAD       GR3,TB1
+          LD        GR4,TL1
+          CALL      C11
+                                   ; Next i
+J4        NOP
+          LAD       GR1,I1
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J3
+J5        NOP
+                                   ; Print t
+          OUT       SB3,SL3
+EXIT      NOP
+          RPOP
+          RET
+                                   ; Dim i As Integer
+I1        DS        1
+                                   ; Dim s As String
+SL2       DS        1
+SB2       DS        256
+                                   ; Dim t As String
+SL3       DS        1
+SB3       DS        256
+TL1       DS        1
+TB1       DS        256
+                                   ; UtilConcatStr
+C9        PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          LD        GR0,0,GR2
+          LD        GR2,GR1
+          ADDL      GR1,GR0
+          LAD       GR2,256,GR2
+          ADDL      GR4,GR3
+J6        CPL       GR1,GR2
+          JZE       J7
+          CPL       GR3,GR4
+          JZE       J7
+          LD        GR0,0,GR3
+          ST        GR0,0,GR1
+          LAD       GR1,1,GR1
+          LAD       GR3,1,GR3
+          JUMP      J6
+J7        LD        GR0,GR1
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          SUBL      GR0,GR1
+          ST        GR0,0,GR2
+          RET
+                                   ; UtilCopyStr
+C11       PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          ST        GR4,0,GR2
+          AND       GR4,GR4
+          JZE       J2
+J1        LD        GR2,0,GR3
+          ST        GR2,0,GR1
+          LAD       GR3,1,GR3
+          LAD       GR1,1,GR1
+          SUBL      GR4,=1
+          JPL       J1
+J2        POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilFill
+C14       PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J8        CPL       GR1,GR3
+          JZE       J9
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J8
+J9        POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+          END

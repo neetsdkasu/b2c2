@@ -1,0 +1,570 @@
+MAIN      START
+          RPUSH
+                                   ; Init Variables
+          LAD       GR1,I2
+          XOR       GR2,GR2
+          LAD       GR3,1031
+          CALL      C14
+                                   ; Print "Program?"
+          OUT       LB1,LL1
+                                   ; Input cmd
+          IN        SB4,SL4
+          XOR       GR0,GR0
+          ST        GR0,EOF
+          LD        GR0,SL4
+          JPL       J1
+          JZE       J1
+          ST        GR0,EOF
+          XOR       GR0,GR0
+          ST        GR0,SL4
+J1        NOP
+                                   ; i = -1
+          LAD       GR7,-1
+          ST        GR7,I5
+                                   ; Do While (pc < Len(cmd))
+J2        NOP
+          LD        GR7,I3
+          LD        GR6,SL4
+          LAD       GR0,#FFFF
+          CPA       GR7,GR6
+          JMI       J4
+          XOR       GR0,GR0
+J4        LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J3
+                                   ; Select Case cmd(pc)
+          LD        GR7,I3
+          LD        GR1,GR7
+          LD        GR2,SL4
+          LAD       GR3,SB4
+          CALL      C15
+          LD        GR7,GR0
+          CPA       GR7,='+'
+          JZE       J5
+          CPA       GR7,='-'
+          JZE       J6
+          CPA       GR7,='<'
+          JZE       J7
+          CPA       GR7,='>'
+          JZE       J8
+          CPA       GR7,='['
+          JZE       J9
+          CPA       GR7,=']'
+          JZE       J10
+          CPA       GR7,=','
+          JZE       J11
+          CPA       GR7,='.'
+          JZE       J12
+          JUMP      J17
+                                   ; Case "+"c
+J5        NOP
+                                   ; mem( mp ) += 1
+          LD        GR7,I2
+          LD        GR1,GR7
+          LAD       GR2,256
+          CALL      C17
+          LAD       GR7,IA1
+          ADDL      GR7,GR0
+          LAD       GR6,1
+          ADDA      GR6,0,GR7
+          ST        GR6,0,GR7
+          JUMP      J17
+                                   ; Case "-"c
+J6        NOP
+                                   ; mem( mp ) -= 1
+          LD        GR7,I2
+          LD        GR1,GR7
+          LAD       GR2,256
+          CALL      C17
+          LAD       GR7,IA1
+          ADDL      GR7,GR0
+          LAD       GR6,1
+          LD        GR5,0,GR7
+          SUBA      GR5,GR6
+          ST        GR5,0,GR7
+          JUMP      J17
+                                   ; Case "<"c
+J7        NOP
+                                   ; mp -= 1
+          LAD       GR7,1
+          LD        GR6,I2
+          SUBA      GR6,GR7
+          ST        GR6,I2
+          JUMP      J17
+                                   ; Case ">"c
+J8        NOP
+                                   ; mp += 1
+          LAD       GR7,1
+          LAD       GR6,I2
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+          JUMP      J17
+                                   ; Case "["c
+J9        NOP
+                                   ; If (mem(mp) = 0) Then
+          LD        GR7,I2
+          LD        GR1,GR7
+          LAD       GR2,256
+          CALL      C17
+          LAD       GR7,IA1
+          ADDL      GR7,GR0
+          LD        GR7,0,GR7
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J19
+          LAD       GR7,#FFFF
+J19       XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J18
+                                   ; Do
+J20       NOP
+                                   ; Select Case cmd(pc)
+          LD        GR7,I3
+          LD        GR1,GR7
+          LD        GR2,SL4
+          LAD       GR3,SB4
+          CALL      C15
+          LD        GR7,GR0
+          CPA       GR7,='['
+          JZE       J23
+          CPA       GR7,=']'
+          JZE       J24
+          JUMP      J25
+                                   ; Case "["c
+J23       NOP
+                                   ; brc += 1
+          LAD       GR7,1
+          LAD       GR6,I6
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+          JUMP      J25
+                                   ; Case "]"c
+J24       NOP
+                                   ; brc -= 1
+          LAD       GR7,1
+          LD        GR6,I6
+          SUBA      GR6,GR7
+          ST        GR6,I6
+                                   ; End Select
+J25       NOP
+                                   ; pc += 1
+          LAD       GR7,1
+          LAD       GR6,I3
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; Loop While ((brc <> 0) And (pc < Len(cmd)))
+J21       NOP
+          LD        GR7,I6
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J26
+          LAD       GR7,#FFFF
+J26       NOP
+          LD        GR6,I3
+          LD        GR5,SL4
+          LAD       GR0,#FFFF
+          CPA       GR6,GR5
+          JMI       J27
+          XOR       GR0,GR0
+J27       LD        GR6,GR0
+          AND       GR7,GR6
+          AND       GR7,GR7
+          JNZ       J20
+J22       NOP
+                                   ; Continue Do
+          JUMP      J2
+                                   ; End If
+J18       NOP
+          JUMP      J17
+                                   ; Case "]"c
+J10       NOP
+                                   ; Do
+J28       NOP
+                                   ; Select Case cmd(pc)
+          LD        GR7,I3
+          LD        GR1,GR7
+          LD        GR2,SL4
+          LAD       GR3,SB4
+          CALL      C15
+          LD        GR7,GR0
+          CPA       GR7,='['
+          JZE       J31
+          CPA       GR7,=']'
+          JZE       J32
+          JUMP      J33
+                                   ; Case "["c
+J31       NOP
+                                   ; brc += 1
+          LAD       GR7,1
+          LAD       GR6,I6
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+          JUMP      J33
+                                   ; Case "]"c
+J32       NOP
+                                   ; brc -= 1
+          LAD       GR7,1
+          LD        GR6,I6
+          SUBA      GR6,GR7
+          ST        GR6,I6
+                                   ; End Select
+J33       NOP
+                                   ; pc -= 1
+          LAD       GR7,1
+          LD        GR6,I3
+          SUBA      GR6,GR7
+          ST        GR6,I3
+                                   ; Loop While ((brc <> 0) And (pc >= 0))
+J29       NOP
+          LD        GR7,I6
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J34
+          LAD       GR7,#FFFF
+J34       NOP
+          LD        GR6,I3
+          XOR       GR5,GR5
+          XOR       GR0,GR0
+          CPA       GR6,GR5
+          JMI       J35
+          LAD       GR0,#FFFF
+J35       LD        GR6,GR0
+          AND       GR7,GR6
+          AND       GR7,GR7
+          JNZ       J28
+J30       NOP
+                                   ; If (brc <> 0) Then
+          LD        GR7,I6
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J37
+          LAD       GR7,#FFFF
+J37       NOP
+          AND       GR7,GR7
+          JZE       J36
+                                   ; Exit Do
+          JUMP      J3
+                                   ; End If
+J36       NOP
+          JUMP      J17
+                                   ; Case ","c
+J11       NOP
+                                   ; If (i < 0) Then
+          LD        GR7,I5
+          XOR       GR6,GR6
+          LAD       GR0,#FFFF
+          CPA       GR7,GR6
+          JMI       J41
+          XOR       GR0,GR0
+J41       LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J39
+                                   ; Input inStr
+          IN        SB7,SL7
+          XOR       GR0,GR0
+          ST        GR0,EOF
+          LD        GR0,SL7
+          JPL       J42
+          JZE       J42
+          ST        GR0,EOF
+          XOR       GR0,GR0
+          ST        GR0,SL7
+J42       NOP
+                                   ; If ((Len(inStr) = 0) And Not Eof(0)) Then
+          LD        GR7,SL7
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J45
+          LAD       GR7,#FFFF
+J45       XOR       GR7,=#FFFF
+          LD        GR6,EOF
+          XOR       GR6,=#FFFF
+          AND       GR7,GR6
+          AND       GR7,GR7
+          JZE       J44
+                                   ; mem( mp ) = 13
+          LD        GR7,I2
+          LD        GR1,GR7
+          LAD       GR2,256
+          CALL      C17
+          LAD       GR7,IA1
+          ADDL      GR7,GR0
+          LAD       GR6,13
+          ST        GR6,0,GR7
+                                   ; i = -1
+          LAD       GR7,-1
+          ST        GR7,I5
+          JUMP      J43
+                                   ; Else
+J44       NOP
+                                   ; mem( mp ) = inStr(0)
+          LD        GR7,I2
+          LD        GR1,GR7
+          LAD       GR2,256
+          CALL      C17
+          LAD       GR7,IA1
+          ADDL      GR7,GR0
+          XOR       GR6,GR6
+          LD        GR1,GR6
+          LD        GR2,SL7
+          LAD       GR3,SB7
+          CALL      C15
+          LD        GR6,GR0
+          ST        GR6,0,GR7
+                                   ; i = 1
+          LAD       GR7,1
+          ST        GR7,I5
+                                   ; End If
+J43       NOP
+          JUMP      J38
+                                   ; ElseIf (i >= Len(inStr)) Then
+J39       NOP
+          LD        GR7,I5
+          LD        GR6,SL7
+          XOR       GR0,GR0
+          CPA       GR7,GR6
+          JMI       J46
+          LAD       GR0,#FFFF
+J46       LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J40
+                                   ; mem( mp ) = 13
+          LD        GR7,I2
+          LD        GR1,GR7
+          LAD       GR2,256
+          CALL      C17
+          LAD       GR7,IA1
+          ADDL      GR7,GR0
+          LAD       GR6,13
+          ST        GR6,0,GR7
+                                   ; i = -1
+          LAD       GR7,-1
+          ST        GR7,I5
+          JUMP      J38
+                                   ; Else
+J40       NOP
+                                   ; mem( mp ) = inStr(i)
+          LD        GR7,I2
+          LD        GR1,GR7
+          LAD       GR2,256
+          CALL      C17
+          LAD       GR7,IA1
+          ADDL      GR7,GR0
+          LD        GR6,I5
+          LD        GR1,GR6
+          LD        GR2,SL7
+          LAD       GR3,SB7
+          CALL      C15
+          LD        GR6,GR0
+          ST        GR6,0,GR7
+                                   ; i += 1
+          LAD       GR7,1
+          LAD       GR6,I5
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; End If
+J38       NOP
+          JUMP      J17
+                                   ; Case "."c
+J12       NOP
+                                   ; If (mem(mp) = 13) Then
+          LD        GR7,I2
+          LD        GR1,GR7
+          LAD       GR2,256
+          CALL      C17
+          LAD       GR7,IA1
+          ADDL      GR7,GR0
+          LD        GR7,0,GR7
+          LAD       GR6,13
+          SUBA      GR7,GR6
+          JZE       J49
+          LAD       GR7,#FFFF
+J49       XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J48
+                                   ; Print outStr
+          OUT       SB8,SL8
+                                   ; outStr = ""
+          LAD       GR1,SB8
+          LAD       GR2,SL8
+          LAD       GR3,=0
+          XOR       GR4,GR4
+          CALL      C11
+          JUMP      J47
+                                   ; Else
+J48       NOP
+                                   ; outStr = (outStr & Chr(mem(mp)))
+          LD        GR7,I2
+          LD        GR1,GR7
+          LAD       GR2,256
+          CALL      C17
+          LAD       GR7,IA1
+          ADDL      GR7,GR0
+          LD        GR7,0,GR7
+          ST        GR7,TB1
+          LAD       GR7,1
+          ST        GR7,TL1
+          LAD       GR1,TB2
+          LAD       GR2,TL2
+          LAD       GR3,SB8
+          LD        GR4,SL8
+          CALL      C11
+          LAD       GR1,TB2
+          LAD       GR2,TL2
+          LAD       GR3,TB1
+          LD        GR4,TL1
+          CALL      C9
+          LAD       GR1,SB8
+          LAD       GR2,SL8
+          LAD       GR3,TB2
+          LD        GR4,TL2
+          CALL      C11
+                                   ; If (Len(outStr) >= 40) Then
+          LD        GR7,SL8
+          LAD       GR6,40
+          XOR       GR0,GR0
+          CPA       GR7,GR6
+          JMI       J55
+          LAD       GR0,#FFFF
+J55       LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J54
+                                   ; Print outStr
+          OUT       SB8,SL8
+                                   ; outStr = ""
+          LAD       GR1,SB8
+          LAD       GR2,SL8
+          LAD       GR3,=0
+          XOR       GR4,GR4
+          CALL      C11
+                                   ; End If
+J54       NOP
+                                   ; End If
+J47       NOP
+                                   ; End Select
+J17       NOP
+                                   ; pc += 1
+          LAD       GR7,1
+          LAD       GR6,I3
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; Loop
+          JUMP      J2
+J3        NOP
+                                   ; Print outStr
+          OUT       SB8,SL8
+EXIT      NOP
+          RPOP
+          RET
+                                   ; Dim mp As Integer
+I2        DS        1
+                                   ; Dim pc As Integer
+I3        DS        1
+                                   ; Dim i As Integer
+I5        DS        1
+                                   ; Dim brc As Integer
+I6        DS        1
+                                   ; Dim cmd As String
+SL4       DS        1
+SB4       DS        256
+                                   ; Dim inStr As String
+SL7       DS        1
+SB7       DS        256
+                                   ; Dim outStr As String
+SL8       DS        1
+SB8       DS        256
+                                   ; Dim mem(255) As Integer
+IA1       DS        256
+EOF       DS        1
+TL1       DS        1
+TB1       DS        256
+TL2       DS        1
+TB2       DS        256
+LL1       DC        8
+LB1       DC        'Program?'
+                                   ; UtilConcatStr
+C9        PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          LD        GR0,0,GR2
+          LD        GR2,GR1
+          ADDL      GR1,GR0
+          LAD       GR2,256,GR2
+          ADDL      GR4,GR3
+J52       CPL       GR1,GR2
+          JZE       J53
+          CPL       GR3,GR4
+          JZE       J53
+          LD        GR0,0,GR3
+          ST        GR0,0,GR1
+          LAD       GR1,1,GR1
+          LAD       GR3,1,GR3
+          JUMP      J52
+J53       LD        GR0,GR1
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          SUBL      GR0,GR1
+          ST        GR0,0,GR2
+          RET
+                                   ; UtilCopyStr
+C11       PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          ST        GR4,0,GR2
+          AND       GR4,GR4
+          JZE       J51
+J50       LD        GR2,0,GR3
+          ST        GR2,0,GR1
+          LAD       GR3,1,GR3
+          LAD       GR1,1,GR1
+          SUBL      GR4,=1
+          JPL       J50
+J51       POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilFill
+C14       PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J56       CPL       GR1,GR3
+          JZE       J57
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J56
+J57       POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilLoadElement
+C15       AND       GR2,GR2
+          JNZ       J13
+          XOR       GR0,GR0
+          RET
+J13       CALL      C17
+          PUSH      0,GR3
+          ADDL      GR3,GR0
+          LD        GR0,0,GR3
+          POP       GR3
+          RET
+                                   ; UtilSafeIndex
+C17       AND       GR2,GR2
+          JNZ       J14
+          XOR       GR0,GR0
+          RET
+J14       LD        GR0,GR1
+          JPL       J15
+          XOR       GR0,GR0
+          RET
+J15       CPL       GR0,GR2
+          JMI       J16
+          LAD       GR0,-1
+          ADDL      GR0,GR2
+J16       RET
+          END

@@ -1,0 +1,539 @@
+MAIN      START
+          RPUSH
+                                   ; Init Variables
+          LAD       GR1,I2
+          XOR       GR2,GR2
+          LAD       GR3,281
+          CALL      C14
+                                   ; Print "Number?"
+          OUT       LB1,LL1
+                                   ; Input n
+          IN        TB1,TL1
+          XOR       GR0,GR0
+          ST        GR0,EOF
+          LAD       GR1,TB1
+          LD        GR2,TL1
+          JPL       J4
+          JZE       J4
+          ST        GR2,EOF
+          XOR       GR2,GR2
+J4        CALL      C1
+          ST        GR0,I4
+                                   ; Print ("Number is " & CStr(n))
+          LD        GR7,I4
+          LD        GR3,GR7
+          LAD       GR1,TB1
+          LAD       GR2,TL1
+          CALL      C3
+          LAD       GR1,TB2
+          LAD       GR2,TL2
+          LAD       GR3,='Number is '
+          LAD       GR4,10
+          CALL      C11
+          LAD       GR1,TB2
+          LAD       GR2,TL2
+          LAD       GR3,TB1
+          LD        GR4,TL1
+          CALL      C9
+          OUT       TB2,TL2
+                                   ; If (n < 2) Then
+          LD        GR7,I4
+          LAD       GR6,2
+          LAD       GR0,#FFFF
+          CPA       GR7,GR6
+          JMI       J31
+          XOR       GR0,GR0
+J31       LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J30
+                                   ; Print "Invalid Number"
+          OUT       LB2,LL2
+          JUMP      J29
+                                   ; Else
+J30       NOP
+                                   ; count = 0
+          XOR       GR7,GR7
+          ST        GR7,I2
+                                   ; i = 2
+          LAD       GR7,2
+          ST        GR7,I3
+                                   ; Do
+J32       NOP
+                                   ; Do Until ((n Mod i) <> 0)
+J35       NOP
+          LD        GR7,I4
+          LD        GR6,I3
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C13
+          LD        GR0,GR1
+          LD        GR7,GR0
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J37
+          LAD       GR7,#FFFF
+J37       NOP
+          AND       GR7,GR7
+          JNZ       J36
+                                   ; factor( count ) = i
+          LD        GR7,I2
+          LD        GR1,GR7
+          LAD       GR2,21
+          CALL      C17
+          LAD       GR7,IA1
+          ADDL      GR7,GR0
+          LD        GR6,I3
+          ST        GR6,0,GR7
+                                   ; count += 1
+          LAD       GR7,1
+          LAD       GR6,I2
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; n = (n \ i)
+          LD        GR7,I4
+          LD        GR6,I3
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C13
+          LD        GR7,GR0
+          ST        GR7,I4
+                                   ; Loop
+          JUMP      J35
+J36       NOP
+                                   ; i += 1
+          LAD       GR7,1
+          LAD       GR6,I3
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; Loop While ((i * i) <= n)
+J33       NOP
+          LD        GR7,I3
+          LD        GR6,I3
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C16
+          LD        GR7,GR0
+          LD        GR6,I4
+          XOR       GR0,GR0
+          CPA       GR7,GR6
+          JPL       J41
+          LAD       GR0,#FFFF
+J41       LD        GR7,GR0
+          AND       GR7,GR7
+          JNZ       J32
+J34       NOP
+                                   ; If (n > 1) Then
+          LD        GR7,I4
+          LAD       GR6,1
+          LAD       GR0,#FFFF
+          CPA       GR7,GR6
+          JPL       J43
+          XOR       GR0,GR0
+J43       LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J42
+                                   ; factor( count ) = n
+          LD        GR7,I2
+          LD        GR1,GR7
+          LAD       GR2,21
+          CALL      C17
+          LAD       GR7,IA1
+          ADDL      GR7,GR0
+          LD        GR6,I4
+          ST        GR6,0,GR7
+                                   ; count += 1
+          LAD       GR7,1
+          LAD       GR6,I2
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; End If
+J42       NOP
+                                   ; Print ("FACTORS: " & CStr(count))
+          LD        GR7,I2
+          LD        GR3,GR7
+          LAD       GR1,TB2
+          LAD       GR2,TL2
+          CALL      C3
+          LAD       GR1,TB1
+          LAD       GR2,TL1
+          LAD       GR3,='FACTORS: '
+          LAD       GR4,9
+          CALL      C11
+          LAD       GR1,TB1
+          LAD       GR2,TL1
+          LAD       GR3,TB2
+          LD        GR4,TL2
+          CALL      C9
+          OUT       TB1,TL1
+                                   ; s = ""
+          LAD       GR1,SB5
+          LAD       GR2,SL5
+          LAD       GR3,=0
+          XOR       GR4,GR4
+          CALL      C11
+                                   ; For i = 0 To (count - 1) Step 1
+          LD        GR7,I2
+          LAD       GR7,-1,GR7
+          ST        GR7,T1
+          XOR       GR7,GR7
+          ST        GR7,I3
+J44       NOP
+          LD        GR1,I3
+          CPA       GR1,T1
+          JPL       J46
+                                   ; s = ((s & CStr(factor(i))) & ", ")
+          LD        GR7,I3
+          LD        GR1,GR7
+          LAD       GR2,21
+          CALL      C17
+          LAD       GR7,IA1
+          ADDL      GR7,GR0
+          LD        GR7,0,GR7
+          LD        GR3,GR7
+          LAD       GR1,TB1
+          LAD       GR2,TL1
+          CALL      C3
+          LAD       GR1,TB2
+          LAD       GR2,TL2
+          LAD       GR3,SB5
+          LD        GR4,SL5
+          CALL      C11
+          LAD       GR1,TB2
+          LAD       GR2,TL2
+          LAD       GR3,TB1
+          LD        GR4,TL1
+          CALL      C9
+          LAD       GR1,TB2
+          LAD       GR2,TL2
+          LAD       GR3,=', '
+          LAD       GR4,2
+          CALL      C9
+          LAD       GR1,SB5
+          LAD       GR2,SL5
+          LAD       GR3,TB2
+          LD        GR4,TL2
+          CALL      C11
+                                   ; If (Len(s) > 60) Then
+          LD        GR7,SL5
+          LAD       GR6,60
+          LAD       GR0,#FFFF
+          CPA       GR7,GR6
+          JPL       J48
+          XOR       GR0,GR0
+J48       LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J47
+                                   ; Print s
+          OUT       SB5,SL5
+                                   ; s = ""
+          LAD       GR1,SB5
+          LAD       GR2,SL5
+          LAD       GR3,=0
+          XOR       GR4,GR4
+          CALL      C11
+                                   ; End If
+J47       NOP
+                                   ; Next i
+J45       NOP
+          LAD       GR1,I3
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J44
+J46       NOP
+                                   ; If (Len(s) > 0) Then
+          LD        GR7,SL5
+          XOR       GR6,GR6
+          LAD       GR0,#FFFF
+          CPA       GR7,GR6
+          JPL       J50
+          XOR       GR0,GR0
+J50       LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J49
+                                   ; Print s
+          OUT       SB5,SL5
+                                   ; End If
+J49       NOP
+                                   ; End If
+J29       NOP
+EXIT      NOP
+          RPOP
+          RET
+                                   ; Dim count As Integer
+I2        DS        1
+                                   ; Dim i As Integer
+I3        DS        1
+                                   ; Dim n As Integer
+I4        DS        1
+                                   ; Dim s As String
+SL5       DS        1
+SB5       DS        256
+                                   ; Dim factor(20) As Integer
+IA1       DS        21
+EOF       DS        1
+T1        DS        1
+TL1       DS        1
+TB1       DS        256
+TL2       DS        1
+TB2       DS        256
+LL1       DC        7
+LB1       DC        'Number?'
+LL2       DC        14
+LB2       DC        'Invalid Number'
+                                   ; FuncCInt
+C1        PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          ADDL      GR2,GR1
+          XOR       GR0,GR0
+          XOR       GR4,GR4
+          CPL       GR1,GR2
+          JZE       J1
+          LD        GR3,0,GR1
+          CPL       GR3,='+'
+          JNZ       J3
+          LAD       GR1,1,GR1
+          JUMP      J2
+J3        CPL       GR3,='-'
+          JNZ       J2
+          LAD       GR4,-1
+          LAD       GR1,1,GR1
+J2        CPL       GR1,GR2
+          JZE       J1
+          LD        GR3,0,GR1
+          SUBL      GR3,='0'
+          JMI       J1
+          CPL       GR3,=9
+          JPL       J1
+          LD        GR5,GR0
+          SLL       GR0,3
+          ADDL      GR0,GR5
+          ADDL      GR0,GR5
+          ADDL      GR0,GR3
+          LAD       GR1,1,GR1
+          JUMP      J2
+J1        XOR       GR0,GR4
+          SUBL      GR0,GR4
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; FuncCStrArgInt
+C3        CPL       GR3,=#8000
+          JNZ       J5
+          PUSH      0,GR3
+          PUSH      0,GR4
+          LAD       GR3,='-32768'
+          LAD       GR4,6
+          CALL      C11
+          POP       GR4
+          POP       GR3
+          RET
+J5        AND       GR3,GR3
+          JNZ       J6
+          LAD       GR3,1
+          ST        GR3,0,GR2
+          LD        GR3,='0'
+          ST        GR3,0,GR1
+          XOR       GR3,GR3
+          RET
+J6        PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          JPL       J7
+          LD        GR4,='-'
+          ST        GR4,0,GR1
+          LAD       GR1,1,GR1
+          XOR       GR3,=#FFFF
+          LAD       GR3,1,GR3
+J7        LAD       GR4,V1
+          LD        GR5,GR1
+          LD        GR2,GR3
+          LAD       GR3,10
+J8        CALL      C13
+          ADDL      GR1,='0'
+          ST        GR1,0,GR4
+          LAD       GR4,1,GR4
+          LD        GR2,GR0
+          JPL       J8
+          LAD       GR2,V1
+          LAD       GR4,-1,GR4
+J9        LD        GR1,0,GR4
+          ST        GR1,0,GR5
+          LAD       GR5,1,GR5
+          LAD       GR4,-1,GR4
+          CPL       GR4,GR2
+          JPL       J9
+          JZE       J9
+          LD        GR0,GR5
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          SUBL      GR0,GR1
+          ST        GR0,0,GR2
+          RET
+V1        DS        6
+                                   ; UtilConcatStr
+C9        PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          LD        GR0,0,GR2
+          LD        GR2,GR1
+          ADDL      GR1,GR0
+          LAD       GR2,256,GR2
+          ADDL      GR4,GR3
+J27       CPL       GR1,GR2
+          JZE       J28
+          CPL       GR3,GR4
+          JZE       J28
+          LD        GR0,0,GR3
+          ST        GR0,0,GR1
+          LAD       GR1,1,GR1
+          LAD       GR3,1,GR3
+          JUMP      J27
+J28       LD        GR0,GR1
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          SUBL      GR0,GR1
+          ST        GR0,0,GR2
+          RET
+                                   ; UtilCopyStr
+C11       PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          ST        GR4,0,GR2
+          AND       GR4,GR4
+          JZE       J11
+J10       LD        GR2,0,GR3
+          ST        GR2,0,GR1
+          LAD       GR3,1,GR3
+          LAD       GR1,1,GR1
+          SUBL      GR4,=1
+          JPL       J10
+J11       POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilDivMod
+C13       AND       GR3,GR3
+          JNZ       J14
+          XOR       GR0,GR0
+          LAD       GR1,-1
+          RET
+J14       PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          LD        GR4,GR2
+          LD        GR5,GR2
+          JPL       J12
+          XOR       GR5,GR5
+          SUBA      GR5,GR2
+J12       LD        GR1,GR3
+          JPL       J13
+          XOR       GR1,GR1
+          SUBA      GR1,GR3
+J13       LAD       GR0,1
+J15       ADDL      GR1,GR1
+          JOV       J16
+          ADDL      GR0,GR0
+          JUMP      J15
+J16       SRL       GR1,1
+          LAD       GR1,#8000,GR1
+          XOR       GR2,GR2
+J17       CPL       GR5,GR1
+          JMI       J18
+          SUBL      GR5,GR1
+          ADDL      GR2,GR0
+J18       SRL       GR0,1
+          JZE       J19
+          SRL       GR1,1
+          JUMP      J17
+J19       LD        GR5,GR4
+          XOR       GR5,GR3
+          SRA       GR5,15
+          XOR       GR2,GR5
+          SUBA      GR2,GR5
+          CALL      C16
+          LD        GR1,GR4
+          SUBA      GR1,GR0
+          LD        GR0,GR2
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          RET
+                                   ; UtilFill
+C14       PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J51       CPL       GR1,GR3
+          JZE       J52
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J51
+J52       POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilMul
+C16       PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          XOR       GR0,GR0
+          XOR       GR1,GR1
+          LD        GR4,GR2
+          LD        GR5,GR3
+J20       SRL       GR2,1
+          JOV       J21
+          JNZ       J23
+          JUMP      J24
+J21       ADDL      GR0,GR3
+          JOV       J22
+          JUMP      J23
+J22       LAD       GR1,1,GR1
+J23       SLL       GR3,1
+          JUMP      J20
+J24       SRL       GR5,1
+          SLL       GR4,1
+          JOV       J25
+          JNZ       J24
+          JUMP      J26
+J25       ADDL      GR1,GR5
+          JUMP      J24
+J26       POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          RET
+                                   ; UtilSafeIndex
+C17       AND       GR2,GR2
+          JNZ       J38
+          XOR       GR0,GR0
+          RET
+J38       LD        GR0,GR1
+          JPL       J39
+          XOR       GR0,GR0
+          RET
+J39       CPL       GR0,GR2
+          JMI       J40
+          LAD       GR0,-1
+          ADDL      GR0,GR2
+J40       RET
+          END
