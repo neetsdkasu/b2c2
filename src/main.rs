@@ -105,76 +105,76 @@ fn run_app() -> io::Result<i32> {
         match arg.as_str() {
             FLAG_SOURCE_FILE => {
                 if src_file.is_some() {
-                    eprintln!("ERROR: DUPLICATE OPTION {}", arg);
+                    eprintln!("ERROR: {}が重複してます", arg);
                     return show_usage();
                 }
                 if let Some(file) = iter.next() {
                     if !Path::new(&file).exists() {
-                        eprintln!("ERROR: NOT FOUND {}", file);
+                        eprintln!("ERROR: ファイルが見つかりません ( {} )", file);
                         return Ok(3);
                     }
                     src_file = Some(file);
                 } else {
-                    eprintln!("ERROR: NO SOURCE FILE");
+                    eprintln!("ERROR:　ソースファイルが指定されてません");
                     return show_usage();
                 }
             }
             FLAG_REMOVE_COMMENT => {
                 if flag.remove_comment {
-                    eprintln!("ERROR: DUPLICATE OPTION {}", arg);
+                    eprintln!("ERROR: {}が重複してます", arg);
                     return show_usage();
                 }
                 flag.remove_comment = true;
             }
             FLAG_REMOVE_NOP => {
                 if flag.remove_nop {
-                    eprintln!("ERROR: DUPLICATE OPTION {}", arg);
+                    eprintln!("ERROR: {}が重複してます", arg);
                     return show_usage();
                 }
                 flag.remove_nop = true;
             }
             FLAG_REMOVE_UNREFERENCED_LABEL => {
                 if flag.remove_unreferenced_label {
-                    eprintln!("ERROR: DUPLICATE OPTION {}", arg);
+                    eprintln!("ERROR: {}が重複してます", arg);
                     return show_usage();
                 }
                 flag.remove_unreferenced_label = true;
             }
             FLAG_SPLIT_SUBROUTINES => {
                 if flag.split_subroutines {
-                    eprintln!("ERROR: DUPLICATE OPTION {}", arg);
+                    eprintln!("ERROR: {}が重複してます", arg);
                     return show_usage();
                 }
                 flag.split_subroutines = true;
             }
             FLAG_TRY_MAKE_SNIPPETS => {
                 if flag.try_make_snippets {
-                    eprintln!("ERROR: DUPLICATE OPTION {}", arg);
+                    eprintln!("ERROR: {}が重複してます", arg);
                     return show_usage();
                 }
                 flag.try_make_snippets = true;
             }
             FLAG_PROGRAM_NAME => {
                 if flag.program_name.is_some() {
-                    eprintln!("ERROR: DUPLICATE OPTION {}", arg);
+                    eprintln!("ERROR: {}が重複してます", arg);
                     return show_usage();
                 }
                 if let Some(name) = iter.next() {
                     flag.program_name = Some(name);
                 } else {
-                    eprintln!("ERROR: NO PROGRAM NAME");
+                    eprintln!("ERROR: プログラム名が指定されてません");
                     return show_usage();
                 }
             }
             FLAG_STATISTICS => {
                 if flag_statistics {
-                    eprintln!("ERROR: DUPLICATE OPTION {}", arg);
+                    eprintln!("ERROR: {}が重複してます", arg);
                     return show_usage();
                 }
                 flag_statistics = true;
             }
             _ => {
-                eprintln!("ERROR: UNKOWN OPTION {}", arg);
+                eprintln!("ERROR: 不適切なコマンドライン引数です ( {} )", arg);
                 return show_usage();
             }
         }
@@ -183,7 +183,7 @@ fn run_app() -> io::Result<i32> {
     let src_file = match src_file {
         Some(file) => file,
         None => {
-            eprintln!("ERROR: MISSING SOURCE FILE");
+            eprintln!("ERROR: ソースファイルが指定されてません");
             return show_usage();
         }
     };
@@ -244,13 +244,13 @@ fn run_app() -> io::Result<i32> {
 
         dst_file.flush()?;
 
-        eprintln!("GENERATED: {}", file_name);
+        eprintln!("生成されたファイル: {}", file_name);
 
         if flag_statistics {
             let file_name = format!("{}.stat.txt", name);
             let statistics = stat::analyze(&casl2_src);
             fs::write(&file_name, statistics)?;
-            eprintln!("GENERATED: {}", file_name);
+            eprintln!("生成されたファイル: {}", file_name);
         }
     }
 
