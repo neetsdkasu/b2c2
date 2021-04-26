@@ -4,14 +4,10 @@ use crate::casl2;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Debug)]
 pub enum Id {
-    FuncAbs,
     FuncCInt,
     FuncCStrArgBool,
     FuncCStrArgInt,
-    FuncMax,
-    FuncMin,
     FuncSpace,
-    UtilCompareInt,
     UtilCompareStr,
     UtilConcatStr,
     UtilCopyFromOffsetStr,
@@ -43,14 +39,10 @@ pub trait Gen {
 // サブルーチンのソースコードと依存関係を取得
 pub fn get_src<T: Gen>(gen: &mut T, id: Id) -> Src {
     match id {
-        Id::FuncAbs => get_func_abs(gen, id),
         Id::FuncCInt => get_func_cint(gen, id),
-        Id::FuncMax => get_func_max(gen, id),
-        Id::FuncMin => get_func_min(gen, id),
         Id::FuncCStrArgBool => get_func_cstr_arg_bool(gen, id),
         Id::FuncCStrArgInt => get_func_cstr_arg_int(gen, id),
         Id::FuncSpace => get_func_space(gen, id),
-        Id::UtilCompareInt => get_util_compare_int(gen, id),
         Id::UtilCompareStr => get_util_compare_str(gen, id),
         Id::UtilConcatStr => get_util_concat_str(gen, id),
         Id::UtilCopyFromOffsetStr => get_util_copy_from_offset_str(gen, id),
@@ -166,80 +158,6 @@ ALLOC   AND   GR0,GR0
     .unwrap()
 }
 
-// Func: Abs
-fn get_func_abs<T: Gen>(gen: &mut T, id: Id) -> Src {
-    // GR1 .. value1
-    // GR0 .. ret = abs(value1)
-    Src {
-        dependencies: Vec::new(),
-        statements: casl2::parse(&format!(
-            r#"
-                                   ; {comment}
-{prog} LD    GR0,GR1
-       JMI   {mi}
-       RET
-{mi}   XOR   GR0,GR0
-       SUBA  GR0,GR1
-       RET
-"#,
-            comment = format!("{:?}", id),
-            prog = id.label(),
-            mi = gen.jump_label()
-        ))
-        .unwrap(),
-    }
-}
-
-// Func: Max
-fn get_func_max<T: Gen>(gen: &mut T, id: Id) -> Src {
-    // GR1 .. value1
-    // GR2 .. value2
-    // GR0 .. ret = max(value1, value2)
-    Src {
-        dependencies: Vec::new(),
-        statements: casl2::parse(&format!(
-            r#"
-                                   ; {comment}
-{prog} CPA   GR1,GR2
-       JMI   {mi}
-       LD    GR0,GR1
-       RET
-{mi}   LD    GR0,GR2
-       RET
-"#,
-            comment = format!("{:?}", id),
-            prog = id.label(),
-            mi = gen.jump_label()
-        ))
-        .unwrap(),
-    }
-}
-
-// Func: Min
-fn get_func_min<T: Gen>(gen: &mut T, id: Id) -> Src {
-    // GR1 .. value1
-    // GR2 .. value2
-    // GR0 .. ret = min(value1, value2)
-    Src {
-        dependencies: Vec::new(),
-        statements: casl2::parse(&format!(
-            r#"
-                                   ; {comment}
-{prog} CPA   GR1,GR2
-       JMI   {mi}
-       LD    GR0,GR2
-       RET
-{mi}   LD    GR0,GR1
-       RET
-"#,
-            comment = format!("{:?}", id),
-            prog = id.label(),
-            mi = gen.jump_label()
-        ))
-        .unwrap(),
-    }
-}
-
 // Func: CInt
 fn get_func_cint<T: Gen>(gen: &mut T, id: Id) -> Src {
     // GR1 .. adr of s_buf
@@ -297,34 +215,6 @@ fn get_func_cint<T: Gen>(gen: &mut T, id: Id) -> Src {
             ret = gen.jump_label(),
             read = gen.jump_label(),
             mi = gen.jump_label()
-        ))
-        .unwrap(),
-    }
-}
-
-// Util: Compare Int
-fn get_util_compare_int<T: Gen>(gen: &mut T, id: Id) -> Src {
-    // GR1 lhs
-    // GR2 rhs
-    // GR0 ... -1 if lhs < rhs , 0 if lhs = rhs, 1 if lhs > rhs
-    Src {
-        dependencies: Vec::new(),
-        statements: casl2::parse(&format!(
-            r#"
-                                   ; {comment}
-{prog}  XOR    GR0,GR0
-        CPA    GR1,GR2
-        JMI    {minus}
-        JPL    {plus}
-        RET
-{minus} LAD    GR0,#FFFF
-{plus}  OR     GR0,=1
-        RET
-"#,
-            comment = format!("{:?}", id),
-            prog = id.label(),
-            minus = gen.jump_label(),
-            plus = gen.jump_label()
         ))
         .unwrap(),
     }

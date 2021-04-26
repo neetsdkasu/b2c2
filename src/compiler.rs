@@ -1893,18 +1893,4 @@ impl ValueLabel {
             | Self::MemRefInteger(offset) => Some(*offset),
         }
     }
-
-    fn value_type(&self) -> parser::ExprType {
-        match self {
-            Self::VarBoolean(..)
-            | Self::VarRefBoolean(..)
-            | Self::MemBoolean(..)
-            | Self::MemRefBoolean(..) => parser::ExprType::Boolean,
-
-            Self::VarInteger(..)
-            | Self::VarRefInteger(..)
-            | Self::MemInteger(..)
-            | Self::MemRefInteger(..) => parser::ExprType::Integer,
-        }
-    }
 }

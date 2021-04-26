@@ -5,7 +5,6 @@ use std::path::Path;
 
 #[allow(dead_code)]
 mod casl2;
-#[allow(dead_code)]
 mod compiler;
 #[allow(dead_code)]
 mod jis_x_201;
