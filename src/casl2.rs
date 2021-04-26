@@ -382,12 +382,14 @@ pub enum Command {
     Nop,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug)]
 pub struct Program {
     name: String,
     statements: Vec<Statement>,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug)]
 pub struct Builder {
     label: Option<Label>,
@@ -455,6 +457,7 @@ impl Builder {
     }
 }
 
+#[cfg(test)]
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for s in self.statements.iter() {
