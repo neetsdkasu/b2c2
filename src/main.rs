@@ -174,7 +174,7 @@ fn run_app() -> io::Result<i32> {
                 flag_statistics = true;
             }
             _ => {
-                eprintln!("ERROR: 不適切なコマンドライン引数です ( {} )", arg);
+                eprintln!("ERROR: 不正なコマンドライン引数です ( {} )", arg);
                 return show_usage();
             }
         }

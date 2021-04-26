@@ -39,7 +39,7 @@ pub fn parse<R: BufRead>(reader: R) -> io::Result<Result<Vec<Statement>, SyntaxE
                 return Ok(Err(SyntaxError::new(
                     line_number,
                     *pos,
-                    format!("not command: {:?}", token),
+                    format!("不適切なトークンです: {:?}", token),
                 )))
             }
         }
@@ -50,7 +50,7 @@ pub fn parse<R: BufRead>(reader: R) -> io::Result<Result<Vec<Statement>, SyntaxE
             parser.line_number + 1,
             0,
             format!(
-                "invalid Allocation Size: {} / {}",
+                "指定のアロケーションサイズが小さすぎます: {} / {}",
                 parser.variable_area_size + parser.maximum_allocate_temporary_area_size,
                 parser.maximum_variable_area_size
             ),
@@ -61,7 +61,7 @@ pub fn parse<R: BufRead>(reader: R) -> io::Result<Result<Vec<Statement>, SyntaxE
         return Ok(Err(SyntaxError::new(
             parser.line_number + 1,
             0,
-            "invalid Source Code".into(),
+            "不完全なソースコードのため正しく解釈できませんでした".into(),
         )));
     }
 
@@ -258,7 +258,7 @@ impl Parser {
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
         if matches!(self.end_program_state, EndProgramState::Satisfied) {
-            return Err(self.syntax_error("invalid Code statement".into()));
+            return Err(self.syntax_error("この位置に代入のステートメントは置けません".into()));
         }
 
         if self.in_call_with {
@@ -266,20 +266,19 @@ impl Parser {
         }
 
         if self.is_select_head {
-            return Err(self.syntax_error("invalid Code statement".into()));
+            return Err(self.syntax_error("この位置に代入のステートメントは置けません".into()));
         }
 
         if !self.header_state.can_command() {
-            return Err(self.syntax_error("invalid Code statement".into()));
+            return Err(self.syntax_error("この位置に代入のステートメントは置けません".into()));
         } else {
             self.header_state = HeaderState::NotHeader;
         }
 
-        let var_type = self
-            .variables
-            .get(name)
-            .cloned()
-            .ok_or_else(|| self.syntax_error(format!("undefined variable: {}", name)))?;
+        let var_type =
+            self.variables.get(name).cloned().ok_or_else(|| {
+                self.syntax_error(format!("宣言されていない変数名です: {}", name))
+            })?;
 
         // var = expr
         // var += expr
@@ -380,7 +379,7 @@ impl Parser {
                             value: expr,
                         });
                     }
-                    _ => return Err(self.syntax_error("invalid Assign statement".into())),
+                    _ => return Err(self.syntax_error("代入の変数と値の型が一致しません".into())),
                 }
             }
             // 加算代入
@@ -394,7 +393,7 @@ impl Parser {
                         value: expr,
                     });
                 } else {
-                    return Err(self.syntax_error("invalid Assign statement".into()));
+                    return Err(self.syntax_error("代入の変数と値の型が一致しません".into()));
                 }
             }
             // 加算代入(左辺参照型)
@@ -408,7 +407,7 @@ impl Parser {
                         value: expr,
                     });
                 } else {
-                    return Err(self.syntax_error("invalid Assign statement".into()));
+                    return Err(self.syntax_error("代入の変数と値の型が一致しません".into()));
                 }
             }
             // 減算代入
@@ -422,7 +421,7 @@ impl Parser {
                         value: expr,
                     });
                 } else {
-                    return Err(self.syntax_error("invalid Assign statement".into()));
+                    return Err(self.syntax_error("代入の変数と値の型が一致しません".into()));
                 }
             }
             // 減算代入(左辺参照型)
@@ -436,7 +435,7 @@ impl Parser {
                         value: expr,
                     });
                 } else {
-                    return Err(self.syntax_error("invalid Assign statement".into()));
+                    return Err(self.syntax_error("代入の変数と値の型が一致しません".into()));
                 }
             }
             // 配列要素または文字列要素に代入
@@ -454,7 +453,7 @@ impl Parser {
                 return self.parse_assign_element(name, var_type, pos_and_tokens);
             }
             _ => {
-                return Err(self.syntax_error("invalid Assign statement".into()));
+                return Err(self.syntax_error("不正な代入のステートメントです".into()));
             }
         }
 
@@ -488,17 +487,17 @@ impl Parser {
         }
         let close_pos = close_pos
             .take()
-            .ok_or_else(|| self.syntax_error("invalid Assign statement".into()))?;
+            .ok_or_else(|| self.syntax_error("閉じ括弧が不足しています".into()))?;
 
         let (param, value) = pos_and_tokens.split_at(close_pos + 1);
 
         let param = if let [_, inner @ .., _] = param {
             self.parse_expr(inner)?
         } else {
-            return Err(self.syntax_error("invalid Assign statement".into()));
+            return Err(self.syntax_error("不正なインデックスの指定です".into()));
         };
         if !matches!(param.return_type(), ExprType::Integer) {
-            return Err(self.syntax_error("invalid Assign statement".into()));
+            return Err(self.syntax_error("インデックスの型が不正です".into()));
         }
 
         match value {
@@ -548,7 +547,7 @@ impl Parser {
                             value: expr,
                         });
                     }
-                    _ => return Err(self.syntax_error("invalid Assign statement".into())),
+                    _ => return Err(self.syntax_error("代入の変数と値の型が一致しません".into())),
                 }
             }
             // 要素への加算代入
@@ -563,7 +562,7 @@ impl Parser {
                         value: expr,
                     });
                 } else {
-                    return Err(self.syntax_error("invalid Assign statement".into()));
+                    return Err(self.syntax_error("代入の変数と値の型が一致しません".into()));
                 }
             }
             // 要素への加算代入(左辺参照型)
@@ -578,7 +577,7 @@ impl Parser {
                         value: expr,
                     });
                 } else {
-                    return Err(self.syntax_error("invalid Assign statement".into()));
+                    return Err(self.syntax_error("代入の変数と値の型が一致しません".into()));
                 }
             }
             // 要素への減算代入
@@ -593,7 +592,7 @@ impl Parser {
                         value: expr,
                     });
                 } else {
-                    return Err(self.syntax_error("invalid Assign statement".into()));
+                    return Err(self.syntax_error("代入の変数と値の型が一致しません".into()));
                 }
             }
             // 要素への減算代入(左辺参照型)
@@ -608,10 +607,10 @@ impl Parser {
                         value: expr,
                     });
                 } else {
-                    return Err(self.syntax_error("invalid Assign statement".into()));
+                    return Err(self.syntax_error("代入の変数と値の型が一致しません".into()));
                 }
             }
-            _ => return Err(self.syntax_error("invalid Assign statement".into())),
+            _ => return Err(self.syntax_error("不正な代入のステートメントです".into())),
         }
 
         Ok(())
@@ -627,14 +626,14 @@ impl Parser {
 
         for (arg_name, _) in self.temp_call_with_arguments.iter() {
             if arg_name == name {
-                return Err(self.syntax_error(format!("duplicate Call argument name: {}", name)));
+                return Err(self.syntax_error(format!("引数名が重複しています: {}", name)));
             }
         }
 
         let value = if let [(_, Token::Operator(Operator::Equal)), rest @ ..] = pos_and_tokens {
             self.parse_expr(rest)?
         } else {
-            return Err(self.syntax_error("invalid Call argument statement".into()));
+            return Err(self.syntax_error("引数への値の割り当てのステートメントが不正です".into()));
         };
 
         let temp_area: usize;
@@ -647,7 +646,10 @@ impl Parser {
             .find(|arg| arg.var_name == name)
         {
             if !arg.is_valid_type(&value) {
-                return Err(self.syntax_error(format!("invalid Call argument: {} {}", name, value)));
+                return Err(self.syntax_error(format!(
+                    "引数への値の割り当ての型が一致しません: {} {}",
+                    name, value
+                )));
             }
             if !value.can_access_variable() && arg.var_type.is_reference() {
                 if let Some(size) = arg.var_type.get_array_size() {

@@ -54,7 +54,7 @@ impl<R> Tokenizer<R> {
                     return Err(SyntaxError::new(
                         self.line_number,
                         pos,
-                        format!("invalid token: {}", line),
+                        format!("不正なトークンです: {}", line),
                     ))
                 }
             }
