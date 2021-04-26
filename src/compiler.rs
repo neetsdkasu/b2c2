@@ -52,7 +52,7 @@ pub fn compile(
     Ok(compiler.finish())
 }
 
-#[derive(Clone, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct Flag {
     // コメントを除去
     pub remove_comment: bool,

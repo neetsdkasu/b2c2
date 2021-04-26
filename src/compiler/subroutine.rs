@@ -94,6 +94,27 @@ EOF      START
 }
 
 // Util: Allocator
+pub fn get_util_allocator_code_for_common(size: usize) -> Vec<casl2::Statement> {
+    #[derive(Default)]
+    struct Temp {
+        j: usize,
+        v: usize,
+    }
+    impl Gen for Temp {
+        fn var_label(&mut self) -> String {
+            self.j += 1;
+            format!("J{}", self.j)
+        }
+        fn jump_label(&mut self) -> String {
+            self.v += 1;
+            format!("V{}", self.v)
+        }
+    }
+    let mut temp = Temp::default();
+    super::utils::to_external("ALLOC", get_util_allocator_code(&mut temp, size))
+}
+
+// Util: Allocator
 pub fn get_util_allocator_code<T: Gen>(gen: &mut T, size: usize) -> Vec<casl2::Statement> {
     // スタック的な呼び出しが想定されてる
     // 引数 GR0 == 0 のとき

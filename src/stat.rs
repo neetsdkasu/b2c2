@@ -192,9 +192,11 @@ labels:
     {labels}
 
 registers:
+    [GR0,GR1,GR2,GR3,GR4,GR5,GR6,GR7]
     {registers}
 
-index_registers:
+index registers:
+    [---,GR1,GR2,GR3,GR4,GR5,GR6,GR7]
     {index_registers}
 
 literals:
@@ -204,10 +206,10 @@ commands:
     {commands}
     {p_codes}
 
-commands(R):
+commands(r1,r2):
     {r_codes}
 
-commands(A):
+commands(r,adr,x):
     {a_codes}
 
 "#,
