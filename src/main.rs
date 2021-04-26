@@ -11,9 +11,7 @@ mod compiler;
 mod jis_x_201;
 #[allow(dead_code)]
 mod parser;
-#[allow(dead_code)]
 mod stat;
-#[allow(dead_code)]
 mod tokenizer;
 
 const APP_NAME: &str = "b2c2";
