@@ -3,7 +3,6 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
-#[allow(dead_code)]
 mod casl2;
 mod compiler;
 #[allow(dead_code)]

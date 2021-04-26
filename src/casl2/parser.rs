@@ -3,8 +3,6 @@
 use super::*;
 use crate::SyntaxError;
 
-type TokenError = String;
-
 pub fn parse(src: &str) -> Result<Vec<Statement>, SyntaxError> {
     let mut ret = vec![];
     for (i, line) in src.lines().enumerate() {

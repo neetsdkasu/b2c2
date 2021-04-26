@@ -37,6 +37,7 @@ impl Statement {
         }
     }
 
+    #[cfg(test)]
     pub fn labeled_with_comment(label: &str, command: Command, comment: &str) -> Self {
         Self::Code {
             label: Some(label.into()),
@@ -45,6 +46,7 @@ impl Statement {
         }
     }
 
+    #[cfg(test)]
     pub fn code_with_comment(command: Command, comment: &str) -> Self {
         Self::Code {
             label: None,
@@ -53,6 +55,7 @@ impl Statement {
         }
     }
 
+    #[cfg(test)]
     pub fn comment(comment: &str) -> Self {
         Self::Comment {
             indent: 0,
@@ -73,23 +76,6 @@ impl Statement {
 
     pub fn is_code(&self) -> bool {
         !self.is_comment()
-    }
-
-    pub fn remove_comment(&self) -> Option<Self> {
-        if let Self::Code {
-            label,
-            command,
-            comment: _,
-        } = self
-        {
-            Some(Self::Code {
-                label: label.clone(),
-                command: command.clone(),
-                comment: None,
-            })
-        } else {
-            None
-        }
     }
 }
 
@@ -208,12 +194,6 @@ impl From<Label> for Constant {
 impl From<&Label> for Constant {
     fn from(v: &Label) -> Self {
         Self::Label(v.clone())
-    }
-}
-
-impl Constant {
-    pub fn label(label: &str) -> Self {
-        Self::Label(label.into())
     }
 }
 
@@ -408,84 +388,19 @@ pub struct Program {
     statements: Vec<Statement>,
 }
 
-impl Program {
-    pub fn remove_comments(&self) -> Self {
-        Self {
-            name: self.name.clone(),
-            statements: self
-                .statements
-                .iter()
-                .filter_map(Statement::remove_comment)
-                .collect(),
-        }
-    }
-
-    pub fn take_code(self) -> Vec<Statement> {
-        self.statements
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Builder {
     label: Option<Label>,
     program: Program,
 }
 
+#[cfg(test)]
 impl Builder {
     pub fn new(name: &str) -> Self {
         let statements = vec![Statement::Code {
             label: Some(Label(name.into())),
             command: Command::Start { entry_point: None },
             comment: None,
-        }];
-        Self {
-            label: None,
-            program: Program {
-                name: name.into(),
-                statements,
-            },
-        }
-    }
-
-    pub fn new_with_comment(name: &str, comment: &str) -> Self {
-        let statements = vec![Statement::Code {
-            label: Some(Label(name.into())),
-            command: Command::Start { entry_point: None },
-            comment: Some(comment.into()),
-        }];
-        Self {
-            label: None,
-            program: Program {
-                name: name.into(),
-                statements,
-            },
-        }
-    }
-
-    pub fn start_at(name: &str, entry_point: &str) -> Self {
-        let statements = vec![Statement::Code {
-            label: Some(Label(name.into())),
-            command: Command::Start {
-                entry_point: Some(Label(entry_point.into())),
-            },
-            comment: None,
-        }];
-        Self {
-            label: None,
-            program: Program {
-                name: name.into(),
-                statements,
-            },
-        }
-    }
-
-    pub fn start_at_with_comment(name: &str, entry_point: &str, comment: &str) -> Self {
-        let statements = vec![Statement::Code {
-            label: Some(Label(name.into())),
-            command: Command::Start {
-                entry_point: Some(Label(entry_point.into())),
-            },
-            comment: Some(comment.into()),
         }];
         Self {
             label: None,
@@ -529,30 +444,12 @@ impl Builder {
         self
     }
 
-    fn comment_with_indent(mut self, indent: usize, comment: &str) -> Self {
-        self.program.statements.push(Statement::Comment {
-            indent,
-            text: comment.into(),
-        });
-        self
-    }
-
     fn end(mut self) -> Program {
         let label = self.label.take();
         self.program.statements.push(Statement::Code {
             label,
             command: Command::End,
             comment: None,
-        });
-        self.program
-    }
-
-    fn end_with_comment(mut self, comment: &str) -> Program {
-        let label = self.label.take();
-        self.program.statements.push(Statement::Code {
-            label,
-            command: Command::End,
-            comment: Some(comment.into()),
         });
         self.program
     }
