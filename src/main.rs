@@ -49,7 +49,7 @@ fn show_usage() -> io::Result<i32> {
 BASIC言語風の独自のプログラミング言語(?)のソースコードファイルからCASL2のソースコードファイルを生成します
 
 USAGE:
-    {current_exe} {flag_src} <FILE> [<OPTIONS>]
+    {current_exe} {flag_src} <FILE> [OPTIONS]
 
 OPTIONS:
     {flag_remove_nop}
