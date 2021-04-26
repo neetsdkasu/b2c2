@@ -80,7 +80,6 @@ enum HeaderState {
     Option,
     ExternSub,
     InExternSub,
-    ProgramName,
     Argument,
     InArgument,
     Dim,
@@ -115,25 +114,22 @@ impl HeaderState {
 
     fn can_program_name(self) -> bool {
         use HeaderState::*;
-        matches!(self, Option | ExternSub | ProgramName)
+        matches!(self, Option | ExternSub)
     }
 
     fn can_argument(self) -> bool {
         use HeaderState::*;
-        matches!(self, Option | ExternSub | ProgramName | Argument)
+        matches!(self, Option | ExternSub | Argument)
     }
 
     fn can_dim(self) -> bool {
         use HeaderState::*;
-        matches!(self, Option | ExternSub | ProgramName | Argument | Dim)
+        matches!(self, Option | ExternSub | Argument | Dim)
     }
 
     fn can_command(self) -> bool {
         use HeaderState::*;
-        matches!(
-            self,
-            Option | ExternSub | ProgramName | Argument | Dim | NotHeader
-        )
+        matches!(self, Option | ExternSub | Argument | Dim | NotHeader)
     }
 }
 
@@ -2524,6 +2520,9 @@ impl Parser {
     // Dim <var_name> As { Boolean / Integer / String }
     // Dim <arr_name>(<ubound>) As { Boolean / Integer }
     fn parse_command_dim(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
+        if !self.header_state.can_dim() {
+            return Err(self.syntax_error("invalid Dim statement".into()));
+        }
         match pos_and_tokens {
             // プリミティブ変数の宣言
             [(pos, Token::Name(name)), (_, Token::Keyword(Keyword::As)), (_, Token::TypeName(type_name))] =>
@@ -3716,50 +3715,6 @@ impl VarType {
             | ArrayOfInteger(size)
             | RefArrayOfBoolean(size)
             | RefArrayOfInteger(size) => Some(*size),
-        }
-    }
-
-    pub fn is_array(&self) -> bool {
-        use VarType::*;
-        match self {
-            Boolean | Integer | String | RefBoolean | RefInteger | RefString => false,
-
-            ArrayOfBoolean(..)
-            | ArrayOfInteger(..)
-            | RefArrayOfBoolean(..)
-            | RefArrayOfInteger(..) => true,
-        }
-    }
-
-    pub fn is_boolean_array(&self) -> bool {
-        use VarType::*;
-        match self {
-            Boolean
-            | Integer
-            | String
-            | RefBoolean
-            | RefInteger
-            | RefString
-            | ArrayOfInteger(..)
-            | RefArrayOfInteger(..) => false,
-
-            ArrayOfBoolean(..) | RefArrayOfBoolean(..) => true,
-        }
-    }
-
-    pub fn is_integer_array(&self) -> bool {
-        use VarType::*;
-        match self {
-            Boolean
-            | Integer
-            | String
-            | RefBoolean
-            | RefInteger
-            | RefString
-            | ArrayOfBoolean(..)
-            | RefArrayOfBoolean(..) => false,
-
-            ArrayOfInteger(..) | RefArrayOfInteger(..) => true,
         }
     }
 

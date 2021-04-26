@@ -8,7 +8,6 @@ mod casl2;
 mod compiler;
 #[allow(dead_code)]
 mod jis_x_201;
-#[allow(dead_code)]
 mod parser;
 mod stat;
 mod tokenizer;
