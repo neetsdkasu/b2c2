@@ -725,7 +725,7 @@ impl Compiler {
 
         self.code(format!(
             r#" {lad_index_arrpos}
-                LD {index},GR0"#,
+                ADDL {index},GR0"#,
             lad_index_arrpos = arr_label.lad_pos(index_reg),
             index = index_reg
         ));
