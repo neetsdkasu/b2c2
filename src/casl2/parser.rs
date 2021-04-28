@@ -10,7 +10,11 @@ pub fn parse(src: &str) -> Result<Vec<Statement>, SyntaxError> {
             continue;
         }
         let stmt = Statement::parse(line).ok_or_else(|| {
-            SyntaxError::new(i + 1, 0, format!("invalid CASL2 statement: {{{}}}", line))
+            SyntaxError::new(
+                i + 1,
+                0,
+                format!(r#"不正なCASL2ステートメントです: "{}""#, line),
+            )
         })?;
         ret.push(stmt);
     }
