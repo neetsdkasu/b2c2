@@ -14,7 +14,7 @@ pub fn remove_comment(statements: &[casl2::Statement]) -> Vec<casl2::Statement> 
 }
 
 // NOPの除去
-pub(super) fn remove_nop(statements: &[casl2::Statement]) -> Vec<casl2::Statement> {
+pub fn remove_nop(statements: &[casl2::Statement]) -> Vec<casl2::Statement> {
     let mut ret: Vec<casl2::Statement> = vec![];
     let mut marge_label: Option<&str> = None;
     let mut mapped_label = HashMap::<&str, &str>::new();
@@ -240,7 +240,7 @@ fn can_include_snippet(stmt: &casl2::Statement) -> bool {
 }
 
 // 共通コードのスニペットをサブルーチンとしてまとめる
-pub(super) fn collect_duplicates(mut statements: Vec<casl2::Statement>) -> Vec<casl2::Statement> {
+pub fn collect_duplicates(mut statements: Vec<casl2::Statement>) -> Vec<casl2::Statement> {
     let mut snippets = vec![];
     let mut id = 0;
 

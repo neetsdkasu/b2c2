@@ -21,14 +21,14 @@ mod input_stmt;
 mod int_arr_func;
 mod int_bin_op;
 mod int_func;
-mod optimize;
+pub mod optimize;
 mod print_stmt;
 mod select_stmt;
 mod stmts;
 mod str_bin_op;
 mod str_func;
 pub mod subroutine;
-mod utils;
+pub mod utils;
 
 #[cfg(test)]
 mod test;
@@ -109,21 +109,9 @@ pub fn compile_with_flag(
     }
 
     if !flag.split_subroutines {
-        let name = statements
-            .iter()
-            .find_map(|stmt| {
-                if let casl2::Statement::Code {
-                    label: Some(label),
-                    command: casl2::Command::Start { .. },
-                    ..
-                } = stmt
-                {
-                    Some(label.as_str().to_string())
-                } else {
-                    None
-                }
-            })
-            .expect("BUG");
+        let name = casl2::utils::get_program_name(&statements)
+            .expect("BUG")
+            .to_string();
         return Ok(vec![(name, statements)]);
     }
 

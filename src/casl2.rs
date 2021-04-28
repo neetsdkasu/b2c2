@@ -3,6 +3,7 @@ use std::fmt;
 pub use self::parser::parse;
 
 mod parser;
+pub mod utils;
 
 #[cfg(test)]
 mod test;

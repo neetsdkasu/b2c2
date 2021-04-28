@@ -43,7 +43,7 @@ pub fn is_valid_program_name(program_name: &str) -> bool {
 }
 
 // 組み込みルーチンを分離する
-pub(super) fn split_subroutines(
+pub fn split_subroutines(
     mut statements: Vec<casl2::Statement>,
 ) -> Vec<(String, Vec<casl2::Statement>)> {
     let mut indexes: Vec<(String, usize)> = vec![];
@@ -90,21 +90,9 @@ pub(super) fn split_subroutines(
         statements.code(casl2::Command::End);
     }
 
-    let program_name = statements
-        .iter()
-        .find_map(|stmt| {
-            if let casl2::Statement::Code {
-                label: Some(label),
-                command: casl2::Command::Start { .. },
-                ..
-            } = stmt
-            {
-                Some(label.as_str().to_string())
-            } else {
-                None
-            }
-        })
-        .expect("BUG");
+    let program_name = casl2::utils::get_program_name(&statements)
+        .expect("BUG")
+        .to_string();
 
     ret.push((program_name, statements));
 
