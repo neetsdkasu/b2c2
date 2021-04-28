@@ -702,12 +702,18 @@ impl Parser {
                 Keyword::ByRef => self.parse_command_byref(pos_and_tokens),
                 Keyword::ByVal => self.parse_command_byval(pos_and_tokens),
                 Keyword::End => self.parse_command_end(pos_and_tokens),
-                _ => Err(self.syntax_error(format!("この位置に{:?}ステートメントを置くことはできません", command))),
+                _ => Err(self.syntax_error(format!(
+                    "この位置に{:?}ステートメントを置くことはできません",
+                    command
+                ))),
             };
         }
 
         if !self.header_state.can_command() {
-            return Err(self.syntax_error(format!("この位置に{:?}ステートメントを置くことはできません", command)));
+            return Err(self.syntax_error(format!(
+                "この位置に{:?}ステートメントを置くことはできません",
+                command
+            )));
         } else if self.header_state.in_header() {
             if let Some(name) = self.temp_progam_name.take() {
                 self.callables.insert(name, Vec::new());
@@ -719,7 +725,10 @@ impl Parser {
             return if let Keyword::End = command {
                 self.parse_command_end(pos_and_tokens)
             } else {
-                Err(self.syntax_error(format!("この位置に{:?}ステートメントを置くことはできません", command)))
+                Err(self.syntax_error(format!(
+                    "この位置に{:?}ステートメントを置くことはできません",
+                    command
+                )))
             };
         }
 
@@ -727,7 +736,10 @@ impl Parser {
             return match command {
                 Keyword::Case => self.parse_command_case(pos_and_tokens),
                 Keyword::End => self.parse_command_end(pos_and_tokens),
-                _ => Err(self.syntax_error(format!("この位置に{:?}ステートメントを置くことはできません", command))),
+                _ => Err(self.syntax_error(format!(
+                    "この位置に{:?}ステートメントを置くことはできません",
+                    command
+                ))),
             };
         }
 
@@ -756,9 +768,10 @@ impl Parser {
             | Keyword::Dim
             | Keyword::Extern
             | Keyword::Option
-            | Keyword::Program => {
-                Err(self.syntax_error(format!("この位置に{:?}ステートメントを置くことはできません", command)))
-            }
+            | Keyword::Program => Err(self.syntax_error(format!(
+                "この位置に{:?}ステートメントを置くことはできません",
+                command
+            ))),
 
             Keyword::As
             | Keyword::From
@@ -780,7 +793,9 @@ impl Parser {
     // Option Variable { Initialize / Uninitialize }
     fn parse_option(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         if !self.header_state.can_option() {
-            return Err(self.syntax_error("この位置にOptionステートメントを置くことはできません".into()));
+            return Err(
+                self.syntax_error("この位置にOptionステートメントを置くことはできません".into())
+            );
         }
         let ((pt, target), (pv, value), extra) = match pos_and_tokens {
             [target, value] => (target, value, None),
@@ -791,7 +806,9 @@ impl Parser {
         match target {
             Token::Function(Function::Array) => {
                 if self.declare_array_with_length.is_some() {
-                    return Err(self.syntax_error_pos(*pv, "Option Arrayは既に指定されています".into()));
+                    return Err(
+                        self.syntax_error_pos(*pv, "Option Arrayは既に指定されています".into())
+                    );
                 }
                 // value
                 //   UBound .... 最大インデックス(境界値・上限値)でサイズ指定 (Bound,Bounds,Indexでも可)
@@ -824,9 +841,8 @@ impl Parser {
                             } else if !"Function".eq_ignore_ascii_case(extra)
                                 && !"All".eq_ignore_ascii_case(extra)
                             {
-                                return Err(
-                                    self.syntax_error_pos(*pa, "Option Arrayの指定が不正です".into())
-                                );
+                                return Err(self
+                                    .syntax_error_pos(*pa, "Option Arrayの指定が不正です".into()));
                             }
                         }
                     }
@@ -842,13 +858,16 @@ impl Parser {
                                 length = false;
                                 all = false;
                             } else if !"All".eq_ignore_ascii_case(extra) {
-                                return Err(
-                                    self.syntax_error_pos(*pa, "Option Arrayの指定が不正です".into())
-                                );
+                                return Err(self
+                                    .syntax_error_pos(*pa, "Option Arrayの指定が不正です".into()));
                             }
                         }
                     }
-                    _ => return Err(self.syntax_error_pos(*pv, "Option Arrayの指定が不正です".into())),
+                    _ => {
+                        return Err(
+                            self.syntax_error_pos(*pv, "Option Arrayの指定が不正です".into())
+                        )
+                    }
                 }
                 self.declare_array_with_length = Some(length);
                 self.use_bound_for_array_function = length != all;
@@ -868,15 +887,19 @@ impl Parser {
                         option: CompileOption::Allocator { .. },
                     } = stmt
                     {
-                        return Err(self.syntax_error_pos(*pt, format!("Option {}は既に指定されています", target)));
+                        return Err(self.syntax_error_pos(
+                            *pt,
+                            format!("Option {}は既に指定されています", target),
+                        ));
                     }
                 }
                 match value {
                     Token::Boolean(true) => {
                         if extra.is_some() {
-                            return Err(
-                                self.syntax_error_pos(*pv, format!("Option {}の指定が不正です", target))
-                            );
+                            return Err(self.syntax_error_pos(
+                                *pv,
+                                format!("Option {}の指定が不正です", target),
+                            ));
                         }
                         self.add_statement(Statement::CompileOption {
                             option: CompileOption::Allocator {
@@ -897,9 +920,10 @@ impl Parser {
                             || "Enabled".eq_ignore_ascii_case(value) =>
                     {
                         if extra.is_some() {
-                            return Err(
-                                self.syntax_error_pos(*pv, format!("Option {}の指定が不正です", target))
-                            );
+                            return Err(self.syntax_error_pos(
+                                *pv,
+                                format!("Option {}の指定が不正です", target),
+                            ));
                         }
                         self.add_statement(Statement::CompileOption {
                             option: CompileOption::Allocator {
@@ -911,9 +935,10 @@ impl Parser {
                     }
                     Token::Boolean(false) => {
                         if extra.is_some() {
-                            return Err(
-                                self.syntax_error_pos(*pv, format!("Option {}の指定が不正です", target))
-                            );
+                            return Err(self.syntax_error_pos(
+                                *pv,
+                                format!("Option {}の指定が不正です", target),
+                            ));
                         }
                         self.add_statement(Statement::CompileOption {
                             option: CompileOption::Allocator {
@@ -933,9 +958,10 @@ impl Parser {
                             || "None".eq_ignore_ascii_case(value) =>
                     {
                         if extra.is_some() {
-                            return Err(
-                                self.syntax_error_pos(*pv, format!("Option {}の指定が不正です", target))
-                            );
+                            return Err(self.syntax_error_pos(
+                                *pv,
+                                format!("Option {}の指定が不正です", target),
+                            ));
                         }
                         self.add_statement(Statement::CompileOption {
                             option: CompileOption::Allocator {
@@ -978,13 +1004,17 @@ impl Parser {
                                 });
                             }
                             Some((pv, _)) => {
-                                return Err(
-                                    self.syntax_error_pos(*pv, format!("Option {}の指定が不正です", target))
-                                )
+                                return Err(self.syntax_error_pos(
+                                    *pv,
+                                    format!("Option {}の指定が不正です", target),
+                                ))
                             }
                         }
                     }
-                    _ => return Err(self.syntax_error_pos(*pt, format!("Option {}の指定が不正です", target))),
+                    _ => {
+                        return Err(self
+                            .syntax_error_pos(*pt, format!("Option {}の指定が不正です", target)))
+                    }
                 }
             }
             _ if extra.is_some() => {
@@ -997,7 +1027,9 @@ impl Parser {
                         option: CompileOption::Eof { .. },
                     } = stmt
                     {
-                        return Err(self.syntax_error_pos(*pt, "Option EOFは既に指定されています".into()));
+                        return Err(
+                            self.syntax_error_pos(*pt, "Option EOFは既に指定されています".into())
+                        );
                     }
                 }
                 match value {
@@ -1032,7 +1064,9 @@ impl Parser {
                             option: CompileOption::Eof { common: false },
                         });
                     }
-                    _ => return Err(self.syntax_error_pos(*pv, "Option EOFの指定が不正です".into())),
+                    _ => {
+                        return Err(self.syntax_error_pos(*pv, "Option EOFの指定が不正です".into()))
+                    }
                 }
             }
             Token::Name(target) if "Register".eq_ignore_ascii_case(target) => {
@@ -1041,7 +1075,10 @@ impl Parser {
                         option: CompileOption::Register { .. },
                     } = stmt
                     {
-                        return Err(self.syntax_error_pos(*pt, "Option Registerは既に指定されています".into()));
+                        return Err(self.syntax_error_pos(
+                            *pt,
+                            "Option Registerは既に指定されています".into(),
+                        ));
                     }
                 }
                 // Recover 呼び出し前に回復する
@@ -1075,7 +1112,11 @@ impl Parser {
                             option: CompileOption::Register { restore: false },
                         });
                     }
-                    _ => return Err(self.syntax_error_pos(*pv, "Option Registerの指定が不正です".into())),
+                    _ => {
+                        return Err(
+                            self.syntax_error_pos(*pv, "Option Registerの指定が不正です".into())
+                        )
+                    }
                 }
             }
             Token::Name(target) if "Variable".eq_ignore_ascii_case(target) => {
@@ -1084,7 +1125,10 @@ impl Parser {
                         option: CompileOption::Variable { .. },
                     } = stmt
                     {
-                        return Err(self.syntax_error_pos(*pt, "Option Variableは既に指定されています".into()));
+                        return Err(self.syntax_error_pos(
+                            *pt,
+                            "Option Variableは既に指定されています".into(),
+                        ));
                     }
                 }
                 match value {
@@ -1110,7 +1154,11 @@ impl Parser {
                             option: CompileOption::Variable { initialize: false },
                         });
                     }
-                    _ => return Err(self.syntax_error_pos(*pv, "Option Variableの指定が不正です".into())),
+                    _ => {
+                        return Err(
+                            self.syntax_error_pos(*pv, "Option Variableの指定が不正です".into())
+                        )
+                    }
                 }
             }
             _ => return Err(self.syntax_error_pos(*pt, "Optionの指定が不正です".into())),
@@ -1203,7 +1251,9 @@ impl Parser {
                         return Err(self.syntax_error_pos(*pn, "引数の指定が必要です".into()));
                     }
                 } else {
-                    return Err(self.syntax_error_pos(*pn, format!("サブルーチン{}が未定義です", name)));
+                    return Err(
+                        self.syntax_error_pos(*pn, format!("サブルーチン{}が未定義です", name))
+                    );
                 }
                 self.add_statement(Statement::Call {
                     name: name.clone(),
@@ -1212,7 +1262,9 @@ impl Parser {
             }
             [(pn, Token::Name(name)), (_, Token::Keyword(Keyword::With))] => {
                 if !self.callables.contains_key(name) {
-                    return Err(self.syntax_error_pos(*pn, format!("サブルーチン{}が未定義です", name)));
+                    return Err(
+                        self.syntax_error_pos(*pn, format!("サブルーチン{}が未定義です", name))
+                    );
                 }
                 assert!(self.temp_progam_name.is_none());
                 assert!(self.temp_call_with_arguments.is_empty());
@@ -1275,7 +1327,9 @@ impl Parser {
                         return Err(self.syntax_error_pos(*pn, "引数の数が一致しません".into()));
                     }
                 } else {
-                    return Err(self.syntax_error_pos(*pn, format!("サブルーチン{}が未定義です", name)));
+                    return Err(
+                        self.syntax_error_pos(*pn, format!("サブルーチン{}が未定義です", name))
+                    );
                 };
                 self.maximum_allocate_temporary_area_size =
                     self.maximum_allocate_temporary_area_size.max(temp_area);
@@ -1307,7 +1361,9 @@ impl Parser {
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
         if !self.header_state.can_program_name() {
-            return Err(self.syntax_error("この位置にProgramステートメントを置くことはできません".into()));
+            return Err(
+                self.syntax_error("この位置にProgramステートメントを置くことはできません".into())
+            );
         }
         match pos_and_tokens {
             [] => {}
@@ -1332,7 +1388,8 @@ impl Parser {
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
         if !self.header_state.can_extern_sub() {
-            return Err(self.syntax_error("この位置にExtern Subステートメントを置くことはできません".into()));
+            return Err(self
+                .syntax_error("この位置にExtern Subステートメントを置くことはできません".into()));
         }
         match pos_and_tokens {
             [(_, Token::Keyword(Keyword::Sub)), (pn, Token::Name(name)), (_, Token::Keyword(Keyword::With))] =>
@@ -1384,7 +1441,7 @@ impl Parser {
             [(pn, N(name)), (_, Op(Ob)), (pu, I(ubound)), (_, Op(Cb)), (_, K(As)), (_, T(Tn::Boolean)), (pf, K(flow)), (pr, N(reg))] =>
             {
                 let size = self.parse_declare_array_size(*ubound).ok_or_else(|| {
-                    self.syntax_error_pos(*pu, "配列のサイズ指定が不正です".into())
+                    self.syntax_error_pos(*pu, "配列の大きさの指定が不正です".into())
                 })?;
                 let var_type = VarType::RefArrayOfBoolean(size);
                 ((pn, name), var_type, (pf, flow), (pr, reg), None)
@@ -1392,7 +1449,7 @@ impl Parser {
             [(pn, N(name)), (_, Op(Ob)), (pu, I(ubound)), (_, Op(Cb)), (_, K(As)), (_, T(Tn::Integer)), (pf, K(flow)), (pr, N(reg))] =>
             {
                 let size = self.parse_declare_array_size(*ubound).ok_or_else(|| {
-                    self.syntax_error_pos(*pu, "配列のサイズ指定が不正です".into())
+                    self.syntax_error_pos(*pu, "配列の大きさの指定が不正です".into())
                 })?;
                 let var_type = VarType::RefArrayOfInteger(size);
                 ((pn, name), var_type, (pf, flow), (pr, reg), None)
@@ -1405,37 +1462,42 @@ impl Parser {
             .iter()
             .any(|arg| arg.var_name.eq(var_name))
         {
-            return Err(
-                self.syntax_error_pos(*pn, "dupulicate argument name in ByRef statement".into())
-            );
+            return Err(self.syntax_error_pos(*pn, format!("引数名が重複しています: {}", var_name)));
         }
 
         match flow {
             Keyword::From if self.header_state.in_argument() => {}
             Keyword::To if self.header_state.in_extern_sub() => {}
-            _ => return Err(self.syntax_error_pos(*pf, "invalid ByRef statement".into())),
+            _ => return Err(self.syntax_error_pos(*pf, "不正なByRefステートメントです".into())),
         }
 
-        let register1 = IndexRegister::try_from(reg1.as_str())
-            .map_err(|_| self.syntax_error_pos(*pr1, "invalid register name".into()))?;
+        let register1 = IndexRegister::try_from(reg1.as_str()).map_err(|_| {
+            self.syntax_error_pos(*pr1, format!("不正なレジスタ名です: {}", reg1.as_str()))
+        })?;
         if self
             .temp_argumets
             .iter()
             .any(|arg| arg.register1 == register1 || arg.register2 == Some(register1))
         {
-            return Err(self.syntax_error_pos(*pr1, "duplicate register name".into()));
+            return Err(
+                self.syntax_error_pos(*pr1, format!("レジスタが重複しています: {}", register1))
+            );
         }
 
         let register2 = if let Some((pr2, reg2)) = reg2 {
-            let register2 = IndexRegister::try_from(reg2.as_str())
-                .map_err(|_| self.syntax_error_pos(*pr2, "invalid register name".into()))?;
+            let register2 = IndexRegister::try_from(reg2.as_str()).map_err(|_| {
+                self.syntax_error_pos(*pr2, format!("不正なレジスタ名です: {}", reg2.as_str()))
+            })?;
             if self
                 .temp_argumets
                 .iter()
                 .any(|arg| arg.register1 == register2 || arg.register2 == Some(register2))
                 || register1 == register2
             {
-                return Err(self.syntax_error_pos(*pr2, "duplicate register name".into()));
+                return Err(self.syntax_error_pos(
+                    *pr2,
+                    format!("レジスタが重複しています: {}", reg2.as_str()),
+                ));
             }
             Some(register2)
         } else {
@@ -1484,7 +1546,7 @@ impl Parser {
             [(pn, N(name)), (_, Op(Ob)), (pu, I(ubound)), (_, Op(Cb)), (_, K(As)), (_, T(Tn::Boolean)), (pf, K(flow)), (pr, N(reg))] =>
             {
                 let size = self.parse_declare_array_size(*ubound).ok_or_else(|| {
-                    self.syntax_error_pos(*pu, "invalid array size in ByVal statement".into())
+                    self.syntax_error_pos(*pu, "配列の大きさの指定が不正です".into())
                 })?;
                 self.variable_area_size += size;
                 let var_type = VarType::ArrayOfBoolean(size);
@@ -1493,13 +1555,13 @@ impl Parser {
             [(pn, N(name)), (_, Op(Ob)), (pu, I(ubound)), (_, Op(Cb)), (_, K(As)), (_, T(Tn::Integer)), (pf, K(flow)), (pr, N(reg))] =>
             {
                 let size = self.parse_declare_array_size(*ubound).ok_or_else(|| {
-                    self.syntax_error_pos(*pu, "invalid array size in ByVal statement".into())
+                    self.syntax_error_pos(*pu, "配列の大きさの指定が不正です".into())
                 })?;
                 self.variable_area_size += size;
                 let var_type = VarType::ArrayOfInteger(size);
                 ((pn, name), var_type, (pf, flow), (pr, reg), None)
             }
-            _ => return Err(self.syntax_error("invalid ByVal statement".into())),
+            _ => return Err(self.syntax_error("不正なByValステートメントです".into())),
         };
 
         if self
@@ -1507,37 +1569,42 @@ impl Parser {
             .iter()
             .any(|arg| arg.var_name.eq(var_name))
         {
-            return Err(
-                self.syntax_error_pos(*pn, "dupulicate argument name in ByVal statement".into())
-            );
+            return Err(self.syntax_error_pos(*pn, format!("引数名が重複しています: {}", var_name)));
         }
 
         match flow {
             Keyword::From if self.header_state.in_argument() => {}
             Keyword::To if self.header_state.in_extern_sub() => {}
-            _ => return Err(self.syntax_error_pos(*pf, "invalid ByRef statement".into())),
+            _ => return Err(self.syntax_error_pos(*pf, "不正なByValステートメントです".into())),
         }
 
-        let register1 = IndexRegister::try_from(reg1.as_str())
-            .map_err(|_| self.syntax_error_pos(*pr1, "invalid register name".into()))?;
+        let register1 = IndexRegister::try_from(reg1.as_str()).map_err(|_| {
+            self.syntax_error_pos(*pr1, format!("不正なレジスタ名です: {}", reg1.as_str()))
+        })?;
         if self
             .temp_argumets
             .iter()
             .any(|arg| arg.register1 == register1 || arg.register2 == Some(register1))
         {
-            return Err(self.syntax_error_pos(*pr1, "duplicate register name".into()));
+            return Err(
+                self.syntax_error_pos(*pr1, format!("レジスタが重複しています: {}", reg1.as_str()))
+            );
         }
 
         let register2 = if let Some((pr2, reg2)) = reg2 {
-            let register2 = IndexRegister::try_from(reg2.as_str())
-                .map_err(|_| self.syntax_error_pos(*pr2, "invalid register name".into()))?;
+            let register2 = IndexRegister::try_from(reg2.as_str()).map_err(|_| {
+                self.syntax_error_pos(*pr2, format!("不正なレジスタ名です: {}", reg2.as_str()))
+            })?;
             if self
                 .temp_argumets
                 .iter()
                 .any(|arg| arg.register1 == register2 || arg.register2 == Some(register2))
                 || register1 == register2
             {
-                return Err(self.syntax_error_pos(*pr2, "duplicate register name".into()));
+                return Err(self.syntax_error_pos(
+                    *pr2,
+                    format!("レジスタが重複しています: {}", reg2.as_str()),
+                ));
             }
             Some(register2)
         } else {
@@ -1562,11 +1629,13 @@ impl Parser {
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
         if !self.header_state.can_argument() {
-            return Err(self.syntax_error("invalid Argument statement".into()));
+            return Err(
+                self.syntax_error("この位置にArgumentステートメントを置くことはできません".into())
+            );
         }
 
         if !pos_and_tokens.is_empty() {
-            return Err(self.syntax_error("invalid Argument statement".into()));
+            return Err(self.syntax_error("不正なArgumentステートメントです".into()));
         }
 
         self.header_state = HeaderState::InArgument;
@@ -1593,20 +1662,20 @@ impl Parser {
         }
         let close_pos = close_pos
             .take()
-            .ok_or_else(|| self.syntax_error("invalid Mid statement".into()))?;
+            .ok_or_else(|| self.syntax_error("閉じ括弧が不足しています".into()))?;
 
         let (param, value) = pos_and_tokens.split_at(close_pos + 1);
 
         let param = if let [_, inner @ .., _] = param {
             self.parse_expr(inner)?
         } else {
-            return Err(self.syntax_error("invalid Mid statement".into()));
+            return Err(self.syntax_error("不正なMidステートメントです".into()));
         };
 
         let mut list = if let Expr::ParamList(list) = param {
             list
         } else {
-            return Err(self.syntax_error("invalid Mid statement".into()));
+            return Err(self.syntax_error("不正なMidステートメントです".into()));
         };
 
         list.reverse();
@@ -1614,12 +1683,12 @@ impl Parser {
         let (var_name, var_is_ref) = match list.pop() {
             Some(Expr::VarString(var_name)) => (var_name, false),
             Some(Expr::VarRefString(var_name)) => (var_name, true),
-            _ => return Err(self.syntax_error("invalid Mid statement".into())),
+            _ => return Err(self.syntax_error("文字列変数名が指定されていません".into())),
         };
 
         let offset = match list.pop() {
             Some(offset) if matches!(offset.return_type(), ExprType::Integer) => offset,
-            _ => return Err(self.syntax_error("invalid Mid statement".into())),
+            _ => return Err(self.syntax_error("不正なオフセット値の指定です".into())),
         };
 
         let length = match list.pop() {
@@ -1627,7 +1696,7 @@ impl Parser {
             Some(expr) if matches!(expr.return_type(), ExprType::Integer) && list.is_empty() => {
                 Some(expr)
             }
-            Some(_) => return Err(self.syntax_error("invalid Mid statement".into())),
+            Some(_) => return Err(self.syntax_error("不正な長さの指定です".into())),
         };
 
         // 要素への代入
@@ -1642,10 +1711,10 @@ impl Parser {
                     value,
                 });
             } else {
-                return Err(self.syntax_error("invalid Mid statement".into()));
+                return Err(self.syntax_error("値の型が文字列ではありません".into()));
             }
         } else {
-            return Err(self.syntax_error("invalid Mid statement".into()));
+            return Err(self.syntax_error("不正なMidステートメントです".into()));
         }
 
         Ok(())
@@ -1662,26 +1731,26 @@ impl Parser {
                     self.end_program_state = EndProgramState::Satisfied;
                     Ok(())
                 } else {
-                    Err(self.syntax_error("invalid End statement".into()))
+                    Err(self.syntax_error("この位置にEnd Programは置けません".into()))
                 }
             }
             [(_, Token::Keyword(Keyword::Select))] => self.compose_command_select(),
             [(_, Token::Keyword(Keyword::Sub))] => self.compose_command_sub(),
-            _ => Err(self.syntax_error("invalid End statement".into())),
+            _ => Err(self.syntax_error("不正なEndステートメントです".into())),
         }
     }
 
     // End Call
     fn compose_command_call_with(&mut self) -> Result<(), SyntaxError> {
         if !self.in_call_with {
-            return Err(self.syntax_error("Invalid End statement".into()));
+            return Err(self.syntax_error("不正なEndステートメントです".into()));
         }
 
         let name = self.temp_progam_name.take().expect("BUG");
         let arguments = self.temp_call_with_arguments.split_off(0);
 
         if self.callables.get(&name).expect("BUG").len() != arguments.len() {
-            return Err(self.syntax_error("invalid Call arguments".into()));
+            return Err(self.syntax_error("引数が不足しています".into()));
         }
 
         self.maximum_allocate_temporary_area_size = self
@@ -1698,7 +1767,7 @@ impl Parser {
     // End Argument
     fn compose_command_argument(&mut self) -> Result<(), SyntaxError> {
         if !self.header_state.in_argument() {
-            return Err(self.syntax_error("Invalid End statement".into()));
+            return Err(self.syntax_error("不正なEndステートメントです".into()));
         }
 
         let arguments = self.temp_argumets.split_off(0);
@@ -1721,7 +1790,7 @@ impl Parser {
     // End Sub
     fn compose_command_sub(&mut self) -> Result<(), SyntaxError> {
         if !self.header_state.in_extern_sub() {
-            return Err(self.syntax_error("Invalid End statement".into()));
+            return Err(self.syntax_error("不正なEndステートメントです".into()));
         }
 
         let name = if let Some(name) = self.temp_progam_name.take() {
@@ -1789,7 +1858,7 @@ impl Parser {
                     unreachable!("BUG");
                 }
             }
-            _ => return Err(self.syntax_error("invalid End statement".into())),
+            _ => return Err(self.syntax_error("不正なEndステートメントです".into())),
         }
 
         Ok(())
@@ -1800,7 +1869,7 @@ impl Parser {
         let cur_exit_id = self
             .nest_of_select
             .pop()
-            .ok_or_else(|| self.syntax_error("invalid End statement".into()))?;
+            .ok_or_else(|| self.syntax_error("不正なEndステートメントです".into()))?;
 
         match self.provisionals.pop() {
             Some(Statement::ProvisionalSelectInteger { exit_id, value }) => {
@@ -1896,7 +1965,7 @@ impl Parser {
                     _ => unreachable!("BUG"),
                 }
             }
-            _ => return Err(self.syntax_error("invalid End statement".into())),
+            _ => return Err(self.syntax_error("不正なEndステートメントです".into())),
         }
 
         Ok(())
@@ -1909,7 +1978,7 @@ impl Parser {
             [(_, Token::Keyword(Keyword::If)), rest @ ..] => {
                 return self.parse_command_elseif(rest)
             }
-            _ => return Err(self.syntax_error("invalid Else statement".into())),
+            _ => return Err(self.syntax_error("不正なElseステートメントです".into())),
         }
 
         let block = self.statements.pop().expect("BUG"); // 常に self.statements.len() > 0 なので
@@ -1929,7 +1998,7 @@ impl Parser {
                     unreachable!("BUG");
                 }
             }
-            _ => return Err(self.syntax_error("invalid Else statement".into())),
+            _ => return Err(self.syntax_error("不正なElseステートメントです".into())),
         }
 
         self.provisionals.push(Statement::ProvisionalElse);
@@ -1960,13 +2029,13 @@ impl Parser {
                     unreachable!("BUG");
                 }
             }
-            _ => return Err(self.syntax_error("invalid ElseIf statement".into())),
+            _ => return Err(self.syntax_error("不正なElse Ifステートメントです".into())),
         }
 
         let condition = if let [rest @ .., (_, Token::Keyword(Keyword::Then))] = pos_and_tokens {
             self.parse_expr(rest)?
         } else {
-            return Err(self.syntax_error("invalid ElseIf statement".into()));
+            return Err(self.syntax_error("不正なElse Ifステートメントです".into()));
         };
 
         self.provisionals
@@ -1981,11 +2050,11 @@ impl Parser {
         let condition = if let [rest @ .., (_, Token::Keyword(Keyword::Then))] = pos_and_tokens {
             self.parse_expr(rest)?
         } else {
-            return Err(self.syntax_error("invalid If statement".into()));
+            return Err(self.syntax_error("不正なIfステートメントです".into()));
         };
 
         if !matches!(condition.return_type(), ExprType::Boolean) {
-            return Err(self.syntax_error("invalid If statement".into()));
+            return Err(self.syntax_error("条件式の型が真理値ではありません".into()));
         }
 
         self.provisionals
@@ -2002,7 +2071,7 @@ impl Parser {
                 if let Some(&exit_id) = self.nest_of_do.last() {
                     self.add_statement(Statement::ExitDo { exit_id });
                 } else {
-                    return Err(self.syntax_error("invalid Exit statement".into()));
+                    return Err(self.syntax_error("この位置にExit Doは置けません".into()));
                 }
             }
             [(_, Token::Keyword(Keyword::For))] => {
@@ -2010,7 +2079,7 @@ impl Parser {
                     let exit_id = *exit_id;
                     self.add_statement(Statement::ExitFor { exit_id });
                 } else {
-                    return Err(self.syntax_error("invalid Exit statement".into()));
+                    return Err(self.syntax_error("この位置にExit Forは置けません".into()));
                 }
             }
             [(_, Token::Keyword(Keyword::Program))] => self.add_statement(Statement::ExitProgram),
@@ -2018,10 +2087,10 @@ impl Parser {
                 if let Some(&exit_id) = self.nest_of_select.last() {
                     self.add_statement(Statement::ExitSelect { exit_id });
                 } else {
-                    return Err(self.syntax_error("invalid Exit statement".into()));
+                    return Err(self.syntax_error("この位置にExit Selectは置けません".into()));
                 }
             }
-            _ => return Err(self.syntax_error("invalid Exit statement".into())),
+            _ => return Err(self.syntax_error("不正なExitステートメントです".into())),
         }
 
         Ok(())
@@ -2076,7 +2145,7 @@ impl Parser {
                 }
                 ExprType::String
             }
-            _ => return Err(self.syntax_error("invalid Case statement".into())),
+            _ => return Err(self.syntax_error("不正なCaseステートメントです".into())),
         };
 
         if matches!(pos_and_tokens, [(_, Token::Keyword(Keyword::Else))]) {
@@ -2103,7 +2172,8 @@ impl Parser {
                         }
                     });
                     if found_duplicate {
-                        return Err(self.syntax_error("invalid Case statement".into()));
+                        return Err(self
+                            .syntax_error("Caseステートメントで値の指定に重複があります".into()));
                     }
                 } else {
                     unreachable!("BUG");
@@ -2129,7 +2199,8 @@ impl Parser {
                         }
                     });
                     if found_duplicate {
-                        return Err(self.syntax_error("invalid Case statement".into()));
+                        return Err(self
+                            .syntax_error("Caseステートメントで値の指定に重複があります".into()));
                     }
                 } else {
                     unreachable!("BUG");
@@ -2149,7 +2220,8 @@ impl Parser {
                         }
                     });
                     if found_duplicate {
-                        return Err(self.syntax_error("invalid Case statement".into()));
+                        return Err(self
+                            .syntax_error("Caseステートメントで値の指定に重複があります".into()));
                     }
                 } else {
                     unreachable!("BUG");
@@ -2171,7 +2243,9 @@ impl Parser {
                             acc.push(CaseIntegerItem::Character(value));
                             Ok(acc)
                         }
-                        _ => Err(self.syntax_error("invalid Case statement".into())),
+                        _ => {
+                            Err(self.syntax_error("Caseステートメントの値の指定が不正です".into()))
+                        }
                     })?;
                 if let Some(Statement::SelectInteger { case_blocks, .. }) = self.provisionals.last()
                 {
@@ -2185,7 +2259,8 @@ impl Parser {
                         })
                     });
                     if found_duplicate {
-                        return Err(self.syntax_error("invalid Case statement".into()));
+                        return Err(self
+                            .syntax_error("Caseステートメントで値の指定に重複があります".into()));
                     }
                 } else {
                     unreachable!("BUG");
@@ -2200,7 +2275,7 @@ impl Parser {
                         acc.push(value);
                         Ok(acc)
                     } else {
-                        Err(self.syntax_error("invalid Case statement".into()))
+                        Err(self.syntax_error("Caseステートメントの値の指定が不正です".into()))
                     }
                 })?;
                 if let Some(Statement::SelectString { case_blocks, .. }) = self.provisionals.last()
@@ -2215,7 +2290,8 @@ impl Parser {
                         })
                     });
                     if found_duplicate {
-                        return Err(self.syntax_error("invalid Case statement".into()));
+                        return Err(self
+                            .syntax_error("Caseステートメントで値の指定に重複があります".into()));
                     }
                 } else {
                     unreachable!("BUG");
@@ -2223,7 +2299,7 @@ impl Parser {
                 self.provisionals
                     .push(Statement::ProvisionalCaseString { values });
             }
-            _ => return Err(self.syntax_error("invalid Case statement".into())),
+            _ => return Err(self.syntax_error("不正なCaseステートメントです".into())),
         }
 
         self.statements.push(Vec::new());
@@ -2244,10 +2320,10 @@ impl Parser {
                 match value.return_type() {
                     ExprType::Integer => Statement::ProvisionalSelectInteger { exit_id, value },
                     ExprType::String => Statement::ProvisionalSelectString { exit_id, value },
-                    _ => return Err(self.syntax_error("invalid Select statement".into())),
+                    _ => return Err(self.syntax_error("不正なSelectステートメントです".into())),
                 }
             }
-            [] => return Err(self.syntax_error("invalid Select statement".into())),
+            [] => return Err(self.syntax_error("不正なSelectステートメントです".into())),
         };
 
         self.is_select_head = true;
@@ -2267,7 +2343,7 @@ impl Parser {
                 if let Some(&exit_id) = self.nest_of_do.last() {
                     self.add_statement(Statement::ContinueDo { exit_id });
                 } else {
-                    return Err(self.syntax_error("invalid Continue statement".into()));
+                    return Err(self.syntax_error("この位置にContinue Doは置けません".into()));
                 }
             }
             [(_, Token::Keyword(Keyword::For))] => {
@@ -2275,10 +2351,10 @@ impl Parser {
                     let exit_id = *exit_id;
                     self.add_statement(Statement::ContinueFor { exit_id });
                 } else {
-                    return Err(self.syntax_error("invalid Continue statement".into()));
+                    return Err(self.syntax_error("この位置にContinue Forは置けません".into()));
                 }
             }
-            _ => return Err(self.syntax_error("invalid Continue statement".into())),
+            _ => return Err(self.syntax_error("不正なContinueステートメントです".into())),
         }
 
         Ok(())
@@ -2286,10 +2362,9 @@ impl Parser {
 
     // Loop [{ While / Until } <condition>]
     fn parse_command_loop(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
-        let cur_exit_id = self
-            .nest_of_do
-            .pop()
-            .ok_or_else(|| self.syntax_error("invalid Loop statement".into()))?;
+        let cur_exit_id = self.nest_of_do.pop().ok_or_else(|| {
+            self.syntax_error("対応するDoステートメントのない不正なLoopステートメントです".into())
+        })?;
 
         let block = self.statements.pop().expect("BUG");
 
@@ -2323,12 +2398,15 @@ impl Parser {
                     }
                 }
                 _ if until_condition.or(while_condition).is_some() => {
-                    return Err(self.syntax_error("invalid Loop statement".into()))
+                    return Err(self.syntax_error("不正なLoopステートメントです".into()))
                 }
                 [(pos, Token::Keyword(Keyword::Until)), rest @ ..] => {
                     let condition = self.parse_expr(rest)?;
                     if !matches!(condition.return_type(), ExprType::Boolean) {
-                        return Err(self.syntax_error_pos(*pos, "invalid Loop statement".into()));
+                        return Err(self.syntax_error_pos(
+                            *pos,
+                            "条件式には真理値式を置く必要があります".into(),
+                        ));
                     }
                     self.add_statement(Statement::DoLoopUntil {
                         exit_id,
@@ -2339,7 +2417,10 @@ impl Parser {
                 [(pos, Token::Keyword(Keyword::While)), rest @ ..] => {
                     let condition = self.parse_expr(rest)?;
                     if !matches!(condition.return_type(), ExprType::Boolean) {
-                        return Err(self.syntax_error_pos(*pos, "invalid Loop statement".into()));
+                        return Err(self.syntax_error_pos(
+                            *pos,
+                            "条件式には真理値式を置く必要があります".into(),
+                        ));
                     }
                     self.add_statement(Statement::DoLoopWhile {
                         exit_id,
@@ -2347,10 +2428,10 @@ impl Parser {
                         block,
                     });
                 }
-                _ => return Err(self.syntax_error("invalid Loop statement".into())),
+                _ => return Err(self.syntax_error("不正なLoopステートメントです".into())),
             }
         } else {
-            return Err(self.syntax_error("invalid Loop statement".into()));
+            return Err(self.syntax_error("この位置にLoopステートメントは置けません".into()));
         }
 
         Ok(())
@@ -2369,7 +2450,8 @@ impl Parser {
             [(pos, Token::Keyword(Keyword::Until)), rest @ ..] => {
                 let condition = self.parse_expr(rest)?;
                 if !matches!(condition.return_type(), ExprType::Boolean) {
-                    return Err(self.syntax_error_pos(*pos, "invalid Do statement".into()));
+                    return Err(self
+                        .syntax_error_pos(*pos, "条件式には真理値式を置く必要があります".into()));
                 }
                 Statement::ProvisionalDo {
                     exit_id,
@@ -2380,7 +2462,8 @@ impl Parser {
             [(pos, Token::Keyword(Keyword::While)), rest @ ..] => {
                 let condition = self.parse_expr(rest)?;
                 if !matches!(condition.return_type(), ExprType::Boolean) {
-                    return Err(self.syntax_error_pos(*pos, "invalid Do statement".into()));
+                    return Err(self
+                        .syntax_error_pos(*pos, "条件式には真理値式を置く必要があります".into()));
                 }
                 Statement::ProvisionalDo {
                     exit_id,
@@ -2388,7 +2471,7 @@ impl Parser {
                     while_condition: Some(condition),
                 }
             }
-            _ => return Err(self.syntax_error("invalid Do statement".into())),
+            _ => return Err(self.syntax_error("不正なDoステートメントです".into())),
         };
 
         self.nest_of_do.push(exit_id);
@@ -2403,13 +2486,12 @@ impl Parser {
         let name = match pos_and_tokens {
             [] => None,
             [(_, Token::Name(name))] => Some(name),
-            _ => return Err(self.syntax_error("invalid Next statment".into())),
+            _ => return Err(self.syntax_error("不正なNextステートメントです".into())),
         };
 
-        let (cur_exit_id, _) = self
-            .nest_of_for
-            .pop()
-            .ok_or_else(|| self.syntax_error("invalid Next statement".into()))?;
+        let (cur_exit_id, _) = self.nest_of_for.pop().ok_or_else(|| {
+            self.syntax_error("対応するForのない不正なNextステートメントです".into())
+        })?;
 
         let block = self.statements.pop().expect("BUG");
 
@@ -2424,7 +2506,7 @@ impl Parser {
         {
             assert!(exit_id == cur_exit_id, "BUG");
             if name.filter(|name| *name != &counter).is_some() {
-                return Err(self.syntax_error("invalid Next statement".into()));
+                return Err(self.syntax_error("カウンタの変数名が一致しません".into()));
             }
             self.add_statement(Statement::For {
                 exit_id,
@@ -2436,7 +2518,7 @@ impl Parser {
                 block,
             });
         } else {
-            return Err(self.syntax_error("invalid Next statement".into()));
+            return Err(self.syntax_error("この位置にNextステートメントは置けません".into()));
         }
 
         Ok(())
@@ -2449,7 +2531,7 @@ impl Parser {
         {
             (name, rest)
         } else {
-            return Err(self.syntax_error("invalid For statement".into()));
+            return Err(self.syntax_error("不正なForステートメントです".into()));
         };
 
         if self
@@ -2457,13 +2539,16 @@ impl Parser {
             .iter()
             .any(|(_, counter)| counter.as_str() == name.as_str())
         {
-            return Err(self.syntax_error("invalid counter in For statement".into()));
+            return Err(self.syntax_error(format!(
+                "同じカウンタ同士のForをネストすることはできません: {}",
+                name
+            )));
         }
 
         let counter_is_ref = match self.variables.get(name) {
             Some(VarType::Integer) => false,
             Some(VarType::RefInteger) => true,
-            _ => return Err(self.syntax_error("invalid For statement".into())),
+            _ => return Err(self.syntax_error(format!("カウンタ名が不正です: {}", name))),
         };
 
         let to_position = rest
@@ -2471,7 +2556,7 @@ impl Parser {
             .enumerate()
             .find(|(_, (_, token))| matches!(token, Token::Keyword(Keyword::To)))
             .map(|(i, _)| i)
-            .ok_or_else(|| self.syntax_error("invalid For statement".into()))?;
+            .ok_or_else(|| self.syntax_error("不正なForステートメントです".into()))?;
 
         let (init, rest) = rest.split_at(to_position);
 
@@ -2485,12 +2570,12 @@ impl Parser {
 
         let init = self.parse_expr(init)?;
         if !matches!(init.return_type(), ExprType::Integer) {
-            return Err(self.syntax_error("invalid initial value in For statement".into()));
+            return Err(self.syntax_error("カウンタの初期値の型が不正です".into()));
         }
 
         let end = self.parse_expr(&end[1..])?;
         if !matches!(end.return_type(), ExprType::Integer) {
-            return Err(self.syntax_error("invalid end value in For statement".into()));
+            return Err(self.syntax_error("終端値の型が不正です".into()));
         }
 
         let step = if step.is_empty() {
@@ -2500,7 +2585,7 @@ impl Parser {
             if matches!(step.return_type(), ExprType::Integer) {
                 Some(step)
             } else {
-                return Err(self.syntax_error("invalid end value in For statement".into()));
+                return Err(self.syntax_error("Stepの値の型が不正です".into()));
             }
         };
 
@@ -2523,7 +2608,9 @@ impl Parser {
     // Dim <arr_name>(<ubound>) As { Boolean / Integer }
     fn parse_command_dim(&mut self, pos_and_tokens: &[(usize, Token)]) -> Result<(), SyntaxError> {
         if !self.header_state.can_dim() {
-            return Err(self.syntax_error("invalid Dim statement".into()));
+            return Err(
+                self.syntax_error("この位置にDimステートメントは置くことができません".into())
+            );
         }
         match pos_and_tokens {
             // プリミティブ変数の宣言
@@ -2531,7 +2618,7 @@ impl Parser {
             {
                 if self.variables.contains_key(name) {
                     return Err(
-                        self.syntax_error_pos(*pos, format!("already defined variable: {}", name))
+                        self.syntax_error_pos(*pos, format!("変数名が重複しています: {}", name))
                     );
                 }
                 self.variable_area_size += 1;
@@ -2553,21 +2640,21 @@ impl Parser {
             [(pos_n, Token::Name(name)), (_, Token::Operator(Operator::OpenBracket)), (pos_s, Token::Integer(size)), (_, Token::Operator(Operator::CloseBracket)), (_, Token::Keyword(Keyword::As)), (pos_t, Token::TypeName(type_name))] =>
             {
                 if self.variables.contains_key(name) {
-                    return Err(self
-                        .syntax_error_pos(*pos_n, format!("already defined variable: {}", name)));
+                    return Err(
+                        self.syntax_error_pos(*pos_n, format!("変数名が重複しています: {}", name))
+                    );
                 }
                 let size = self.parse_declare_array_size(*size).ok_or_else(|| {
-                    self.syntax_error_pos(*pos_s, "invalid Array Size in Dim statement".into())
+                    self.syntax_error_pos(*pos_s, "配列の大きさの指定が不正です".into())
                 })?;
                 self.variable_area_size += size;
                 let var_type = match type_name {
                     TypeName::Boolean => VarType::ArrayOfBoolean(size),
                     TypeName::Integer => VarType::ArrayOfInteger(size),
                     TypeName::String => {
-                        return Err(self.syntax_error_pos(
-                            *pos_t,
-                            "invalid Array Type in Dim statement".into(),
-                        ))
+                        return Err(
+                            self.syntax_error_pos(*pos_t, "この型は配列にはできません".into())
+                        )
                     }
                 };
                 self.variables.insert(name.clone(), var_type);
@@ -2576,7 +2663,7 @@ impl Parser {
                     var_type,
                 });
             }
-            _ => return Err(self.syntax_error("invalid Dim statement".into())),
+            _ => return Err(self.syntax_error("不正なDimステートメントです".into())),
         }
 
         Ok(())
@@ -2611,12 +2698,15 @@ impl Parser {
                     });
                 }
                 Some(_) => {
-                    return Err(
-                        self.syntax_error_pos(*pos, "invalid Variable in Input statement".into())
-                    )
+                    return Err(self.syntax_error_pos(
+                        *pos,
+                        "Inputステートメントに指定できない型の変数です".into(),
+                    ))
                 }
                 None => {
-                    return Err(self.syntax_error_pos(*pos, format!("undefined variable: {}", name)))
+                    return Err(
+                        self.syntax_error_pos(*pos, format!("存在しない変数名です: {}", name))
+                    )
                 }
             },
             // 整数配列の指定位置への入力
@@ -2626,15 +2716,15 @@ impl Parser {
                     Some(VarType::ArrayOfInteger(_)) => false,
                     Some(VarType::RefArrayOfInteger(_)) => true,
                     _ => {
-                        return Err(self
-                            .syntax_error_pos(*pos, "invalid Variable in Input statement".into()))
+                        return Err(self.syntax_error_pos(
+                            *pos,
+                            "要素へのInputステートメントは整数配列でのみ可能です".into(),
+                        ))
                     }
                 };
                 let param = self.parse_expr(inner)?;
                 if !matches!(param.return_type(), ExprType::Integer) {
-                    return Err(
-                        self.syntax_error_pos(*pos, "invalid Variable in Input statement".into())
-                    );
+                    return Err(self.syntax_error_pos(*pos, "インデックスの型が不正です".into()));
                 }
                 if is_ref {
                     self.add_statement(Statement::InputRefElementInteger {
@@ -2648,7 +2738,7 @@ impl Parser {
                     });
                 }
             }
-            _ => return Err(self.syntax_error("invalid Input statement".into())),
+            _ => return Err(self.syntax_error("不正なInputステートメントです".into())),
         }
         Ok(())
     }
@@ -2675,7 +2765,9 @@ impl Parser {
                     self.add_statement(Statement::PrintLitInteger { value });
                     return Ok(());
                 } else {
-                    return Err(self.syntax_error_pos(*pos, format!("invalid integer: {}", *value)));
+                    return Err(
+                        self.syntax_error_pos(*pos, format!("不正な整数リテラルです: {}", *value))
+                    );
                 }
             }
             // 負符号付きの整数リテラルの出力
@@ -2684,7 +2776,9 @@ impl Parser {
                     self.add_statement(Statement::PrintLitInteger { value });
                     return Ok(());
                 } else {
-                    return Err(self.syntax_error_pos(*pos, format!("invalid integer: {}", *value)));
+                    return Err(
+                        self.syntax_error_pos(*pos, format!("不正な整数リテラルです: {}", *value))
+                    );
                 }
             }
             // 文字列リテラルの出力
@@ -2707,7 +2801,7 @@ impl Parser {
                     });
                     return Ok(());
                 }
-                _ => return Err(self.syntax_error("invalid Argument in Print statement".into())),
+                _ => return Err(self.syntax_error("不正なPrintステートメントです".into())),
             },
             _ => {}
         }
@@ -2718,7 +2812,7 @@ impl Parser {
             ExprType::Integer => self.add_statement(Statement::PrintExprInteger { value: expr }),
             ExprType::String => self.add_statement(Statement::PrintExprString { value: expr }),
             ExprType::ParamList | ExprType::ReferenceOfVar(..) => {
-                return Err(self.syntax_error("invalid Expression in Print statement".into()))
+                return Err(self.syntax_error("不正なPrintステートメントです".into()))
             }
         }
         Ok(())
@@ -2729,7 +2823,7 @@ impl Parser {
         // 項の最小単位
         match pos_and_tokens {
             // 空の項は存在してはダメ (構文エラー)
-            [] => return Err(self.syntax_error("invalid Expression".into())),
+            [] => return Err(self.syntax_error("式がありません".into())),
 
             // 真理値リテラル
             [(_, Token::Boolean(value))] => return Ok(Expr::LitBoolean(*value)),
@@ -2742,7 +2836,9 @@ impl Parser {
                 if let Some(value) = validate_integer(false, *value) {
                     return Ok(Expr::LitInteger(value));
                 } else {
-                    return Err(self.syntax_error_pos(*pos, format!("invalid integer: {}", *value)));
+                    return Err(
+                        self.syntax_error_pos(*pos, format!("不正な整数リテラルです: {}", *value))
+                    );
                 }
             }
 
@@ -2770,7 +2866,7 @@ impl Parser {
                     }
                     None => {
                         return Err(
-                            self.syntax_error_pos(*pos, format!("undefined variable: {}", name))
+                            self.syntax_error_pos(*pos, format!("存在しない変数名です: {}", name))
                         )
                     }
                 };
@@ -2790,7 +2886,9 @@ impl Parser {
                 if let Some(value) = validate_integer(true, *value) {
                     return Ok(Expr::LitInteger(value));
                 } else {
-                    return Err(self.syntax_error_pos(*pos, format!("invalid integer: {}", *value)));
+                    return Err(
+                        self.syntax_error_pos(*pos, format!("不正な整数リテラルです: -{}", *value))
+                    );
                 }
             }
 
@@ -2804,49 +2902,51 @@ impl Parser {
                         Box::new(Expr::LitInteger(value)),
                     ));
                 } else {
-                    return Err(self.syntax_error_pos(*pos, format!("invalid integer: {}", *value)));
+                    return Err(
+                        self.syntax_error_pos(*pos, format!("不正な整数リテラルです: {}", *value))
+                    );
                 }
             }
 
             // 単項演算子と変数(真理値or整数)
-            [(_, Token::Operator(op)), (pos, Token::Name(name))] if op.can_be_unary() => match self
-                .variables
-                .get(name)
-            {
-                Some(VarType::Boolean) if op.can_be_unary_boolean() => {
-                    return Ok(Expr::UnaryOperatorBoolean(
-                        *op,
-                        Box::new(Expr::VarBoolean(name.clone())),
-                    ))
+            [(_, Token::Operator(op)), (pos, Token::Name(name))] if op.can_be_unary() => {
+                match self.variables.get(name) {
+                    Some(VarType::Boolean) if op.can_be_unary_boolean() => {
+                        return Ok(Expr::UnaryOperatorBoolean(
+                            *op,
+                            Box::new(Expr::VarBoolean(name.clone())),
+                        ))
+                    }
+                    Some(VarType::RefBoolean) if op.can_be_unary_boolean() => {
+                        return Ok(Expr::UnaryOperatorBoolean(
+                            *op,
+                            Box::new(Expr::VarRefBoolean(name.clone())),
+                        ))
+                    }
+                    Some(VarType::Integer) if op.can_be_unary_integer() => {
+                        return Ok(Expr::UnaryOperatorInteger(
+                            *op,
+                            Box::new(Expr::VarInteger(name.clone())),
+                        ))
+                    }
+                    Some(VarType::RefInteger) if op.can_be_unary_integer() => {
+                        return Ok(Expr::UnaryOperatorInteger(
+                            *op,
+                            Box::new(Expr::VarRefInteger(name.clone())),
+                        ))
+                    }
+                    Some(_) => return Err(self.syntax_error_pos(*pos, "不正な式です".into())),
+                    None => {
+                        return Err(
+                            self.syntax_error_pos(*pos, format!("存在しない変数名です: {}", name))
+                        )
+                    }
                 }
-                Some(VarType::RefBoolean) if op.can_be_unary_boolean() => {
-                    return Ok(Expr::UnaryOperatorBoolean(
-                        *op,
-                        Box::new(Expr::VarRefBoolean(name.clone())),
-                    ))
-                }
-                Some(VarType::Integer) if op.can_be_unary_integer() => {
-                    return Ok(Expr::UnaryOperatorInteger(
-                        *op,
-                        Box::new(Expr::VarInteger(name.clone())),
-                    ))
-                }
-                Some(VarType::RefInteger) if op.can_be_unary_integer() => {
-                    return Ok(Expr::UnaryOperatorInteger(
-                        *op,
-                        Box::new(Expr::VarRefInteger(name.clone())),
-                    ))
-                }
-                Some(_) => return Err(self.syntax_error_pos(*pos, "invalid Expression".into())),
-                None => {
-                    return Err(self.syntax_error_pos(*pos, format!("undefined variable: {}", name)))
-                }
-            },
+            }
 
             // 存在してはいけないトークン列　(構文エラー)
             [(pos, token)] | [(pos, token), (_, _)] => {
-                return Err(self
-                    .syntax_error_pos(*pos, format!("invalid token in Expression: {:?}", token)))
+                return Err(self.syntax_error_pos(*pos, format!("不正な式です: {:?}", token)))
             }
 
             // 他はここでは処理しない
@@ -2886,7 +2986,7 @@ impl Parser {
                     if op.can_be_unary() {
                         next_unary = false;
                     } else {
-                        return Err(self.syntax_error_pos(*pos, "invalid Expression".into()));
+                        return Err(self.syntax_error_pos(*pos, "不正な式です".into()));
                     }
                 } else if op.can_be_binary() {
                     if target_op.filter(|(_, cur_op)| cur_op > op).is_none() {
@@ -2895,11 +2995,11 @@ impl Parser {
                     next_unary = true;
                     next_term = true;
                 } else {
-                    return Err(self.syntax_error_pos(*pos, "invalid Expression".into()));
+                    return Err(self.syntax_error_pos(*pos, "不正な式です".into()));
                 }
             } else {
                 if !next_term {
-                    return Err(self.syntax_error_pos(*pos, "invalid Expression".into()));
+                    return Err(self.syntax_error_pos(*pos, "不正な式です".into()));
                 }
                 next_unary = false;
                 next_term = false;
@@ -2907,7 +3007,7 @@ impl Parser {
         }
 
         if bracket_count > 0 || next_unary || next_term {
-            return Err(self.syntax_error("invalid Expression".into()));
+            return Err(self.syntax_error("不正な式です".into()));
         }
 
         // 分割して再帰的に処理していく
@@ -2916,7 +3016,7 @@ impl Parser {
             let rhs = self.parse_expr(&pos_and_tokens[i + 1..])?;
             return Expr::binary(op, lhs, rhs).ok_or_else(|| {
                 let (pos, _) = pos_and_tokens[i];
-                self.syntax_error_pos(pos, "invalid Expression".into())
+                self.syntax_error_pos(pos, "不正な式です".into())
             });
         }
 
@@ -2946,7 +3046,7 @@ impl Parser {
                     ExprType::Integer if op.can_be_unary_integer() => {
                         Ok(Expr::UnaryOperatorInteger(*op, Box::new(expr)))
                     }
-                    _ => Err(self.syntax_error_pos(*pos, "invalid Expression".into())),
+                    _ => Err(self.syntax_error_pos(*pos, "不正な式です".into())),
                 }
             }
 
@@ -2962,7 +3062,7 @@ impl Parser {
                 if matches!(expr.return_type(), ExprType::Integer) {
                     Ok(Expr::CharOfLitString(text.clone(), Box::new(expr)))
                 } else {
-                    Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+                    Err(self.syntax_error_pos(*pos, "不正な式です".into()))
                 }
             }
 
@@ -2971,7 +3071,7 @@ impl Parser {
             {
                 let expr = self.parse_expr(inner)?;
                 if !matches!(expr.return_type(), ExprType::Integer) {
-                    Err(self.syntax_error_pos(*pos_e, "invalid Expression".into()))
+                    Err(self.syntax_error_pos(*pos_e, "不正な式です".into()))
                 } else {
                     match self.variables.get(name) {
                         Some(VarType::ArrayOfBoolean(_)) => {
@@ -2992,11 +3092,9 @@ impl Parser {
                         Some(VarType::RefString) => {
                             Ok(Expr::CharOfVarRefString(name.clone(), Box::new(expr)))
                         }
-                        Some(_) => Err(self.syntax_error_pos(*pos_n, "invalid Expression".into())),
-                        None => {
-                            Err(self
-                                .syntax_error_pos(*pos_n, format!("undefined Variable: {}", name)))
-                        }
+                        Some(_) => Err(self.syntax_error_pos(*pos_n, "不正な式です".into())),
+                        None => Err(self
+                            .syntax_error_pos(*pos_n, format!("存在しない変数名です: {}", name))),
                     }
                 }
             }
@@ -3009,7 +3107,7 @@ impl Parser {
                         Box::new(Expr::LitInteger(0)),
                     ))
                 } else {
-                    Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+                    Err(self.syntax_error_pos(*pos, "不正な式です".into()))
                 }
             }
 
@@ -3056,7 +3154,7 @@ impl Parser {
                     }
                     _ => {}
                 }
-                Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+                Err(self.syntax_error_pos(*pos, "不正な式です".into()))
             }
 
             // 関数 SubArray ( 引数 )
@@ -3105,7 +3203,7 @@ impl Parser {
                         _ => {}
                     }
                 }
-                Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+                Err(self.syntax_error_pos(*pos, "不正な式です".into()))
             }
 
             // 関数 CArray ( 引数 )
@@ -3136,7 +3234,7 @@ impl Parser {
                         }
                     }
                 }
-                Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+                Err(self.syntax_error_pos(*pos, "不正な式です".into()))
             }
 
             // 関数 String( 引数 )
@@ -3154,7 +3252,7 @@ impl Parser {
                 } else if param.return_type().is_int_array() {
                     return Ok(Expr::FunctionString(Function::String, Box::new(param)));
                 }
-                Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+                Err(self.syntax_error_pos(*pos, "不正な式です".into()))
             }
 
             // 関数 ( 引数 )
@@ -3162,19 +3260,19 @@ impl Parser {
             {
                 let param = self.parse_expr(inner)?;
                 if !function.check_param(&param) {
-                    Err(self.syntax_error_pos(*pos, "invalid Expression".into()))
+                    Err(self.syntax_error_pos(*pos, "不正な式です".into()))
                 } else {
                     match function.return_type() {
                         ExprType::Boolean => Ok(Expr::FunctionBoolean(*function, Box::new(param))),
                         ExprType::Integer => Ok(Expr::FunctionInteger(*function, Box::new(param))),
                         ExprType::String => Ok(Expr::FunctionString(*function, Box::new(param))),
-                        _ => Err(self.syntax_error_pos(*pos, "invalid Expression".into())),
+                        _ => Err(self.syntax_error_pos(*pos, "不正な式です".into())),
                     }
                 }
             }
 
             // 該当なし (構文エラー)
-            _ => Err(self.syntax_error("invalid Expression".into())),
+            _ => Err(self.syntax_error("不正な式です".into())),
         }
     }
 }

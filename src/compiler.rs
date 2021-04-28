@@ -289,7 +289,7 @@ impl Compiler {
     fn new(program_name: Option<String>) -> Result<Self, CompileError> {
         if let Some(name) = program_name.as_ref() {
             if !is_valid_program_name(name) {
-                return Err(format!("invalid Program Name: {}", name));
+                return Err(format!("禁止されている名前です: {}", name));
             }
         }
 
