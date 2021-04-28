@@ -43,6 +43,23 @@ pub fn compile(
     program_name: Option<String>,
     src: &[parser::Statement],
 ) -> Result<Vec<casl2::Statement>, CompileError> {
+    if let Some(program_name) = program_name.as_ref() {
+        for sub_name in src.iter().filter_map(|stmt| {
+            if let parser::Statement::ExternSub { name, .. } = stmt {
+                Some(name)
+            } else {
+                None
+            }
+        }) {
+            if sub_name == program_name {
+                return Err(format!(
+                    "ソースコード内で既に使用されている名前です: {}",
+                    program_name
+                ));
+            }
+        }
+    }
+
     let mut compiler = Compiler::new(program_name)?;
 
     for stmt in src.iter() {

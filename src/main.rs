@@ -202,7 +202,7 @@ fn run_app() -> io::Result<i32> {
 
     let casl2_src_list = match compiler::compile_with_flag(&basic_src, flag) {
         Err(error) => {
-            eprintln!("{:?}", error);
+            eprintln!("CompileError {{ {} }}", error);
             return Ok(5);
         }
         Ok(mut list) => {
