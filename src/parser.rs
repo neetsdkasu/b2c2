@@ -2038,6 +2038,10 @@ impl Parser {
             return Err(self.syntax_error("不正なElse Ifステートメントです".into()));
         };
 
+        if !matches!(condition.return_type(), ExprType::Boolean) {
+            return Err(self.syntax_error("条件式の型が真理値ではありません".into()));
+        }
+
         self.provisionals
             .push(Statement::ProvisionalElseIf { condition });
         self.statements.push(Vec::new());
