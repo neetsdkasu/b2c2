@@ -1,0 +1,120 @@
+CHECK     START
+          RPUSH
+                                   ; Argument field
+          ST        GR1,ARG1
+          ST        GR2,ARG2
+                                   ; Argument over
+          ST        GR3,ARG3
+                                   ; Init Variables
+          LAD       GR1,I1
+          XOR       GR2,GR2
+          LAD       GR3,2
+          CALL      C10
+                                   ; x = field(0)
+          XOR       GR7,GR7
+          LD        GR1,GR7
+          LD        GR2,ARG1
+          LD        GR2,0,GR2
+          LD        GR3,ARG2
+          CALL      C11
+          LD        GR7,GR0
+          ST        GR7,I2
+                                   ; For i = 1 To (Len(field) - 1) Step 1
+          LD        GR7,ARG1
+          LD        GR7,0,GR7
+          LAD       GR7,-1,GR7
+          ST        GR7,T1
+          LAD       GR7,1
+          ST        GR7,I1
+J5        NOP
+          LD        GR1,I1
+          CPA       GR1,T1
+          JPL       J7
+                                   ; If (x <> field(i)) Then
+          LD        GR7,I2
+          LD        GR6,I1
+          LD        GR1,GR6
+          LD        GR2,ARG1
+          LD        GR2,0,GR2
+          LD        GR3,ARG2
+          CALL      C11
+          LD        GR6,GR0
+          SUBA      GR7,GR6
+          JZE       J9
+          LAD       GR7,#FFFF
+J9        NOP
+          AND       GR7,GR7
+          JZE       J8
+                                   ; over = False
+          XOR       GR7,GR7
+          LD        GR6,ARG3
+          ST        GR7,0,GR6
+                                   ; Exit Program
+          JUMP      EXIT
+                                   ; End If
+J8        NOP
+                                   ; Next i
+J6        NOP
+          LAD       GR1,I1
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J5
+J7        NOP
+                                   ; over = True
+          LAD       GR7,#FFFF
+          LD        GR6,ARG3
+          ST        GR7,0,GR6
+EXIT      NOP
+          RPOP
+          RET
+                                   ; ByRef field As String [GR1,GR2]
+ARG1      DS        1
+ARG2      DS        1
+                                   ; ByRef over As Boolean [GR3]
+ARG3      DS        1
+                                   ; Dim i As Integer
+I1        DS        1
+                                   ; Dim x As Integer
+I2        DS        1
+T1        DS        1
+                                   ; UtilFill
+C10       PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J10       CPL       GR1,GR3
+          JZE       J11
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J10
+J11       POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilLoadElement
+C11       AND       GR2,GR2
+          JNZ       J1
+          XOR       GR0,GR0
+          RET
+J1        CALL      C13
+          PUSH      0,GR3
+          ADDL      GR3,GR0
+          LD        GR0,0,GR3
+          POP       GR3
+          RET
+                                   ; UtilSafeIndex
+C13       AND       GR2,GR2
+          JNZ       J2
+          XOR       GR0,GR0
+          RET
+J2        LD        GR0,GR1
+          JPL       J3
+          XOR       GR0,GR0
+          RET
+J3        CPL       GR0,GR2
+          JMI       J4
+          LAD       GR0,-1
+          ADDL      GR0,GR2
+J4        RET
+          END

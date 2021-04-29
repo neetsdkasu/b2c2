@@ -1,0 +1,147 @@
+RAND      START
+          RPUSH
+                                   ; Argument init
+          ST        GR1,ARG1
+                                   ; Argument value
+          ST        GR2,ARG2
+                                   ; If init Then
+          LD        GR7,ARG1
+          AND       GR7,GR7
+          JZE       J2
+                                   ; seed = (((17 * value) + 23) Mod 1236)
+          LAD       GR7,17
+          LD        GR6,ARG2
+          LD        GR6,0,GR6
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C12
+          LD        GR7,GR0
+          LAD       GR7,23,GR7
+          LAD       GR6,1236
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C9
+          LD        GR0,GR1
+          LD        GR7,GR0
+          ST        GR7,I1
+          JUMP      J1
+                                   ; Else
+J2        NOP
+                                   ; seed = (((17 * seed) + 23) Mod 1236)
+          LAD       GR7,17
+          LD        GR6,I1
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C12
+          LD        GR7,GR0
+          LAD       GR7,23,GR7
+          LAD       GR6,1236
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C9
+          LD        GR0,GR1
+          LD        GR7,GR0
+          ST        GR7,I1
+                                   ; value = (seed Mod value)
+          LD        GR7,I1
+          LD        GR6,ARG2
+          LD        GR6,0,GR6
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C9
+          LD        GR0,GR1
+          LD        GR7,GR0
+          LD        GR6,ARG2
+          ST        GR7,0,GR6
+                                   ; End If
+J1        NOP
+EXIT      NOP
+          RPOP
+          RET
+                                   ; ByVal init As Boolean [GR1]
+ARG1      DS        1
+                                   ; ByRef value As Integer [GR2]
+ARG2      DS        1
+                                   ; Dim seed As Integer
+I1        DS        1
+                                   ; UtilDivMod
+C9        AND       GR3,GR3
+          JNZ       J12
+          XOR       GR0,GR0
+          LAD       GR1,-1
+          RET
+J12       PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          LD        GR4,GR2
+          LD        GR5,GR2
+          JPL       J10
+          XOR       GR5,GR5
+          SUBA      GR5,GR2
+J10       LD        GR1,GR3
+          JPL       J11
+          XOR       GR1,GR1
+          SUBA      GR1,GR3
+J11       LAD       GR0,1
+J13       ADDL      GR1,GR1
+          JOV       J14
+          ADDL      GR0,GR0
+          JUMP      J13
+J14       SRL       GR1,1
+          LAD       GR1,#8000,GR1
+          XOR       GR2,GR2
+J15       CPL       GR5,GR1
+          JMI       J16
+          SUBL      GR5,GR1
+          ADDL      GR2,GR0
+J16       SRL       GR0,1
+          JZE       J17
+          SRL       GR1,1
+          JUMP      J15
+J17       LD        GR5,GR4
+          XOR       GR5,GR3
+          SRA       GR5,15
+          XOR       GR2,GR5
+          SUBA      GR2,GR5
+          CALL      C12
+          LD        GR1,GR4
+          SUBA      GR1,GR0
+          LD        GR0,GR2
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          RET
+                                   ; UtilMul
+C12       PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          XOR       GR0,GR0
+          XOR       GR1,GR1
+          LD        GR4,GR2
+          LD        GR5,GR3
+J3        SRL       GR2,1
+          JOV       J4
+          JNZ       J6
+          JUMP      J7
+J4        ADDL      GR0,GR3
+          JOV       J5
+          JUMP      J6
+J5        LAD       GR1,1,GR1
+J6        SLL       GR3,1
+          JUMP      J3
+J7        SRL       GR5,1
+          SLL       GR4,1
+          JOV       J8
+          JNZ       J7
+          JUMP      J9
+J8        ADDL      GR1,GR5
+          JUMP      J7
+J9        POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          RET
+          END

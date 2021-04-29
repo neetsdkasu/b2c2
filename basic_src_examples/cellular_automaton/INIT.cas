@@ -1,0 +1,355 @@
+INIT      START
+          RPUSH
+                                   ; Argument field1
+          ST        GR1,ARG1
+          ST        GR2,ARG2
+                                   ; Argument field2
+          ST        GR3,ARG3
+          ST        GR4,ARG4
+                                   ; Argument speed
+          ST        GR5,ARG5
+                                   ; Init Variables
+          LAD       GR1,B5
+          XOR       GR2,GR2
+          LAD       GR3,5
+          CALL      C10
+                                   ; Print "Seed? (1 - 999)"
+          OUT       LB1,LL1
+                                   ; Input seed
+          IN        TB1,TL1
+          XOR       GR0,GR0
+          ST        GR0,EOF
+          LAD       GR1,TB1
+          LD        GR2,TL1
+          JPL       J4
+          JZE       J4
+          ST        GR2,EOF
+          XOR       GR2,GR2
+J4        CALL      C0
+          ST        GR0,I3
+                                   ; Call RAND
+                                   ;   ByVal init As Boolean [GR1]
+                                   ;   init = True
+          LAD       GR7,#FFFF
+          ST        GR7,T1
+                                   ;   ByRef value As Integer [GR2]
+                                   ;   value = Max(101, Min(1099, (seed + 100)))
+          LAD       GR7,101
+          LAD       GR6,1099
+          LD        GR5,I3
+          LAD       GR5,100,GR5
+          CPA       GR6,GR5
+          JMI       J5
+          LD        GR6,GR5
+J5        NOP
+          CPA       GR7,GR6
+          JPL       J6
+          LD        GR7,GR6
+J6        NOP
+          ST        GR7,T2
+                                   ;   Set Arguments And Call RAND
+          LD        GR1,T1
+          LAD       GR2,T2
+          CALL      RAND
+                                   ; field1 = String(64, "."c)
+          LAD       GR7,64
+          LD        GR6,='.'
+          LD        GR3,GR6
+          LD        GR1,GR7
+          LAD       GR2,257
+          CALL      C13
+          ST        GR0,TL1
+          LAD       GR1,TB1
+          LD        GR2,GR3
+          LD        GR3,GR0
+          CALL      C10
+          LD        GR1,ARG2
+          LD        GR2,ARG1
+          LAD       GR3,TB1
+          LD        GR4,TL1
+          CALL      C7
+                                   ; field2 = field1
+          LD        GR1,ARG4
+          LD        GR2,ARG3
+          LD        GR3,ARG2
+          LD        GR4,ARG1
+          LD        GR4,0,GR4
+          CALL      C7
+                                   ; For k = 1 To 100 Step 1
+          LAD       GR7,1
+          ST        GR7,I2
+J14       NOP
+          LD        GR1,I2
+          CPA       GR1,=100
+          JPL       J16
+                                   ; For i = 0 To 63 Step 1
+          XOR       GR7,GR7
+          ST        GR7,I1
+J17       NOP
+          LD        GR1,I1
+          CPA       GR1,=63
+          JPL       J19
+                                   ; value = 1000
+          LAD       GR7,1000
+          ST        GR7,I4
+                                   ; Call RAND
+                                   ;   ByVal init As Boolean [GR1]
+                                   ;   init = False
+          XOR       GR7,GR7
+          ST        GR7,T2
+                                   ;   ByRef value As Integer [GR2]
+                                   ;   value = value
+                                   ;   Set Arguments And Call RAND
+          LD        GR1,T2
+          LAD       GR2,I4
+          CALL      RAND
+                                   ; If ((value And 28) = 0) Then
+          LD        GR7,I4
+          AND       GR7,=28
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J22
+          LAD       GR7,#FFFF
+J22       XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J21
+                                   ; field1( (i And 63) ) = "*"c
+          LD        GR7,I1
+          AND       GR7,=63
+          LD        GR1,GR7
+          LD        GR2,ARG1
+          LD        GR2,0,GR2
+          CALL      C13
+          LD        GR7,ARG2
+          ADDL      GR7,GR0
+          LD        GR6,='*'
+          ST        GR6,0,GR7
+          JUMP      J20
+                                   ; Else
+J21       NOP
+                                   ; field1( (i And 63) ) = "."c
+          LD        GR7,I1
+          AND       GR7,=63
+          LD        GR1,GR7
+          LD        GR2,ARG1
+          LD        GR2,0,GR2
+          CALL      C13
+          LD        GR7,ARG2
+          ADDL      GR7,GR0
+          LD        GR6,='.'
+          ST        GR6,0,GR7
+                                   ; End If
+J20       NOP
+                                   ; seed = (seed Xor value)
+          LD        GR7,I3
+          LD        GR6,I4
+          XOR       GR7,GR6
+          ST        GR7,I3
+                                   ; Next i
+J18       NOP
+          LAD       GR1,I1
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J17
+J19       NOP
+                                   ; Call CHECK
+                                   ;   ByRef field As String [GR1,GR2]
+                                   ;   field = field1
+                                   ;   ByRef over As Boolean [GR3]
+                                   ;   over = over
+                                   ;   Set Arguments And Call CHECK
+          LD        GR1,ARG1
+          LD        GR2,ARG2
+          LAD       GR3,B5
+          CALL      CHECK
+                                   ; If Not over Then
+          LD        GR7,B5
+          XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J23
+                                   ; Exit For
+          JUMP      J16
+                                   ; End If
+J23       NOP
+                                   ; If ((k And 3) = 0) Then
+          LD        GR7,I2
+          AND       GR7,=3
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J25
+          LAD       GR7,#FFFF
+J25       XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J24
+                                   ; Call RAND
+                                   ;   ByVal init As Boolean [GR1]
+                                   ;   init = True
+          LAD       GR7,#FFFF
+          ST        GR7,T2
+                                   ;   ByRef value As Integer [GR2]
+                                   ;   value = seed
+                                   ;   Set Arguments And Call RAND
+          LD        GR1,T2
+          LAD       GR2,I3
+          CALL      RAND
+                                   ; End If
+J24       NOP
+                                   ; Next k
+J15       NOP
+          LAD       GR1,I2
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J14
+J16       NOP
+                                   ; Print "Speed? (1 - 30000)"
+          OUT       LB2,LL2
+                                   ; Input speed
+          IN        TB1,TL1
+          XOR       GR0,GR0
+          ST        GR0,EOF
+          LAD       GR1,TB1
+          LD        GR2,TL1
+          JPL       J26
+          JZE       J26
+          ST        GR2,EOF
+          XOR       GR2,GR2
+J26       CALL      C0
+          LD        GR1,ARG5
+          ST        GR0,0,GR1
+                                   ; speed = Max(1, Min(30000, speed))
+          LAD       GR7,1
+          LAD       GR6,30000
+          LD        GR5,ARG5
+          LD        GR5,0,GR5
+          CPA       GR6,GR5
+          JMI       J27
+          LD        GR6,GR5
+J27       NOP
+          CPA       GR7,GR6
+          JPL       J28
+          LD        GR7,GR6
+J28       NOP
+          LD        GR6,ARG5
+          ST        GR7,0,GR6
+EXIT      NOP
+          RPOP
+          RET
+                                   ; ByRef field1 As String [GR1,GR2]
+ARG1      DS        1
+ARG2      DS        1
+                                   ; ByRef field2 As String [GR3,GR4]
+ARG3      DS        1
+ARG4      DS        1
+                                   ; ByRef speed As Integer [GR5]
+ARG5      DS        1
+                                   ; Dim over As Boolean
+B5        DS        1
+                                   ; Dim i As Integer
+I1        DS        1
+                                   ; Dim k As Integer
+I2        DS        1
+                                   ; Dim seed As Integer
+I3        DS        1
+                                   ; Dim value As Integer
+I4        DS        1
+EOF       DS        1
+T1        DS        1
+T2        DS        1
+TL1       DS        1
+TB1       DS        256
+LL1       DC        15
+LB1       DC        'Seed? (1 - 999)'
+LL2       DC        18
+LB2       DC        'Speed? (1 - 30000)'
+                                   ; FuncCInt
+C0        PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          ADDL      GR2,GR1
+          XOR       GR0,GR0
+          XOR       GR4,GR4
+          CPL       GR1,GR2
+          JZE       J1
+          LD        GR3,0,GR1
+          CPL       GR3,='+'
+          JNZ       J3
+          LAD       GR1,1,GR1
+          JUMP      J2
+J3        CPL       GR3,='-'
+          JNZ       J2
+          LAD       GR4,-1
+          LAD       GR1,1,GR1
+J2        CPL       GR1,GR2
+          JZE       J1
+          LD        GR3,0,GR1
+          SUBL      GR3,='0'
+          JMI       J1
+          CPL       GR3,=9
+          JPL       J1
+          LD        GR5,GR0
+          SLL       GR0,3
+          ADDL      GR0,GR5
+          ADDL      GR0,GR5
+          ADDL      GR0,GR3
+          LAD       GR1,1,GR1
+          JUMP      J2
+J1        XOR       GR0,GR4
+          SUBL      GR0,GR4
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilCopyStr
+C7        PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          ST        GR4,0,GR2
+          AND       GR4,GR4
+          JZE       J13
+J12       LD        GR2,0,GR3
+          ST        GR2,0,GR1
+          LAD       GR3,1,GR3
+          LAD       GR1,1,GR1
+          SUBL      GR4,=1
+          JPL       J12
+J13       POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilFill
+C10       PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J10       CPL       GR1,GR3
+          JZE       J11
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J10
+J11       POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilSafeIndex
+C13       AND       GR2,GR2
+          JNZ       J7
+          XOR       GR0,GR0
+          RET
+J7        LD        GR0,GR1
+          JPL       J8
+          XOR       GR0,GR0
+          RET
+J8        CPL       GR0,GR2
+          JMI       J9
+          LAD       GR0,-1
+          ADDL      GR0,GR2
+J9        RET
+          END

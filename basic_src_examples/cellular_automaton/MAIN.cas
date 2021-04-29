@@ -1,0 +1,164 @@
+MAIN      START
+          RPUSH
+                                   ; Init Variables
+          LAD       GR1,B6
+          XOR       GR2,GR2
+          LAD       GR3,519
+          CALL      C10
+                                   ; Call INIT
+                                   ;   ByRef field1 As String [GR1,GR2]
+                                   ;   field1 = field1
+                                   ;   ByRef field2 As String [GR3,GR4]
+                                   ;   field2 = field2
+                                   ;   ByRef speed As Integer [GR5]
+                                   ;   speed = speed
+                                   ;   Set Arguments And Call INIT
+          LAD       GR1,SL4
+          LAD       GR2,SB4
+          LAD       GR3,SL5
+          LAD       GR4,SB5
+          LAD       GR5,I3
+          CALL      INIT
+                                   ; turn = True
+          LAD       GR7,#FFFF
+          ST        GR7,B6
+                                   ; Print field1
+          OUT       SB4,SL4
+                                   ; For i = 0 To 1000 Step 1
+          XOR       GR7,GR7
+          ST        GR7,I1
+J1        NOP
+          LD        GR1,I1
+          CPA       GR1,=1000
+          JPL       J3
+                                   ; If turn Then
+          LD        GR7,B6
+          AND       GR7,GR7
+          JZE       J5
+                                   ; Call PLAY
+                                   ;   ByRef field1 As String [GR1,GR2]
+                                   ;   field1 = field1
+                                   ;   ByRef field2 As String [GR3,GR4]
+                                   ;   field2 = field2
+                                   ;   Set Arguments And Call PLAY
+          LAD       GR1,SL4
+          LAD       GR2,SB4
+          LAD       GR3,SL5
+          LAD       GR4,SB5
+          CALL      PLAY
+                                   ; Call CHECK
+                                   ;   ByRef field As String [GR1,GR2]
+                                   ;   field = field2
+                                   ;   ByRef over As Boolean [GR3]
+                                   ;   over = over
+                                   ;   Set Arguments And Call CHECK
+          LAD       GR1,SL5
+          LAD       GR2,SB5
+          LAD       GR3,B7
+          CALL      CHECK
+                                   ; Print field2
+          OUT       SB5,SL5
+          JUMP      J4
+                                   ; Else
+J5        NOP
+                                   ; Call PLAY
+                                   ;   ByRef field1 As String [GR1,GR2]
+                                   ;   field1 = field2
+                                   ;   ByRef field2 As String [GR3,GR4]
+                                   ;   field2 = field1
+                                   ;   Set Arguments And Call PLAY
+          LAD       GR1,SL5
+          LAD       GR2,SB5
+          LAD       GR3,SL4
+          LAD       GR4,SB4
+          CALL      PLAY
+                                   ; Call CHECK
+                                   ;   ByRef field As String [GR1,GR2]
+                                   ;   field = field1
+                                   ;   ByRef over As Boolean [GR3]
+                                   ;   over = over
+                                   ;   Set Arguments And Call CHECK
+          LAD       GR1,SL4
+          LAD       GR2,SB4
+          LAD       GR3,B7
+          CALL      CHECK
+                                   ; Print field1
+          OUT       SB4,SL4
+                                   ; End If
+J4        NOP
+                                   ; If over Then
+          LD        GR7,B7
+          AND       GR7,GR7
+          JZE       J6
+                                   ; Exit For
+          JUMP      J3
+                                   ; End If
+J6        NOP
+                                   ; turn = Not turn
+          LD        GR7,B6
+          XOR       GR7,=#FFFF
+          ST        GR7,B6
+                                   ; For k = speed To 30000 Step 1
+          LD        GR7,I3
+          ST        GR7,I2
+J7        NOP
+          LD        GR1,I2
+          CPA       GR1,=30000
+          JPL       J9
+                                   ; turn = Not Not Not Not turn
+          LD        GR7,B6
+          XOR       GR7,=#FFFF
+          XOR       GR7,=#FFFF
+          XOR       GR7,=#FFFF
+          XOR       GR7,=#FFFF
+          ST        GR7,B6
+                                   ; Next k
+J8        NOP
+          LAD       GR1,I2
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J7
+J9        NOP
+                                   ; Next i
+J2        NOP
+          LAD       GR1,I1
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J1
+J3        NOP
+EXIT      NOP
+          RPOP
+          RET
+                                   ; Dim turn As Boolean
+B6        DS        1
+                                   ; Dim over As Boolean
+B7        DS        1
+                                   ; Dim i As Integer
+I1        DS        1
+                                   ; Dim k As Integer
+I2        DS        1
+                                   ; Dim speed As Integer
+I3        DS        1
+                                   ; Dim field1 As String
+SL4       DS        1
+SB4       DS        256
+                                   ; Dim field2 As String
+SL5       DS        1
+SB5       DS        256
+                                   ; UtilFill
+C10       PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J10       CPL       GR1,GR3
+          JZE       J11
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J10
+J11       POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+          END
