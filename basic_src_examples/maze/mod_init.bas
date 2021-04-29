@@ -7,7 +7,7 @@ Extern Sub RAND With
     ByRef value As Integer To GR2
 End Sub
 
-Program INIT
+Sub INIT
     Argument
         ByRef maze As String From GR1,GR2
     End Argument
@@ -29,4 +29,4 @@ Program INIT
         maze(i + 14) = "#"c
     Next i
 
-End Program
+End Sub

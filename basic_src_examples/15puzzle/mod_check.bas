@@ -4,7 +4,7 @@
 Option Register Dirty
 Option Variable Uninitialize
 
-Program CHECK
+Sub CHECK
     Argument
         ByRef ok As Boolean From GR1
         ByVal steps As Integer From GR2
@@ -16,9 +16,9 @@ Program CHECK
     For i = 0 To 15
         If field(i) <> ((i + 1) And 15) Then
             ok = False
-            Exit Program
+            Exit Sub
         End If
     Next i
     ok = True
 
-End Program
+End Sub

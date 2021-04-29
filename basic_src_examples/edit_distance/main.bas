@@ -23,7 +23,7 @@ Input text2
 If Len(text1) = 0 Or Len(text2) = 0 Then
     distance = Len(text1) + Len(text2)
     Print "Edit Distance: " & CStr(distance)
-    Exit Program
+    Exit Sub
 End If
 
 dp10 = 0

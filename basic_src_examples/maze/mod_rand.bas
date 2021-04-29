@@ -6,7 +6,7 @@
 Option Register Dirty
 Option Variable Uninitialize
 
-Program RAND
+Sub RAND
     Argument
         ByVal init As Boolean From GR1
         ByRef value As Integer From GR2
@@ -21,4 +21,4 @@ Program RAND
         value = (seed >> 2) And 3
     End If
 
-End Program
+End Sub

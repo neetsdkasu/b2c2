@@ -1,7 +1,7 @@
 '
 ' FizzBuzz Program
 '
-Program FIZZBUZZ
+Sub FIZZBUZZ
     Argument
         ByVal num As Integer From GR1
         ByRef fizzBuzzStr As String From GR2,GR3
@@ -16,4 +16,4 @@ Program FIZZBUZZ
     Case Else
         fizzBuzzStr = CStr(num)
     End Select
-End Program
+End Sub

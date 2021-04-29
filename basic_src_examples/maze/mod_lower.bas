@@ -4,7 +4,7 @@
 Option Register Dirty
 Option Variable Uninitialize
 
-Program LOWER
+Sub LOWER
     Argument
         ByRef s As String From GR1,GR2
     End Argument
@@ -19,4 +19,4 @@ Program LOWER
         End If
     Next i
 
-End Program
+End Sub

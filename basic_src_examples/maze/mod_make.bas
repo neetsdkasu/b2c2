@@ -20,7 +20,7 @@ Extern Sub DFSFAR With
     ByRef deepestPos As Integer To GR6
 End Sub
 
-Program MAKE
+Sub MAKE
     Argument
         ByRef maze As String From GR1,GR2
         ByRef sPos As Integer From GR3
@@ -71,4 +71,4 @@ Program MAKE
     maze(sPos) = "S"c
     maze(gPos) = "G"c
 
-End Program
+End Sub

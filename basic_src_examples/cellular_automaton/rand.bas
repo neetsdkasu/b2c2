@@ -5,7 +5,7 @@
 '
 Option Variable Uninitialize
 
-Program RAND
+Sub RAND
     Argument
         ByVal init As Boolean From GR1
         ByRef value As Integer From GR2
@@ -20,4 +20,4 @@ Program RAND
         value = seed Mod value
     End If
 
-End Program
+End Sub

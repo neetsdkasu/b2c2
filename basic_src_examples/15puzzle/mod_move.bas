@@ -4,7 +4,7 @@
 Option Register Dirty
 Option Variable Uninitialize
 
-Program MOVE
+Sub MOVE
     Argument
         ByVal cmd As Integer From GR1
         ByRef steps As Integer From GR2
@@ -46,4 +46,4 @@ Program MOVE
         End If
     Next i
 
-End Program
+End Sub

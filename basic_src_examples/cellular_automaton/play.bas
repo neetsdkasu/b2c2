@@ -1,7 +1,7 @@
 '
 ' 次の状態を求める
 '
-Program PLAY
+Sub PLAY
     Argument
         ByRef field1 As String From GR1,GR2
         ByRef field2 As String From GR3,GR4
@@ -17,4 +17,4 @@ Program PLAY
         End If
     Next i
 
-End Program
+End Sub

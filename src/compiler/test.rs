@@ -45,7 +45,7 @@ fn it_works() {
         ByVal arg1 As String To GR1,GR4
         ByRef arg2 As String To GR6,GR7
     End Sub
-    Program TEST
+    Sub TEST
         Argument
             ByRef argBool    As Boolean From GR1
             ByRef argInt     As Integer From GR2
@@ -219,7 +219,7 @@ fn it_works() {
             Print "X"
         End If
         int1 = Max((((123,45)))) ' これも合法ｗｗ、パラメータリスト・タプルのような感じになってるおｗｗ
-        Exit Program
+        Exit Sub
         argBool = Not argBool
         argInt = argInt * 3 + Len(argStr)
         argInt += int1 + CInt(argStr)
@@ -397,7 +397,7 @@ fn it_works() {
         Fill argIArr, 99
         Fill str1, "X"c
         Fill argStr, "e"c
-    End Program
+    End Sub
         "#;
 
     let mut cursor = std::io::Cursor::new(src);
@@ -1648,7 +1648,7 @@ Extern Sub FIZZ With
     ByVal num As Integer To GR1
     ByRef fizzBuzz As String To GR2,GR3
 End Sub
-Program MAIN
+Sub MAIN
     Dim i As Integer
     Dim s As String
     Dim t As String
@@ -1658,11 +1658,11 @@ Program MAIN
         t = t & s & ", "
     Next i
     Print t
-End Program
+End Sub
 "#;
 
     let src2 = r#"
-Program FIZZ
+Sub FIZZ
     Argument
         ByVal num As Integer From GR1
         ByRef fizzBuzz As String From GR2,GR3
@@ -1677,7 +1677,7 @@ Program FIZZ
     Case Else
         fizzBuzz = CStr(num)
     End Select
-End Program
+End Sub
 "#;
 
     for src in [src1, src2].iter() {
@@ -1710,7 +1710,7 @@ Extern Sub BAZ With
     ByRef msg As String To GR2,GR3
     ByRef arg(3) As Boolean To GR1
 End Sub
-Program TEST
+Sub TEST
     Dim arr(3) As Boolean
     Dim big(5) As Boolean
     big = Array(True, False, True, False, True, False)
@@ -1734,7 +1734,7 @@ Program TEST
 
     Call BAR(arr)
     Call BAZ("TEST 7", arr)
-End Program
+End Sub
 "#;
 
     let src2 = r#"
@@ -1742,7 +1742,7 @@ Extern Sub BAZ With
     ByRef msg As String To GR2,GR3
     ByRef arg(3) As Boolean To GR1
 End Sub
-Program FOO
+Sub FOO
     Argument
         ByVal arr(3) As Boolean From GR1
     End Argument
@@ -1762,7 +1762,7 @@ Program FOO
 
     arr = CArray(big, 4)
     Call BAZ("FOO 5", arr)
-End Program
+End Sub
 "#;
 
     let src3 = r#"
@@ -1770,7 +1770,7 @@ Extern Sub BAZ With
     ByRef msg As String To GR2,GR3
     ByRef arg(3) As Boolean To GR1
 End Sub
-Program BAR
+Sub BAR
     Argument
         ByRef arr(3) As Boolean From GR1
     End Argument
@@ -1790,11 +1790,11 @@ Program BAR
 
     arr = CArray(big, 4)
     Call BAZ("BAR 5", arr)
-End Program
+End Sub
 "#;
 
     let src4 = r#"
-Program BAZ
+Sub BAZ
     Argument
         ByRef msg As String From GR2,GR3
         ByRef arr(3) As Boolean From GR1
@@ -1807,7 +1807,7 @@ Program BAZ
     Next i
     Print msg
     Print s
-End Program
+End Sub
 "#;
 
     for src in [src1, src2, src3, src4].iter() {
@@ -1840,7 +1840,7 @@ Extern Sub BAZ With
     ByRef msg As String To GR2,GR3
     ByRef arg(3) As Integer To GR1
 End Sub
-Program TEST
+Sub TEST
     Dim arr(3) As Integer
     Dim big(5) As Integer
     big = Array(1, 2, 3, 4, 5, 6)
@@ -1867,7 +1867,7 @@ Program TEST
 
     Call BAR(arr)
     Call BAZ("TEST 8", arr)
-End Program
+End Sub
 "#;
 
     let src2 = r#"
@@ -1875,7 +1875,7 @@ Extern Sub BAZ With
     ByRef msg As String To GR2,GR3
     ByRef arg(3) As Integer To GR1
 End Sub
-Program FOO
+Sub FOO
     Argument
         ByVal arr(3) As Integer From GR1
     End Argument
@@ -1898,7 +1898,7 @@ Program FOO
 
     arr = CArray(big, 4)
     Call BAZ("FOO 6", arr)
-End Program
+End Sub
 "#;
 
     let src3 = r#"
@@ -1906,7 +1906,7 @@ Extern Sub BAZ With
     ByRef msg As String To GR2,GR3
     ByRef arg(3) As Integer To GR1
 End Sub
-Program BAR
+Sub BAR
     Argument
         ByRef arr(3) As Integer From GR1
     End Argument
@@ -1929,11 +1929,11 @@ Program BAR
 
     arr = CArray(big, 4)
     Call BAZ("BAR 6", arr)
-End Program
+End Sub
 "#;
 
     let src4 = r#"
-Program BAZ
+Sub BAZ
     Argument
         ByRef msg As String From GR2,GR3
         ByRef arr(3) As Integer From GR1
@@ -1946,7 +1946,7 @@ Program BAZ
     Next i
     Print msg
     Print s
-End Program
+End Sub
 "#;
 
     for src in [src1, src2, src3, src4].iter() {
@@ -1979,7 +1979,7 @@ Extern Sub BAZ With
     ByRef msg As String To GR2,GR3
     ByVal arg As String To GR1,GR4
 End Sub
-Program TEST
+Sub TEST
     Dim str As String
     Dim arr(5) As Integer
     arr = Array(65, 66, 67, 65, 65, 70)
@@ -2003,7 +2003,7 @@ Program TEST
 
     Call BAR(str)
     Call BAZ("TEST 7", str)
-End Program
+End Sub
 "#;
 
     let src2 = r#"
@@ -2011,7 +2011,7 @@ Extern Sub BAZ With
     ByRef msg As String To GR2,GR3
     ByVal arg As String To GR1,GR4
 End Sub
-Program FOO
+Sub FOO
     Argument
         ByVal str As String From GR1,GR2
     End Argument
@@ -2031,7 +2031,7 @@ Program FOO
 
     str = String(SubArray(arr, 2, 4))
     Call BAZ("FOO 5", str)
-End Program
+End Sub
 "#;
 
     let src3 = r#"
@@ -2039,7 +2039,7 @@ Extern Sub BAZ With
     ByRef msg As String To GR2,GR3
     ByVal arg As String To GR1,GR4
 End Sub
-Program BAR
+Sub BAR
     Argument
         ByRef str As String From GR1,GR2
     End Argument
@@ -2059,11 +2059,11 @@ Program BAR
 
     str = String(SubArray(arr, 1, 4))
     Call BAZ("BAR 5", str)
-End Program
+End Sub
 "#;
 
     let src4 = r#"
-Program BAZ
+Sub BAZ
     Argument
         ByRef msg As String From GR2,GR3
         ByVal arg As String From GR1,GR4
@@ -2078,7 +2078,7 @@ Program BAZ
     Print Len(arg)
     Print arg
     Print s
-End Program
+End Sub
 "#;
 
     for src in [src1, src2, src3, src4].iter() {
@@ -2108,7 +2108,7 @@ Extern Sub FOO With
     ByVal arg3(5) As Integer To GR3
     ByRef arg4(5) As Integer To GR4
 End Sub
-Program TEST
+Sub TEST
     Dim foo(5) As Boolean
     Dim bar(5) As Integer
     foo = CArray(Array(True, True), 5)
@@ -2117,12 +2117,12 @@ Program TEST
     Print Len(foo)
     Print Len(bar)
     Call FOO(foo, foo, bar, bar)
-End Program
+End Sub
 "#;
 
     let src2 = r#"
 Option Array Length
-Program FOO
+Sub FOO
     Argument
         ByVal arg1(6) As Boolean From GR1
         ByRef arg2(6) As Boolean From GR2
@@ -2140,7 +2140,7 @@ Program FOO
     Print Len(arg2)
     Print Len(arg3)
     Print Len(arg4)
-End Program
+End Sub
 "#;
 
     for src in [src1, src2].iter() {
@@ -2167,21 +2167,21 @@ Option EOF Shared
 Option Register Dirty
 Option Variable Uninitialize
 Extern Sub FOO
-Program TEST
+Sub TEST
     Call  FOO
     Print CInt(EOF())
     Print EOF()
-End Program
+End Sub
 "#;
 
     let src2 = r#"
 Option EOF Shared
 Option Register Restore
 Option Variable Uninitialize
-Program FOO
+Sub FOO
     Dim s As String
     Input s
-End Program
+End Sub
 "#;
 
     for src in [src1, src2].iter() {
@@ -2211,7 +2211,7 @@ fn danger_recursion_works() {
     let src1 = r#"
 Option Register Dirty
 Option Variable Uninitialize ' Initializeするとx=0のままなので無限ループする…
-Program TEST
+Sub TEST
     Dim x As Integer
     Print "Before: " & CStr(x)
     If x < 10 Then
@@ -2220,7 +2220,7 @@ Program TEST
         x -= 1
     End If
     Print "After: " & CStr(x)
-End Program
+End Sub
 "#;
 
     for src in [src1].iter() {
@@ -2244,7 +2244,7 @@ End Program
 fn allocator_1_works() {
     let src1 = r#"
 OPTION ALLOCATOR INTERNAL 2000
-PROGRAM TEST
+SUB TEST
     ARGUMENT
         BYVAL X AS INTEGER FROM GR1
     END ARGUMENT
@@ -2266,7 +2266,7 @@ PROGRAM TEST
     PRINT I
     PRINT S
     PRINT X
-END PROGRAM
+END SUB
 "#;
 
     for src in [src1].iter() {
@@ -2293,19 +2293,19 @@ Extern Sub FIB With
     ByVal n As Integer To GR1
     ByRef r As Integer To GR2
 End Sub
-Program TEST
+Sub TEST
     Dim i As Integer
     Dim x As Integer
     For i = 0 To 20
         Call FIB(i, x)
         Print "FIB(" & CStr(i) & ") = " & CStr(x)
     Next i
-End Program
+End Sub
 "#;
 
     let src2 = r#"
 Option Allocator Internal 100
-Program FIB
+Sub FIB
     Argument
         ByVal n As Integer From GR1
         ByRef r As Integer From GR2
@@ -2320,7 +2320,7 @@ Program FIB
         Call FIB(n - 2, t)
         r += t
     End If
-End Program
+End Sub
 "#;
 
     for src in [src1, src2].iter() {

@@ -4,7 +4,7 @@
 Option Register Dirty
 Option Variable Uninitialize
 
-Program SHOW
+Sub SHOW
     Argument
         ByVal steps As Integer From GR1
         ByRef field(15) As Integer From GR2
@@ -38,4 +38,4 @@ Program SHOW
     Next row
     Print hline
 
-End Program
+End Sub

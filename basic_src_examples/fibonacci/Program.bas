@@ -1,5 +1,5 @@
 '
-' Main Program
+' Main Sub
 '
 Extern Sub FIB With
     ByVal n As Integer To GR1

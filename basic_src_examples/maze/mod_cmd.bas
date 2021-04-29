@@ -8,7 +8,7 @@ Extern Sub LOWER With
     ByRef s As String To GR1,GR2
 End Sub
 
-Program CMD
+Sub CMD
     Argument
         ByRef cmd As Integer From GR1
     End Argument
@@ -41,4 +41,4 @@ Program CMD
         End Select
     Loop Until EOF()
 
-End Program
+End Sub

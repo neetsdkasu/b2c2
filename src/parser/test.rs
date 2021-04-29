@@ -630,7 +630,7 @@ Extern Sub BAR With
     ByVal barLine As String To GR5,GR6
     ByRef zCount As Integer To GR7
 End Sub
-Program BAZ
+Sub BAZ
     Argument
         ByRef someNumber As Integer From GR1
         ByRef someText As String From GR2,GR3
@@ -666,7 +666,7 @@ Program BAZ
         barLine = str1
         zCount = int1
     End Call
-End Program
+End Sub
 "#;
 
     let src = io::Cursor::new(src);

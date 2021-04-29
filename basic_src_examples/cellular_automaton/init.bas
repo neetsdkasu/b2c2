@@ -12,7 +12,7 @@ Extern Sub CHECK With
     ByRef over As Boolean To GR3
 End Sub
 
-Program INIT
+Sub INIT
     Argument
         ByRef field1 As String From GR1,GR2
         ByRef field2 As String From GR3,GR4
@@ -56,4 +56,4 @@ Program INIT
     Input speed
     speed = Max(1, Min(30000, speed))
 
-End Program
+End Sub

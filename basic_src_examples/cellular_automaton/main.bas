@@ -18,7 +18,7 @@ Extern Sub CHECK With
     ByRef over As Boolean To GR3
 End Sub
 
-Program MAIN
+Sub MAIN
 
     Dim i As Integer
     Dim k As Integer
@@ -53,4 +53,4 @@ Program MAIN
         Next k
     Next i
 
-End Program
+End Sub

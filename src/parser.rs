@@ -233,6 +233,18 @@ impl Parser {
             && !self.in_call_with
     }
 
+    fn can_end_program(&self) -> bool {
+        self.statements.len() == 1
+            && self.nest_of_do.is_empty()
+            && self.nest_of_for.is_empty()
+            && self.nest_of_select.is_empty()
+            && self.provisionals.is_empty()
+            && !self.is_select_head
+            && self.header_state.can_command()
+            && matches!(self.end_program_state, EndProgramState::Required)
+            && !self.in_call_with
+    }
+
     fn get_new_exit_id(&mut self) -> usize {
         let id = self.exit_id;
         self.exit_id += 1;
@@ -692,7 +704,7 @@ impl Parser {
                 Keyword::Dim => return self.parse_command_dim(pos_and_tokens),
                 Keyword::Extern => return self.parse_command_extern_sub(pos_and_tokens),
                 Keyword::Option => return self.parse_option(pos_and_tokens),
-                Keyword::Program => return self.parse_command_program_name(pos_and_tokens),
+                Keyword::Sub => return self.parse_command_program_name(pos_and_tokens),
                 _ => {}
             }
         }
@@ -768,7 +780,7 @@ impl Parser {
             | Keyword::Dim
             | Keyword::Extern
             | Keyword::Option
-            | Keyword::Program => Err(self.syntax_error(format!(
+            | Keyword::Sub => Err(self.syntax_error(format!(
                 "この位置に{:?}ステートメントを置くことはできません",
                 command
             ))),
@@ -777,7 +789,6 @@ impl Parser {
             | Keyword::From
             | Keyword::Rem
             | Keyword::Step
-            | Keyword::Sub
             | Keyword::Then
             | Keyword::To
             | Keyword::Until
@@ -1726,14 +1737,6 @@ impl Parser {
             [(_, Token::Keyword(Keyword::Argument))] => self.compose_command_argument(),
             [(_, Token::Keyword(Keyword::Call))] => self.compose_command_call_with(),
             [(_, Token::Keyword(Keyword::If))] => self.compose_command_if(),
-            [(_, Token::Keyword(Keyword::Program))] => {
-                if matches!(self.end_program_state, EndProgramState::Required) {
-                    self.end_program_state = EndProgramState::Satisfied;
-                    Ok(())
-                } else {
-                    Err(self.syntax_error("この位置にEnd Programは置けません".into()))
-                }
-            }
             [(_, Token::Keyword(Keyword::Select))] => self.compose_command_select(),
             [(_, Token::Keyword(Keyword::Sub))] => self.compose_command_sub(),
             _ => Err(self.syntax_error("不正なEndステートメントです".into())),
@@ -1790,7 +1793,12 @@ impl Parser {
     // End Sub
     fn compose_command_sub(&mut self) -> Result<(), SyntaxError> {
         if !self.header_state.in_extern_sub() {
-            return Err(self.syntax_error("不正なEndステートメントです".into()));
+            if self.can_end_program() {
+                self.end_program_state = EndProgramState::Satisfied;
+                return Ok(());
+            } else {
+                return Err(self.syntax_error("不正なEndステートメントです".into()));
+            }
         }
 
         let name = if let Some(name) = self.temp_progam_name.take() {
@@ -2086,7 +2094,7 @@ impl Parser {
                     return Err(self.syntax_error("この位置にExit Forは置けません".into()));
                 }
             }
-            [(_, Token::Keyword(Keyword::Program))] => self.add_statement(Statement::ExitProgram),
+            [(_, Token::Keyword(Keyword::Sub))] => self.add_statement(Statement::ExitProgram),
             [(_, Token::Keyword(Keyword::Select))] => {
                 if let Some(&exit_id) = self.nest_of_select.last() {
                     self.add_statement(Statement::ExitSelect { exit_id });
@@ -3297,9 +3305,9 @@ impl Keyword {
         match self {
             Argument | ByRef | ByVal | Call | Case | Continue | Else | ElseIf | End | Exit
             | Extern | Dim | Do | Fill | For | If | Input | Loop | Mid | Next | Option | Print
-            | Program | Select => true,
+            | Select | Sub => true,
 
-            As | From | Rem | Step | Sub | Then | To | Until | While | With => false,
+            As | From | Rem | Step | Then | To | Until | While | With => false,
         }
     }
 }

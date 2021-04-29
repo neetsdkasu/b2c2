@@ -9,7 +9,7 @@ Extern Sub RAND With
     ByRef value As Integer To GR2
 End Sub
 
-Program INIT
+Sub INIT
     Argument
         ByRef field(15) As Integer From GR1
     End Argument
@@ -62,4 +62,4 @@ Program INIT
         Next k
     Next i
 
-End Program
+End Sub

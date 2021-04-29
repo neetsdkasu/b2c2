@@ -8,7 +8,7 @@ Option Allocator Internal 2000
 Option Register Dirty
 Option Variable Uninitialize
 
-Program DFSFILL
+Sub DFSFILL
     Argument
         ByRef maze As String From GR1,GR2
         ByVal pos As Integer From GR3
@@ -25,7 +25,7 @@ Program DFSFILL
             Call DFSFILL(maze, x)
         Case "U"c, "L"c, "R"c
             maze(pos) = "#"c
-            Exit Program
+            Exit Sub
     End Select
 
     x = pos + 1
@@ -35,7 +35,7 @@ Program DFSFILL
             Call DFSFILL(maze, x)
         Case "U"c, "R"c, "D"c
             maze(pos) = "#"c
-            Exit Program
+            Exit Sub
     End Select
 
     x = pos + 15
@@ -45,7 +45,7 @@ Program DFSFILL
             Call DFSFILL(maze, x)
         Case "R"c, "L"c, "D"c
             maze(pos) = "#"c
-            Exit Program
+            Exit Sub
     End Select
 
     x = pos - 1
@@ -55,7 +55,7 @@ Program DFSFILL
             Call DFSFILL(maze, x)
         Case "L"c, "U"c, "D"c
             maze(pos) = "#"c
-            Exit Program
+            Exit Sub
     End Select
 
-End Program
+End Sub

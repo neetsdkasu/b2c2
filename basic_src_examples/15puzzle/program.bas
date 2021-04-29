@@ -28,7 +28,7 @@ Extern Sub CHECK With
     ByRef field(15) As Integer To GR3
 End Sub
 
-Program MAIN
+Sub MAIN
 
     Dim steps As Integer
     Dim field(15) As Integer
@@ -50,4 +50,4 @@ Program MAIN
         Call MOVE(cmd, steps, field)
     Loop
 
-End Program
+End Sub

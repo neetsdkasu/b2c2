@@ -9,7 +9,7 @@ Option Allocator Internal 3000
 Option Register Dirty
 Option Variable Uninitialize
 
-Program DFSFAR
+Sub DFSFAR
     Argument
         ByRef maze As String From GR1,GR2
         ByVal pos As Integer From GR3
@@ -49,4 +49,4 @@ Program DFSFAR
 
     maze(pos) = " "c
 
-End Program
+End Sub

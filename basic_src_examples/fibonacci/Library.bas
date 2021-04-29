@@ -2,7 +2,7 @@
 ' Calc Fibonacci Number
 '
 Option Allocator Internal 100
-Program FIB
+Sub FIB
     Argument
         ByVal n As Integer From GR1
         ByRef r As Integer From GR2
@@ -17,4 +17,4 @@ Program FIB
         Call FIB(n - 2, t)
         r += t
     End If
-End Program
+End Sub

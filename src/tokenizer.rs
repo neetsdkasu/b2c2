@@ -332,7 +332,6 @@ enumdef!(
     Next,
     Option,
     Print,
-    Program,
     Rem,
     Select,
     Step,
