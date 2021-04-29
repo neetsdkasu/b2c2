@@ -37,8 +37,8 @@ Program MAIN
 
     Call INIT(field)
     Do
-        Call SHOW(steps,field)
-        Call CHECK(ok,steps,field)
+        Call SHOW(steps, field)
+        Call CHECK(ok, steps, field)
         If ok Then
             Print "Complete!"
             Exit Do
@@ -47,7 +47,7 @@ Program MAIN
         If cmd < 0 Then
             Exit Do
         End If
-        Call MOVE(cmd,steps,field)
+        Call MOVE(cmd, steps, field)
     Loop
 
 End Program

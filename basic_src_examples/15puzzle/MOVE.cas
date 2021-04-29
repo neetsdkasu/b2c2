@@ -43,8 +43,8 @@ J8        XOR       GR7,=#FFFF
           JUMP      J13
                                    ; Case 0
 J9        NOP
-                                   ; If (i >= 4) Then
-          LD        GR7,I2
+                                   ; If (pos >= 4) Then
+          LD        GR7,I1
           LAD       GR6,4
           XOR       GR0,GR0
           CPA       GR7,GR6
@@ -53,17 +53,18 @@ J9        NOP
 J15       LD        GR7,GR0
           AND       GR7,GR7
           JZE       J14
-                                   ; pos = (i - 4)
-          LD        GR7,I2
-          LAD       GR7,-4,GR7
-          ST        GR7,I1
+                                   ; pos -= 4
+          LAD       GR7,4
+          LD        GR6,I1
+          SUBA      GR6,GR7
+          ST        GR6,I1
                                    ; End If
 J14       NOP
           JUMP      J13
                                    ; Case 1
 J10       NOP
-                                   ; If ((i And 3) <> 3) Then
-          LD        GR7,I2
+                                   ; If ((pos And 3) <> 3) Then
+          LD        GR7,I1
           AND       GR7,=3
           LAD       GR6,3
           SUBA      GR7,GR6
@@ -72,17 +73,18 @@ J10       NOP
 J17       NOP
           AND       GR7,GR7
           JZE       J16
-                                   ; pos = (i + 1)
-          LD        GR7,I2
-          LAD       GR7,1,GR7
-          ST        GR7,I1
+                                   ; pos += 1
+          LAD       GR7,1
+          LAD       GR6,I1
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
                                    ; End If
 J16       NOP
           JUMP      J13
                                    ; Case 2
 J11       NOP
-                                   ; If (i < 12) Then
-          LD        GR7,I2
+                                   ; If (pos < 12) Then
+          LD        GR7,I1
           LAD       GR6,12
           LAD       GR0,#FFFF
           CPA       GR7,GR6
@@ -91,17 +93,18 @@ J11       NOP
 J19       LD        GR7,GR0
           AND       GR7,GR7
           JZE       J18
-                                   ; pos = (i + 4)
-          LD        GR7,I2
-          LAD       GR7,4,GR7
-          ST        GR7,I1
+                                   ; pos += 4
+          LAD       GR7,4
+          LAD       GR6,I1
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
                                    ; End If
 J18       NOP
           JUMP      J13
                                    ; Case 3
 J12       NOP
-                                   ; If ((i And 3) <> 0) Then
-          LD        GR7,I2
+                                   ; If ((pos And 3) <> 0) Then
+          LD        GR7,I1
           AND       GR7,=3
           XOR       GR6,GR6
           SUBA      GR7,GR6
@@ -110,10 +113,11 @@ J12       NOP
 J21       NOP
           AND       GR7,GR7
           JZE       J20
-                                   ; pos = (i - 1)
-          LD        GR7,I2
-          LAD       GR7,-1,GR7
-          ST        GR7,I1
+                                   ; pos -= 1
+          LAD       GR7,1
+          LD        GR6,I1
+          SUBA      GR6,GR7
+          ST        GR6,I1
                                    ; End If
 J20       NOP
                                    ; End Select

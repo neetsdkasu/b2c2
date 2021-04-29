@@ -14,7 +14,7 @@ INIT      START
           ST        GR2,EOF
           XOR       GR2,GR2
 J4        CALL      C0
-          ST        GR0,I2
+          ST        GR0,I3
                                    ; Call RAND
                                    ;   ByVal init As Boolean [GR1]
                                    ;   init = True
@@ -24,7 +24,7 @@ J4        CALL      C0
                                    ;   value = Max(1, Min(999, seed))
           LAD       GR7,1
           LAD       GR6,999
-          LD        GR5,I2
+          LD        GR5,I3
           CPA       GR6,GR5
           JMI       J5
           LD        GR6,GR5
@@ -64,12 +64,18 @@ J8        NOP
           ST        GR2,0,GR1
           JUMP      J7
 J9        NOP
-                                   ; For i = 0 To 100 Step 1
+                                   ; pos = 15
+          LAD       GR7,15
+          ST        GR7,I6
+                                   ; temp = pos
+          LD        GR7,I6
+          ST        GR7,I5
+                                   ; For i = 0 To 1000 Step 1
           XOR       GR7,GR7
           ST        GR7,I1
 J13       NOP
           LD        GR1,I1
-          CPA       GR1,=100
+          CPA       GR1,=1000
           JPL       J15
                                    ; Call RAND
                                    ;   ByVal init As Boolean [GR1]
@@ -77,10 +83,10 @@ J13       NOP
           XOR       GR7,GR7
           ST        GR7,T2
                                    ;   ByRef value As Integer [GR2]
-                                   ;   value = x
+                                   ;   value = cmd
                                    ;   Set Arguments And Call RAND
           LD        GR1,T2
-          LAD       GR2,I3
+          LAD       GR2,I4
           CALL      RAND
                                    ; Call RAND
                                    ;   ByVal init As Boolean [GR1]
@@ -88,28 +94,140 @@ J13       NOP
           XOR       GR7,GR7
           ST        GR7,T2
                                    ;   ByRef value As Integer [GR2]
-                                   ;   value = y
+                                   ;   value = count
                                    ;   Set Arguments And Call RAND
           LD        GR1,T2
-          LAD       GR2,I4
+          LAD       GR2,I7
           CALL      RAND
-                                   ; temp = field(x)
-          LD        GR7,I3
+                                   ; count = (count Xor (count >> 1))
+          LD        GR7,I7
+          LD        GR6,I7
+          SRA       GR6,1
+          XOR       GR7,GR6
+          ST        GR7,I7
+                                   ; For k = 0 To count Step 1
+          LD        GR7,I7
+          ST        GR7,T2
+          XOR       GR7,GR7
+          ST        GR7,I2
+J16       NOP
+          LD        GR1,I2
+          CPA       GR1,T2
+          JPL       J18
+                                   ; Select Case cmd
+          LD        GR7,I4
+          CPA       GR7,=0
+          JZE       J19
+          CPA       GR7,=1
+          JZE       J20
+          CPA       GR7,=2
+          JZE       J21
+          CPA       GR7,=3
+          JZE       J22
+          JUMP      J23
+                                   ; Case 0
+J19       NOP
+                                   ; If (temp >= 4) Then
+          LD        GR7,I5
+          LAD       GR6,4
+          XOR       GR0,GR0
+          CPA       GR7,GR6
+          JMI       J25
+          LAD       GR0,#FFFF
+J25       LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J24
+                                   ; temp -= 4
+          LAD       GR7,4
+          LD        GR6,I5
+          SUBA      GR6,GR7
+          ST        GR6,I5
+                                   ; End If
+J24       NOP
+          JUMP      J23
+                                   ; Case 1
+J20       NOP
+                                   ; If ((temp And 3) <> 3) Then
+          LD        GR7,I5
+          AND       GR7,=3
+          LAD       GR6,3
+          SUBA      GR7,GR6
+          JZE       J27
+          LAD       GR7,#FFFF
+J27       NOP
+          AND       GR7,GR7
+          JZE       J26
+                                   ; temp += 1
+          LAD       GR7,1
+          LAD       GR6,I5
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; End If
+J26       NOP
+          JUMP      J23
+                                   ; Case 2
+J21       NOP
+                                   ; If (temp < 12) Then
+          LD        GR7,I5
+          LAD       GR6,12
+          LAD       GR0,#FFFF
+          CPA       GR7,GR6
+          JMI       J29
+          XOR       GR0,GR0
+J29       LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J28
+                                   ; temp += 4
+          LAD       GR7,4
+          LAD       GR6,I5
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; End If
+J28       NOP
+          JUMP      J23
+                                   ; Case 3
+J22       NOP
+                                   ; If ((temp And 3) <> 0) Then
+          LD        GR7,I5
+          AND       GR7,=3
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J31
+          LAD       GR7,#FFFF
+J31       NOP
+          AND       GR7,GR7
+          JZE       J30
+                                   ; temp -= 1
+          LAD       GR7,1
+          LD        GR6,I5
+          SUBA      GR6,GR7
+          ST        GR6,I5
+                                   ; End If
+J30       NOP
+                                   ; End Select
+J23       NOP
+                                   ; If (temp = pos) Then
+          LD        GR7,I5
+          LD        GR6,I6
+          SUBA      GR7,GR6
+          JZE       J34
+          LAD       GR7,#FFFF
+J34       XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J33
+                                   ; Exit For
+          JUMP      J18
+          JUMP      J32
+                                   ; Else
+J33       NOP
+                                   ; field( pos ) = field(temp)
+          LD        GR7,I6
           LD        GR1,GR7
           LAD       GR2,16
           CALL      C13
           LD        GR7,ARG1
           ADDL      GR7,GR0
-          LD        GR7,0,GR7
-          ST        GR7,I5
-                                   ; field( x ) = field(y)
-          LD        GR7,I3
-          LD        GR1,GR7
-          LAD       GR2,16
-          CALL      C13
-          LD        GR7,ARG1
-          ADDL      GR7,GR0
-          LD        GR6,I4
+          LD        GR6,I5
           LD        GR1,GR6
           LAD       GR2,16
           CALL      C13
@@ -117,15 +235,28 @@ J13       NOP
           ADDL      GR6,GR0
           LD        GR6,0,GR6
           ST        GR6,0,GR7
-                                   ; field( y ) = temp
-          LD        GR7,I4
+                                   ; pos = temp
+          LD        GR7,I5
+          ST        GR7,I6
+                                   ; field( pos ) = 0
+          LD        GR7,I6
           LD        GR1,GR7
           LAD       GR2,16
           CALL      C13
           LD        GR7,ARG1
           ADDL      GR7,GR0
-          LD        GR6,I5
+          XOR       GR6,GR6
           ST        GR6,0,GR7
+                                   ; End If
+J32       NOP
+                                   ; Next k
+J17       NOP
+          LAD       GR1,I2
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J16
+J18       NOP
                                    ; Next i
 J14       NOP
           LAD       GR1,I1
@@ -140,14 +271,18 @@ EXIT      NOP
 ARG1      DS        1
                                    ; Dim i As Integer
 I1        DS        1
-                                   ; Dim seed As Integer
+                                   ; Dim k As Integer
 I2        DS        1
-                                   ; Dim x As Integer
+                                   ; Dim seed As Integer
 I3        DS        1
-                                   ; Dim y As Integer
+                                   ; Dim cmd As Integer
 I4        DS        1
                                    ; Dim temp As Integer
 I5        DS        1
+                                   ; Dim pos As Integer
+I6        DS        1
+                                   ; Dim count As Integer
+I7        DS        1
 EOF       DS        1
 T1        DS        1
 T2        DS        1
@@ -202,12 +337,12 @@ C10       PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           ADDL      GR3,GR1
-J16       CPL       GR1,GR3
-          JZE       J17
+J35       CPL       GR1,GR3
+          JZE       J36
           ST        GR2,0,GR1
           LAD       GR1,1,GR1
-          JUMP      J16
-J17       POP       GR3
+          JUMP      J35
+J36       POP       GR3
           POP       GR2
           POP       GR1
           RET

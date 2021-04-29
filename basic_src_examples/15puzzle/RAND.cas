@@ -41,10 +41,10 @@ J2        NOP
           LD        GR0,GR1
           LD        GR7,GR0
           ST        GR7,I1
-                                   ; value = ((seed >> 3) And 15)
+                                   ; value = ((seed >> 2) And 3)
           LD        GR7,I1
-          SRA       GR7,3
-          AND       GR7,=15
+          SRA       GR7,2
+          AND       GR7,=3
           LD        GR6,ARG2
           ST        GR7,0,GR6
                                    ; End If
