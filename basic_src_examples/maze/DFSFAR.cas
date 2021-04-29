@@ -1,0 +1,360 @@
+DFSFAR    START
+                                   ; Allocate Memory
+          LD        GR0,GR1
+          LD        GR1,MEM
+          PUSH      0,GR1
+          LD        GR1,GR0
+          PUSH      0,GR1
+          XOR       GR0,GR0
+          LAD       GR1,7
+          CALL      ALLOC
+          ST        GR0,MEM
+          POP       GR1
+                                   ; Argument maze
+          LD        GR7,MEM
+          LAD       GR7,0,GR7
+          ST        GR1,0,GR7
+          ST        GR2,1,GR7
+                                   ; Argument pos
+          LD        GR7,MEM
+          LAD       GR7,2,GR7
+          ST        GR3,0,GR7
+                                   ; Argument depth
+          LD        GR7,MEM
+          LAD       GR7,3,GR7
+          ST        GR4,0,GR7
+                                   ; Argument maxDepth
+          LD        GR7,MEM
+          LAD       GR7,4,GR7
+          ST        GR5,0,GR7
+                                   ; Argument deepestPos
+          LD        GR7,MEM
+          LAD       GR7,5,GR7
+          ST        GR6,0,GR7
+                                   ; maze( pos ) = "."c
+          LD        GR7,MEM
+          LD        GR7,2,GR7
+          LD        GR1,GR7
+          LD        GR2,MEM
+          LD        GR2,0,GR2
+          LD        GR2,0,GR2
+          CALL      C13
+          LD        GR7,MEM
+          LD        GR7,1,GR7
+          ADDL      GR7,GR0
+          LD        GR6,='.'
+          ST        GR6,0,GR7
+                                   ; depth += 1
+          LAD       GR7,1
+          LD        GR6,MEM
+          LAD       GR6,3,GR6
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; If (depth > maxDepth) Then
+          LD        GR7,MEM
+          LD        GR7,3,GR7
+          LD        GR6,MEM
+          LD        GR6,4,GR6
+          LD        GR6,0,GR6
+          LAD       GR0,#FFFF
+          CPA       GR7,GR6
+          JPL       J5
+          XOR       GR0,GR0
+J5        LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J4
+                                   ; maxDepth = depth
+          LD        GR7,MEM
+          LD        GR7,3,GR7
+          LD        GR6,MEM
+          LD        GR6,4,GR6
+          ST        GR7,0,GR6
+                                   ; deepestPos = pos
+          LD        GR7,MEM
+          LD        GR7,2,GR7
+          LD        GR6,MEM
+          LD        GR6,5,GR6
+          ST        GR7,0,GR6
+                                   ; End If
+J4        NOP
+                                   ; x = (pos - 15)
+          LD        GR7,MEM
+          LD        GR7,2,GR7
+          LAD       GR7,-15,GR7
+          LD        GR6,MEM
+          ST        GR7,6,GR6
+                                   ; If (maze(x) = " "c) Then
+          LD        GR7,MEM
+          LD        GR7,6,GR7
+          LD        GR1,GR7
+          LD        GR2,MEM
+          LD        GR2,0,GR2
+          LD        GR2,0,GR2
+          LD        GR3,MEM
+          LD        GR3,1,GR3
+          CALL      C11
+          LD        GR7,GR0
+          LD        GR6,=' '
+          SUBA      GR7,GR6
+          JZE       J8
+          LAD       GR7,#FFFF
+J8        XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J6
+                                   ; Call DFSFAR
+                                   ;   ByRef maze As String [GR1,GR2]
+                                   ;   maze = maze
+                                   ;   ByVal pos As Integer [GR3]
+                                   ;   pos = x
+                                   ;   ByVal depth As Integer [GR4]
+                                   ;   depth = depth
+                                   ;   ByRef maxDepth As Integer [GR5]
+                                   ;   maxDepth = maxDepth
+                                   ;   ByRef deepestPos As Integer [GR6]
+                                   ;   deepestPos = deepestPos
+                                   ;   Set Arguments And Call DFSFAR
+          LD        GR1,MEM
+          LD        GR1,0,GR1
+          LD        GR2,MEM
+          LD        GR2,1,GR2
+          LD        GR3,MEM
+          LD        GR3,6,GR3
+          LD        GR4,MEM
+          LD        GR4,3,GR4
+          LD        GR5,MEM
+          LD        GR5,4,GR5
+          LD        GR6,MEM
+          LD        GR6,5,GR6
+          CALL      DFSFAR
+                                   ; End If
+J6        NOP
+                                   ; x = (pos + 1)
+          LD        GR7,MEM
+          LD        GR7,2,GR7
+          LAD       GR7,1,GR7
+          LD        GR6,MEM
+          ST        GR7,6,GR6
+                                   ; If (maze(x) = " "c) Then
+          LD        GR7,MEM
+          LD        GR7,6,GR7
+          LD        GR1,GR7
+          LD        GR2,MEM
+          LD        GR2,0,GR2
+          LD        GR2,0,GR2
+          LD        GR3,MEM
+          LD        GR3,1,GR3
+          CALL      C11
+          LD        GR7,GR0
+          LD        GR6,=' '
+          SUBA      GR7,GR6
+          JZE       J10
+          LAD       GR7,#FFFF
+J10       XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J9
+                                   ; Call DFSFAR
+                                   ;   ByRef maze As String [GR1,GR2]
+                                   ;   maze = maze
+                                   ;   ByVal pos As Integer [GR3]
+                                   ;   pos = x
+                                   ;   ByVal depth As Integer [GR4]
+                                   ;   depth = depth
+                                   ;   ByRef maxDepth As Integer [GR5]
+                                   ;   maxDepth = maxDepth
+                                   ;   ByRef deepestPos As Integer [GR6]
+                                   ;   deepestPos = deepestPos
+                                   ;   Set Arguments And Call DFSFAR
+          LD        GR1,MEM
+          LD        GR1,0,GR1
+          LD        GR2,MEM
+          LD        GR2,1,GR2
+          LD        GR3,MEM
+          LD        GR3,6,GR3
+          LD        GR4,MEM
+          LD        GR4,3,GR4
+          LD        GR5,MEM
+          LD        GR5,4,GR5
+          LD        GR6,MEM
+          LD        GR6,5,GR6
+          CALL      DFSFAR
+                                   ; End If
+J9        NOP
+                                   ; x = (pos + 15)
+          LD        GR7,MEM
+          LD        GR7,2,GR7
+          LAD       GR7,15,GR7
+          LD        GR6,MEM
+          ST        GR7,6,GR6
+                                   ; If (maze(x) = " "c) Then
+          LD        GR7,MEM
+          LD        GR7,6,GR7
+          LD        GR1,GR7
+          LD        GR2,MEM
+          LD        GR2,0,GR2
+          LD        GR2,0,GR2
+          LD        GR3,MEM
+          LD        GR3,1,GR3
+          CALL      C11
+          LD        GR7,GR0
+          LD        GR6,=' '
+          SUBA      GR7,GR6
+          JZE       J12
+          LAD       GR7,#FFFF
+J12       XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J11
+                                   ; Call DFSFAR
+                                   ;   ByRef maze As String [GR1,GR2]
+                                   ;   maze = maze
+                                   ;   ByVal pos As Integer [GR3]
+                                   ;   pos = x
+                                   ;   ByVal depth As Integer [GR4]
+                                   ;   depth = depth
+                                   ;   ByRef maxDepth As Integer [GR5]
+                                   ;   maxDepth = maxDepth
+                                   ;   ByRef deepestPos As Integer [GR6]
+                                   ;   deepestPos = deepestPos
+                                   ;   Set Arguments And Call DFSFAR
+          LD        GR1,MEM
+          LD        GR1,0,GR1
+          LD        GR2,MEM
+          LD        GR2,1,GR2
+          LD        GR3,MEM
+          LD        GR3,6,GR3
+          LD        GR4,MEM
+          LD        GR4,3,GR4
+          LD        GR5,MEM
+          LD        GR5,4,GR5
+          LD        GR6,MEM
+          LD        GR6,5,GR6
+          CALL      DFSFAR
+                                   ; End If
+J11       NOP
+                                   ; x = (pos - 1)
+          LD        GR7,MEM
+          LD        GR7,2,GR7
+          LAD       GR7,-1,GR7
+          LD        GR6,MEM
+          ST        GR7,6,GR6
+                                   ; If (maze(x) = " "c) Then
+          LD        GR7,MEM
+          LD        GR7,6,GR7
+          LD        GR1,GR7
+          LD        GR2,MEM
+          LD        GR2,0,GR2
+          LD        GR2,0,GR2
+          LD        GR3,MEM
+          LD        GR3,1,GR3
+          CALL      C11
+          LD        GR7,GR0
+          LD        GR6,=' '
+          SUBA      GR7,GR6
+          JZE       J14
+          LAD       GR7,#FFFF
+J14       XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J13
+                                   ; Call DFSFAR
+                                   ;   ByRef maze As String [GR1,GR2]
+                                   ;   maze = maze
+                                   ;   ByVal pos As Integer [GR3]
+                                   ;   pos = x
+                                   ;   ByVal depth As Integer [GR4]
+                                   ;   depth = depth
+                                   ;   ByRef maxDepth As Integer [GR5]
+                                   ;   maxDepth = maxDepth
+                                   ;   ByRef deepestPos As Integer [GR6]
+                                   ;   deepestPos = deepestPos
+                                   ;   Set Arguments And Call DFSFAR
+          LD        GR1,MEM
+          LD        GR1,0,GR1
+          LD        GR2,MEM
+          LD        GR2,1,GR2
+          LD        GR3,MEM
+          LD        GR3,6,GR3
+          LD        GR4,MEM
+          LD        GR4,3,GR4
+          LD        GR5,MEM
+          LD        GR5,4,GR5
+          LD        GR6,MEM
+          LD        GR6,5,GR6
+          CALL      DFSFAR
+                                   ; End If
+J13       NOP
+                                   ; maze( pos ) = " "c
+          LD        GR7,MEM
+          LD        GR7,2,GR7
+          LD        GR1,GR7
+          LD        GR2,MEM
+          LD        GR2,0,GR2
+          LD        GR2,0,GR2
+          CALL      C13
+          LD        GR7,MEM
+          LD        GR7,1,GR7
+          ADDL      GR7,GR0
+          LD        GR6,=' '
+          ST        GR6,0,GR7
+EXIT      NOP
+                                   ; Release Memory
+          LAD       GR0,1
+          LD        GR1,MEM
+          CALL      ALLOC
+          POP       GR1
+          ST        GR1,MEM
+          RET
+MEM       DS        1
+                                   ; UtilAllocator
+ALLOC     AND       GR0,GR0
+          JNZ       J17
+          LAD       GR0,V3
+          ADDL      GR0,V1
+          CPL       GR0,V2
+          JZE       J16
+J15       ST        GR1,V1
+          LAD       GR0,V3
+          ADDL      GR1,GR0
+          ST        GR1,V2
+          RET
+J16       ADDL      GR0,GR1
+          CPL       GR0,V4
+          JPL       J15
+          ST        GR0,V2
+          SUBL      GR0,GR1
+          ADDL      GR1,V1
+          ST        GR1,V1
+          RET
+J17       ST        GR1,V2
+          LAD       GR0,V3
+          SUBL      GR1,GR0
+          ST        GR1,V1
+          RET
+V1        DS        1
+V2        DS        1
+V3        DS        3000
+V4        DC        V4
+                                   ; UtilLoadElement
+C11       AND       GR2,GR2
+          JNZ       J7
+          XOR       GR0,GR0
+          RET
+J7        CALL      C13
+          PUSH      0,GR3
+          ADDL      GR3,GR0
+          LD        GR0,0,GR3
+          POP       GR3
+          RET
+                                   ; UtilSafeIndex
+C13       AND       GR2,GR2
+          JNZ       J1
+          XOR       GR0,GR0
+          RET
+J1        LD        GR0,GR1
+          JPL       J2
+          XOR       GR0,GR0
+          RET
+J2        CPL       GR0,GR2
+          JMI       J3
+          LAD       GR0,-1
+          ADDL      GR0,GR2
+J3        RET
+          END

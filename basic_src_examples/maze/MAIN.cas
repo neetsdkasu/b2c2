@@ -1,0 +1,611 @@
+MAIN      START
+          RPUSH
+                                   ; Init Variables
+          LAD       GR1,I1
+          XOR       GR2,GR2
+          LAD       GR3,521
+          CALL      C10
+                                   ; Call INIT
+                                   ;   ByRef maze As String [GR1,GR2]
+                                   ;   maze = maze
+                                   ;   Set Arguments And Call INIT
+          LAD       GR1,SL3
+          LAD       GR2,SB3
+          CALL      INIT
+                                   ; field = maze
+          LAD       GR1,SB4
+          LAD       GR2,SL4
+          LAD       GR3,SB3
+          LD        GR4,SL3
+          CALL      C7
+                                   ; For i = 15 To 210 Step 1
+          LAD       GR7,15
+          ST        GR7,I1
+J3        NOP
+          LD        GR1,I1
+          CPA       GR1,=210
+          JPL       J5
+                                   ; If (field(i) = " "c) Then
+          LD        GR7,I1
+          LD        GR1,GR7
+          LD        GR2,SL4
+          LAD       GR3,SB4
+          CALL      C11
+          LD        GR7,GR0
+          LD        GR6,=' '
+          SUBA      GR7,GR6
+          JZE       J11
+          LAD       GR7,#FFFF
+J11       XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J6
+                                   ; field( i ) = "*"c
+          LD        GR7,I1
+          LD        GR1,GR7
+          LD        GR2,SL4
+          CALL      C13
+          LAD       GR7,SB4
+          ADDL      GR7,GR0
+          LD        GR6,='*'
+          ST        GR6,0,GR7
+                                   ; End If
+J6        NOP
+                                   ; Next i
+J4        NOP
+          LAD       GR1,I1
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J3
+J5        NOP
+                                   ; Call MAKE
+                                   ;   ByRef maze As String [GR1,GR2]
+                                   ;   maze = maze
+                                   ;   ByRef sPos As Integer [GR3]
+                                   ;   sPos = pos
+                                   ;   ByRef best As Integer [GR4]
+                                   ;   best = best
+                                   ;   Set Arguments And Call MAKE
+          LAD       GR1,SL3
+          LAD       GR2,SB3
+          LAD       GR3,I5
+          LAD       GR4,I6
+          CALL      MAKE
+                                   ; view = 0
+          XOR       GR7,GR7
+          ST        GR7,I9
+                                   ; Do
+J12       NOP
+                                   ; For i = (-1 << view) To (1 << view) Step 1
+          LAD       GR7,1
+          LD        GR6,I9
+          SLA       GR7,0,GR6
+          ST        GR7,T1
+          LAD       GR7,-1
+          LD        GR6,I9
+          SLA       GR7,0,GR6
+          ST        GR7,I1
+J14       NOP
+          LD        GR1,I1
+          CPA       GR1,T1
+          JPL       J16
+                                   ; For k = (-15 << view) To (15 << view) Step 15
+          LAD       GR7,15
+          LD        GR6,I9
+          SLA       GR7,0,GR6
+          ST        GR7,T2
+          LAD       GR7,-15
+          LD        GR6,I9
+          SLA       GR7,0,GR6
+          ST        GR7,I2
+J17       NOP
+          LD        GR1,I2
+          CPA       GR1,T2
+          JPL       J19
+                                   ; field( ((pos + i) + k) ) = maze((pos + i) + k)
+          LD        GR7,I5
+          LD        GR6,I1
+          ADDA      GR7,GR6
+          LD        GR6,I2
+          ADDA      GR7,GR6
+          LD        GR1,GR7
+          LD        GR2,SL4
+          CALL      C13
+          LAD       GR7,SB4
+          ADDL      GR7,GR0
+          LD        GR6,I5
+          LD        GR5,I1
+          ADDA      GR6,GR5
+          LD        GR5,I2
+          ADDA      GR6,GR5
+          LD        GR1,GR6
+          LD        GR2,SL3
+          LAD       GR3,SB3
+          CALL      C11
+          LD        GR6,GR0
+          ST        GR6,0,GR7
+                                   ; Next k
+J18       NOP
+          LAD       GR1,I2
+          LD        GR2,0,GR1
+          LAD       GR2,15,GR2
+          ST        GR2,0,GR1
+          JUMP      J17
+J19       NOP
+                                   ; Next i
+J15       NOP
+          LAD       GR1,I1
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J14
+J16       NOP
+                                   ; field( pos ) = "@"c
+          LD        GR7,I5
+          LD        GR1,GR7
+          LD        GR2,SL4
+          CALL      C13
+          LAD       GR7,SB4
+          ADDL      GR7,GR0
+          LD        GR6,='@'
+          ST        GR6,0,GR7
+                                   ; Print (CStr(steps) & " steps")
+          LD        GR7,I8
+          LD        GR3,GR7
+          LAD       GR1,TB1
+          LAD       GR2,TL1
+          CALL      C2
+          LAD       GR1,TB1
+          LAD       GR2,TL1
+          LAD       GR3,=' steps'
+          LAD       GR4,6
+          CALL      C5
+          OUT       TB1,TL1
+                                   ; For i = 0 To 210 Step 15
+          XOR       GR7,GR7
+          ST        GR7,I1
+J42       NOP
+          LD        GR1,I1
+          CPA       GR1,=210
+          JPL       J44
+                                   ; Print Mid(field, i, 15)
+          LD        GR7,I1
+          LAD       GR6,15
+          LD        GR1,GR7
+          LAD       GR5,TB1
+          LAD       GR3,SB4
+          LD        GR4,SL4
+          LD        GR2,GR4
+          CALL      C6
+          ST        GR0,TL1
+          OUT       TB1,TL1
+                                   ; Next i
+J43       NOP
+          LAD       GR1,I1
+          LD        GR2,0,GR1
+          LAD       GR2,15,GR2
+          ST        GR2,0,GR1
+          JUMP      J42
+J44       NOP
+                                   ; If (maze(pos) = "G"c) Then
+          LD        GR7,I5
+          LD        GR1,GR7
+          LD        GR2,SL3
+          LAD       GR3,SB3
+          CALL      C11
+          LD        GR7,GR0
+          LD        GR6,='G'
+          SUBA      GR7,GR6
+          JZE       J51
+          LAD       GR7,#FFFF
+J51       XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J50
+                                   ; Print ((("GOAL! " & CStr(steps)) & " / ") & CStr(best))
+          LD        GR7,I8
+          LD        GR3,GR7
+          LAD       GR1,TB1
+          LAD       GR2,TL1
+          CALL      C2
+          LAD       GR1,TB2
+          LAD       GR2,TL2
+          LAD       GR3,='GOAL! '
+          LAD       GR4,6
+          CALL      C7
+          LAD       GR1,TB2
+          LAD       GR2,TL2
+          LAD       GR3,TB1
+          LD        GR4,TL1
+          CALL      C5
+          LAD       GR1,TB2
+          LAD       GR2,TL2
+          LAD       GR3,=' / '
+          LAD       GR4,3
+          CALL      C5
+          LD        GR7,I6
+          LD        GR3,GR7
+          LAD       GR1,TB1
+          LAD       GR2,TL1
+          CALL      C2
+          LAD       GR1,TB2
+          LAD       GR2,TL2
+          LAD       GR3,TB1
+          LD        GR4,TL1
+          CALL      C5
+          OUT       TB2,TL2
+                                   ; Exit Do
+          JUMP      J13
+                                   ; End If
+J50       NOP
+                                   ; Call CMD
+                                   ;   ByRef cmd As Integer [GR1]
+                                   ;   cmd = cmd
+                                   ;   Set Arguments And Call CMD
+          LAD       GR1,I7
+          CALL      CMD
+                                   ; If (cmd = 0) Then
+          LD        GR7,I7
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J56
+          LAD       GR7,#FFFF
+J56       XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J53
+                                   ; Exit Do
+          JUMP      J13
+          JUMP      J52
+                                   ; ElseIf (cmd = 1000) Then
+J53       NOP
+          LD        GR7,I7
+          LAD       GR6,1000
+          SUBA      GR7,GR6
+          JZE       J57
+          LAD       GR7,#FFFF
+J57       XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J54
+                                   ; view = (1 - view)
+          LAD       GR7,1
+          LD        GR6,I9
+          SUBA      GR7,GR6
+          ST        GR7,I9
+                                   ; steps += (view << 3)
+          LD        GR7,I9
+          SLA       GR7,3
+          LAD       GR6,I8
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+          JUMP      J52
+                                   ; ElseIf (field(pos + cmd) = "#"c) Then
+J54       NOP
+          LD        GR7,I5
+          LD        GR6,I7
+          ADDA      GR7,GR6
+          LD        GR1,GR7
+          LD        GR2,SL4
+          LAD       GR3,SB4
+          CALL      C11
+          LD        GR7,GR0
+          LD        GR6,='#'
+          SUBA      GR7,GR6
+          JZE       J58
+          LAD       GR7,#FFFF
+J58       XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J55
+                                   ; Print "CANNOT MOVE"
+          OUT       LB1,LL1
+          JUMP      J52
+                                   ; Else
+J55       NOP
+                                   ; pos += cmd
+          LD        GR7,I7
+          LAD       GR6,I5
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; steps += 1
+          LAD       GR7,1
+          LAD       GR6,I8
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; End If
+J52       NOP
+                                   ; Loop
+          JUMP      J12
+J13       NOP
+EXIT      NOP
+          RPOP
+          RET
+                                   ; Dim i As Integer
+I1        DS        1
+                                   ; Dim k As Integer
+I2        DS        1
+                                   ; Dim pos As Integer
+I5        DS        1
+                                   ; Dim best As Integer
+I6        DS        1
+                                   ; Dim cmd As Integer
+I7        DS        1
+                                   ; Dim steps As Integer
+I8        DS        1
+                                   ; Dim view As Integer
+I9        DS        1
+                                   ; Dim maze As String
+SL3       DS        1
+SB3       DS        256
+                                   ; Dim field As String
+SL4       DS        1
+SB4       DS        256
+T1        DS        1
+T2        DS        1
+TL1       DS        1
+TB1       DS        256
+TL2       DS        1
+TB2       DS        256
+LL1       DC        11
+LB1       DC        'CANNOT MOVE'
+                                   ; FuncCStrArgInt
+C2        CPL       GR3,=#8000
+          JNZ       J20
+          PUSH      0,GR3
+          PUSH      0,GR4
+          LAD       GR3,='-32768'
+          LAD       GR4,6
+          CALL      C7
+          POP       GR4
+          POP       GR3
+          RET
+J20       AND       GR3,GR3
+          JNZ       J21
+          LAD       GR3,1
+          ST        GR3,0,GR2
+          LD        GR3,='0'
+          ST        GR3,0,GR1
+          XOR       GR3,GR3
+          RET
+J21       PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          JPL       J22
+          LD        GR4,='-'
+          ST        GR4,0,GR1
+          LAD       GR1,1,GR1
+          XOR       GR3,=#FFFF
+          LAD       GR3,1,GR3
+J22       LAD       GR4,V1
+          LD        GR5,GR1
+          LD        GR2,GR3
+          LAD       GR3,10
+J23       CALL      C9
+          ADDL      GR1,='0'
+          ST        GR1,0,GR4
+          LAD       GR4,1,GR4
+          LD        GR2,GR0
+          JPL       J23
+          LAD       GR2,V1
+          LAD       GR4,-1,GR4
+J24       LD        GR1,0,GR4
+          ST        GR1,0,GR5
+          LAD       GR5,1,GR5
+          LAD       GR4,-1,GR4
+          CPL       GR4,GR2
+          JPL       J24
+          JZE       J24
+          LD        GR0,GR5
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          SUBL      GR0,GR1
+          ST        GR0,0,GR2
+          RET
+V1        DS        6
+                                   ; UtilConcatStr
+C5        PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          LD        GR0,0,GR2
+          LD        GR2,GR1
+          ADDL      GR1,GR0
+          LAD       GR2,256,GR2
+          ADDL      GR4,GR3
+J40       CPL       GR1,GR2
+          JZE       J41
+          CPL       GR3,GR4
+          JZE       J41
+          LD        GR0,0,GR3
+          ST        GR0,0,GR1
+          LAD       GR1,1,GR1
+          LAD       GR3,1,GR3
+          JUMP      J40
+J41       LD        GR0,GR1
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          SUBL      GR0,GR1
+          ST        GR0,0,GR2
+          RET
+                                   ; UtilCopyFromOffsetStr
+C6        PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          PUSH      0,GR6
+          CALL      C13
+          LD        GR1,GR6
+          LD        GR6,GR0
+          CPL       GR1,GR2
+          JMI       J45
+          LD        GR1,GR2
+J45       ADDL      GR1,GR6
+          LD        GR0,GR1
+          CPL       GR0,GR2
+          JMI       J46
+          LD        GR0,GR2
+J46       SUBL      GR0,GR6
+          CPL       GR0,GR4
+          JMI       J47
+          LD        GR0,GR4
+J47       ADDL      GR3,GR6
+          LD        GR6,GR5
+          ADDL      GR6,GR0
+J48       CPL       GR5,GR6
+          JZE       J49
+          LD        GR1,0,GR3
+          ST        GR1,0,GR5
+          LAD       GR3,1,GR3
+          LAD       GR5,1,GR5
+          JUMP      J48
+J49       POP       GR6
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilCopyStr
+C7        PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          ST        GR4,0,GR2
+          AND       GR4,GR4
+          JZE       J2
+J1        LD        GR2,0,GR3
+          ST        GR2,0,GR1
+          LAD       GR3,1,GR3
+          LAD       GR1,1,GR1
+          SUBL      GR4,=1
+          JPL       J1
+J2        POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilDivMod
+C9        AND       GR3,GR3
+          JNZ       J27
+          XOR       GR0,GR0
+          LAD       GR1,-1
+          RET
+J27       PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          LD        GR4,GR2
+          LD        GR5,GR2
+          JPL       J25
+          XOR       GR5,GR5
+          SUBA      GR5,GR2
+J25       LD        GR1,GR3
+          JPL       J26
+          XOR       GR1,GR1
+          SUBA      GR1,GR3
+J26       LAD       GR0,1
+J28       ADDL      GR1,GR1
+          JOV       J29
+          ADDL      GR0,GR0
+          JUMP      J28
+J29       SRL       GR1,1
+          LAD       GR1,#8000,GR1
+          XOR       GR2,GR2
+J30       CPL       GR5,GR1
+          JMI       J31
+          SUBL      GR5,GR1
+          ADDL      GR2,GR0
+J31       SRL       GR0,1
+          JZE       J32
+          SRL       GR1,1
+          JUMP      J30
+J32       LD        GR5,GR4
+          XOR       GR5,GR3
+          SRA       GR5,15
+          XOR       GR2,GR5
+          SUBA      GR2,GR5
+          CALL      C12
+          LD        GR1,GR4
+          SUBA      GR1,GR0
+          LD        GR0,GR2
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          RET
+                                   ; UtilFill
+C10       PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J59       CPL       GR1,GR3
+          JZE       J60
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J59
+J60       POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilLoadElement
+C11       AND       GR2,GR2
+          JNZ       J7
+          XOR       GR0,GR0
+          RET
+J7        CALL      C13
+          PUSH      0,GR3
+          ADDL      GR3,GR0
+          LD        GR0,0,GR3
+          POP       GR3
+          RET
+                                   ; UtilMul
+C12       PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          XOR       GR0,GR0
+          XOR       GR1,GR1
+          LD        GR4,GR2
+          LD        GR5,GR3
+J33       SRL       GR2,1
+          JOV       J34
+          JNZ       J36
+          JUMP      J37
+J34       ADDL      GR0,GR3
+          JOV       J35
+          JUMP      J36
+J35       LAD       GR1,1,GR1
+J36       SLL       GR3,1
+          JUMP      J33
+J37       SRL       GR5,1
+          SLL       GR4,1
+          JOV       J38
+          JNZ       J37
+          JUMP      J39
+J38       ADDL      GR1,GR5
+          JUMP      J37
+J39       POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          RET
+                                   ; UtilSafeIndex
+C13       AND       GR2,GR2
+          JNZ       J8
+          XOR       GR0,GR0
+          RET
+J8        LD        GR0,GR1
+          JPL       J9
+          XOR       GR0,GR0
+          RET
+J9        CPL       GR0,GR2
+          JMI       J10
+          LAD       GR0,-1
+          ADDL      GR0,GR2
+J10       RET
+          END

@@ -1,0 +1,114 @@
+LOWER     START
+                                   ; Argument s
+          ST        GR1,ARG1
+          ST        GR2,ARG2
+                                   ; For i = 0 To (Len(s) - 1) Step 1
+          LD        GR7,ARG1
+          LD        GR7,0,GR7
+          LAD       GR7,-1,GR7
+          ST        GR7,T1
+          XOR       GR7,GR7
+          ST        GR7,I1
+J1        NOP
+          LD        GR1,I1
+          CPA       GR1,T1
+          JPL       J3
+                                   ; ch = s(i)
+          LD        GR7,I1
+          LD        GR1,GR7
+          LD        GR2,ARG1
+          LD        GR2,0,GR2
+          LD        GR3,ARG2
+          CALL      C11
+          LD        GR7,GR0
+          ST        GR7,I2
+                                   ; If (("A"c <= ch) And (ch <= "Z"c)) Then
+          LD        GR7,='A'
+          LD        GR6,I2
+          XOR       GR0,GR0
+          CPA       GR7,GR6
+          JPL       J9
+          LAD       GR0,#FFFF
+J9        LD        GR7,GR0
+          LD        GR6,I2
+          LD        GR5,='Z'
+          XOR       GR0,GR0
+          CPA       GR6,GR5
+          JPL       J10
+          LAD       GR0,#FFFF
+J10       LD        GR6,GR0
+          AND       GR7,GR6
+          AND       GR7,GR7
+          JZE       J8
+                                   ; s( i ) = ((ch - "A"c) + "a"c)
+          LD        GR7,I1
+          LD        GR1,GR7
+          LD        GR2,ARG1
+          LD        GR2,0,GR2
+          CALL      C13
+          LD        GR7,ARG2
+          ADDL      GR7,GR0
+          LD        GR6,I2
+          SUBA      GR6,='A'
+          ADDA      GR6,='a'
+          ST        GR6,0,GR7
+                                   ; End If
+J8        NOP
+                                   ; Next i
+J2        NOP
+          LAD       GR1,I1
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J1
+J3        NOP
+EXIT      NOP
+          RET
+                                   ; ByRef s As String [GR1,GR2]
+ARG1      DS        1
+ARG2      DS        1
+                                   ; Dim i As Integer
+I1        DS        1
+                                   ; Dim ch As Integer
+I2        DS        1
+T1        DS        1
+                                   ; UtilFill
+C10       PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J11       CPL       GR1,GR3
+          JZE       J12
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J11
+J12       POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilLoadElement
+C11       AND       GR2,GR2
+          JNZ       J4
+          XOR       GR0,GR0
+          RET
+J4        CALL      C13
+          PUSH      0,GR3
+          ADDL      GR3,GR0
+          LD        GR0,0,GR3
+          POP       GR3
+          RET
+                                   ; UtilSafeIndex
+C13       AND       GR2,GR2
+          JNZ       J5
+          XOR       GR0,GR0
+          RET
+J5        LD        GR0,GR1
+          JPL       J6
+          XOR       GR0,GR0
+          RET
+J6        CPL       GR0,GR2
+          JMI       J7
+          LAD       GR0,-1
+          ADDL      GR0,GR2
+J7        RET
+          END
