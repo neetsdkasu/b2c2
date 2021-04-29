@@ -1,0 +1,220 @@
+MOVE      START
+                                   ; Argument cmd
+          ST        GR1,ARG1
+                                   ; Argument steps
+          ST        GR2,ARG2
+                                   ; Argument field
+          ST        GR3,ARG3
+                                   ; For i = 0 To 15 Step 1
+          XOR       GR7,GR7
+          ST        GR7,I2
+J1        NOP
+          LD        GR1,I2
+          CPA       GR1,=15
+          JPL       J3
+                                   ; If (field(i) = 0) Then
+          LD        GR7,I2
+          LD        GR1,GR7
+          LAD       GR2,16
+          CALL      C13
+          LD        GR7,ARG3
+          ADDL      GR7,GR0
+          LD        GR7,0,GR7
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J8
+          LAD       GR7,#FFFF
+J8        XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J4
+                                   ; pos = i
+          LD        GR7,I2
+          ST        GR7,I1
+                                   ; Select Case cmd
+          LD        GR7,ARG1
+          CPA       GR7,=0
+          JZE       J9
+          CPA       GR7,=1
+          JZE       J10
+          CPA       GR7,=2
+          JZE       J11
+          CPA       GR7,=3
+          JZE       J12
+          JUMP      J13
+                                   ; Case 0
+J9        NOP
+                                   ; If (i >= 4) Then
+          LD        GR7,I2
+          LAD       GR6,4
+          XOR       GR0,GR0
+          CPA       GR7,GR6
+          JMI       J15
+          LAD       GR0,#FFFF
+J15       LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J14
+                                   ; pos = (i - 4)
+          LD        GR7,I2
+          LAD       GR7,-4,GR7
+          ST        GR7,I1
+                                   ; End If
+J14       NOP
+          JUMP      J13
+                                   ; Case 1
+J10       NOP
+                                   ; If ((i And 3) <> 3) Then
+          LD        GR7,I2
+          AND       GR7,=3
+          LAD       GR6,3
+          SUBA      GR7,GR6
+          JZE       J17
+          LAD       GR7,#FFFF
+J17       NOP
+          AND       GR7,GR7
+          JZE       J16
+                                   ; pos = (i + 1)
+          LD        GR7,I2
+          LAD       GR7,1,GR7
+          ST        GR7,I1
+                                   ; End If
+J16       NOP
+          JUMP      J13
+                                   ; Case 2
+J11       NOP
+                                   ; If (i < 12) Then
+          LD        GR7,I2
+          LAD       GR6,12
+          LAD       GR0,#FFFF
+          CPA       GR7,GR6
+          JMI       J19
+          XOR       GR0,GR0
+J19       LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J18
+                                   ; pos = (i + 4)
+          LD        GR7,I2
+          LAD       GR7,4,GR7
+          ST        GR7,I1
+                                   ; End If
+J18       NOP
+          JUMP      J13
+                                   ; Case 3
+J12       NOP
+                                   ; If ((i And 3) <> 0) Then
+          LD        GR7,I2
+          AND       GR7,=3
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J21
+          LAD       GR7,#FFFF
+J21       NOP
+          AND       GR7,GR7
+          JZE       J20
+                                   ; pos = (i - 1)
+          LD        GR7,I2
+          LAD       GR7,-1,GR7
+          ST        GR7,I1
+                                   ; End If
+J20       NOP
+                                   ; End Select
+J13       NOP
+                                   ; If (pos = i) Then
+          LD        GR7,I1
+          LD        GR6,I2
+          SUBA      GR7,GR6
+          JZE       J24
+          LAD       GR7,#FFFF
+J24       XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J23
+                                   ; Print "CANNOT MOVE"
+          OUT       LB1,LL1
+          JUMP      J22
+                                   ; Else
+J23       NOP
+                                   ; steps += 1
+          LAD       GR7,1
+          LD        GR6,ARG2
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; field( i ) = field(pos)
+          LD        GR7,I2
+          LD        GR1,GR7
+          LAD       GR2,16
+          CALL      C13
+          LD        GR7,ARG3
+          ADDL      GR7,GR0
+          LD        GR6,I1
+          LD        GR1,GR6
+          LAD       GR2,16
+          CALL      C13
+          LD        GR6,ARG3
+          ADDL      GR6,GR0
+          LD        GR6,0,GR6
+          ST        GR6,0,GR7
+                                   ; field( pos ) = 0
+          LD        GR7,I1
+          LD        GR1,GR7
+          LAD       GR2,16
+          CALL      C13
+          LD        GR7,ARG3
+          ADDL      GR7,GR0
+          XOR       GR6,GR6
+          ST        GR6,0,GR7
+                                   ; End If
+J22       NOP
+                                   ; Exit For
+          JUMP      J3
+                                   ; End If
+J4        NOP
+                                   ; Next i
+J2        NOP
+          LAD       GR1,I2
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J1
+J3        NOP
+EXIT      NOP
+          RET
+                                   ; ByVal cmd As Integer [GR1]
+ARG1      DS        1
+                                   ; ByRef steps As Integer [GR2]
+ARG2      DS        1
+                                   ; ByRef field(15) As Integer [GR3]
+ARG3      DS        1
+                                   ; Dim pos As Integer
+I1        DS        1
+                                   ; Dim i As Integer
+I2        DS        1
+LL1       DC        11
+LB1       DC        'CANNOT MOVE'
+                                   ; UtilFill
+C10       PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J25       CPL       GR1,GR3
+          JZE       J26
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J25
+J26       POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilSafeIndex
+C13       AND       GR2,GR2
+          JNZ       J5
+          XOR       GR0,GR0
+          RET
+J5        LD        GR0,GR1
+          JPL       J6
+          XOR       GR0,GR0
+          RET
+J6        CPL       GR0,GR2
+          JMI       J7
+          LAD       GR0,-1
+          ADDL      GR0,GR2
+J7        RET
+          END

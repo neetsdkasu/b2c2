@@ -1,0 +1,228 @@
+INIT      START
+                                   ; Argument field
+          ST        GR1,ARG1
+                                   ; Print "Seed? (1 - 999)"
+          OUT       LB1,LL1
+                                   ; Input seed
+          IN        TB1,TL1
+          XOR       GR0,GR0
+          ST        GR0,EOF
+          LAD       GR1,TB1
+          LD        GR2,TL1
+          JPL       J4
+          JZE       J4
+          ST        GR2,EOF
+          XOR       GR2,GR2
+J4        CALL      C0
+          ST        GR0,I2
+                                   ; Call RAND
+                                   ;   ByVal init As Boolean [GR1]
+                                   ;   init = True
+          LAD       GR7,#FFFF
+          ST        GR7,T1
+                                   ;   ByRef value As Integer [GR2]
+                                   ;   value = Max(1, Min(999, seed))
+          LAD       GR7,1
+          LAD       GR6,999
+          LD        GR5,I2
+          CPA       GR6,GR5
+          JMI       J5
+          LD        GR6,GR5
+J5        NOP
+          CPA       GR7,GR6
+          JPL       J6
+          LD        GR7,GR6
+J6        NOP
+          ST        GR7,T2
+                                   ;   Set Arguments And Call RAND
+          LD        GR1,T1
+          LAD       GR2,T2
+          CALL      RAND
+                                   ; For i = 0 To 15 Step 1
+          XOR       GR7,GR7
+          ST        GR7,I1
+J7        NOP
+          LD        GR1,I1
+          CPA       GR1,=15
+          JPL       J9
+                                   ; field( i ) = ((i + 1) And 15)
+          LD        GR7,I1
+          LD        GR1,GR7
+          LAD       GR2,16
+          CALL      C13
+          LD        GR7,ARG1
+          ADDL      GR7,GR0
+          LD        GR6,I1
+          LAD       GR6,1,GR6
+          AND       GR6,=15
+          ST        GR6,0,GR7
+                                   ; Next i
+J8        NOP
+          LAD       GR1,I1
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J7
+J9        NOP
+                                   ; For i = 0 To 100 Step 1
+          XOR       GR7,GR7
+          ST        GR7,I1
+J13       NOP
+          LD        GR1,I1
+          CPA       GR1,=100
+          JPL       J15
+                                   ; Call RAND
+                                   ;   ByVal init As Boolean [GR1]
+                                   ;   init = False
+          XOR       GR7,GR7
+          ST        GR7,T2
+                                   ;   ByRef value As Integer [GR2]
+                                   ;   value = x
+                                   ;   Set Arguments And Call RAND
+          LD        GR1,T2
+          LAD       GR2,I3
+          CALL      RAND
+                                   ; Call RAND
+                                   ;   ByVal init As Boolean [GR1]
+                                   ;   init = False
+          XOR       GR7,GR7
+          ST        GR7,T2
+                                   ;   ByRef value As Integer [GR2]
+                                   ;   value = y
+                                   ;   Set Arguments And Call RAND
+          LD        GR1,T2
+          LAD       GR2,I4
+          CALL      RAND
+                                   ; temp = field(x)
+          LD        GR7,I3
+          LD        GR1,GR7
+          LAD       GR2,16
+          CALL      C13
+          LD        GR7,ARG1
+          ADDL      GR7,GR0
+          LD        GR7,0,GR7
+          ST        GR7,I5
+                                   ; field( x ) = field(y)
+          LD        GR7,I3
+          LD        GR1,GR7
+          LAD       GR2,16
+          CALL      C13
+          LD        GR7,ARG1
+          ADDL      GR7,GR0
+          LD        GR6,I4
+          LD        GR1,GR6
+          LAD       GR2,16
+          CALL      C13
+          LD        GR6,ARG1
+          ADDL      GR6,GR0
+          LD        GR6,0,GR6
+          ST        GR6,0,GR7
+                                   ; field( y ) = temp
+          LD        GR7,I4
+          LD        GR1,GR7
+          LAD       GR2,16
+          CALL      C13
+          LD        GR7,ARG1
+          ADDL      GR7,GR0
+          LD        GR6,I5
+          ST        GR6,0,GR7
+                                   ; Next i
+J14       NOP
+          LAD       GR1,I1
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J13
+J15       NOP
+EXIT      NOP
+          RET
+                                   ; ByRef field(15) As Integer [GR1]
+ARG1      DS        1
+                                   ; Dim i As Integer
+I1        DS        1
+                                   ; Dim seed As Integer
+I2        DS        1
+                                   ; Dim x As Integer
+I3        DS        1
+                                   ; Dim y As Integer
+I4        DS        1
+                                   ; Dim temp As Integer
+I5        DS        1
+EOF       DS        1
+T1        DS        1
+T2        DS        1
+TL1       DS        1
+TB1       DS        256
+LL1       DC        15
+LB1       DC        'Seed? (1 - 999)'
+                                   ; FuncCInt
+C0        PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          ADDL      GR2,GR1
+          XOR       GR0,GR0
+          XOR       GR4,GR4
+          CPL       GR1,GR2
+          JZE       J1
+          LD        GR3,0,GR1
+          CPL       GR3,='+'
+          JNZ       J3
+          LAD       GR1,1,GR1
+          JUMP      J2
+J3        CPL       GR3,='-'
+          JNZ       J2
+          LAD       GR4,-1
+          LAD       GR1,1,GR1
+J2        CPL       GR1,GR2
+          JZE       J1
+          LD        GR3,0,GR1
+          SUBL      GR3,='0'
+          JMI       J1
+          CPL       GR3,=9
+          JPL       J1
+          LD        GR5,GR0
+          SLL       GR0,3
+          ADDL      GR0,GR5
+          ADDL      GR0,GR5
+          ADDL      GR0,GR3
+          LAD       GR1,1,GR1
+          JUMP      J2
+J1        XOR       GR0,GR4
+          SUBL      GR0,GR4
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilFill
+C10       PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J16       CPL       GR1,GR3
+          JZE       J17
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J16
+J17       POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilSafeIndex
+C13       AND       GR2,GR2
+          JNZ       J10
+          XOR       GR0,GR0
+          RET
+J10       LD        GR0,GR1
+          JPL       J11
+          XOR       GR0,GR0
+          RET
+J11       CPL       GR0,GR2
+          JMI       J12
+          LAD       GR0,-1
+          ADDL      GR0,GR2
+J12       RET
+          END

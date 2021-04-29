@@ -1,0 +1,182 @@
+CMD       START
+                                   ; Argument cmd
+          ST        GR1,ARG1
+                                   ; cmd = -1
+          LAD       GR7,-1
+          LD        GR6,ARG1
+          ST        GR7,0,GR6
+                                   ; Do
+J1        NOP
+                                   ; Print "command? (up,right,down,left,end)"
+          OUT       LB1,LL1
+                                   ; Input s
+          IN        SB1,SL1
+          XOR       GR0,GR0
+          ST        GR0,EOF
+          LD        GR0,SL1
+          JPL       J4
+          JZE       J4
+          ST        GR0,EOF
+          XOR       GR0,GR0
+          ST        GR0,SL1
+J4        NOP
+                                   ; Call LOWER
+                                   ;   ByRef s As String [GR1,GR2]
+                                   ;   s = s
+                                   ;   Set Arguments And Call LOWER
+          LAD       GR1,SL1
+          LAD       GR2,SB1
+          CALL      LOWER
+                                   ; Select Case s
+          LAD       GR1,SB1
+          LD        GR2,SL1
+          LAD       GR3,='end'
+          LAD       GR4,3
+          CALL      C4
+          AND       GR0,GR0
+          JZE       J6
+          LAD       GR3,='up'
+          LAD       GR4,2
+          CALL      C4
+          AND       GR0,GR0
+          JZE       J7
+          LAD       GR3,='u'
+          LAD       GR4,1
+          CALL      C4
+          AND       GR0,GR0
+          JZE       J7
+          LAD       GR3,='right'
+          LAD       GR4,5
+          CALL      C4
+          AND       GR0,GR0
+          JZE       J8
+          LAD       GR3,='r'
+          LAD       GR4,1
+          CALL      C4
+          AND       GR0,GR0
+          JZE       J8
+          LAD       GR3,='down'
+          LAD       GR4,4
+          CALL      C4
+          AND       GR0,GR0
+          JZE       J9
+          LAD       GR3,='d'
+          LAD       GR4,1
+          CALL      C4
+          AND       GR0,GR0
+          JZE       J9
+          LAD       GR3,='left'
+          LAD       GR4,4
+          CALL      C4
+          AND       GR0,GR0
+          JZE       J10
+          LAD       GR3,='l'
+          LAD       GR4,1
+          CALL      C4
+          AND       GR0,GR0
+          JZE       J10
+          JUMP      J5
+                                   ; Case 'end'
+J6        NOP
+                                   ; Exit Do
+          JUMP      J3
+          JUMP      J5
+                                   ; Case 'up', 'u'
+J7        NOP
+                                   ; cmd = 0
+          XOR       GR7,GR7
+          LD        GR6,ARG1
+          ST        GR7,0,GR6
+                                   ; Exit Do
+          JUMP      J3
+          JUMP      J5
+                                   ; Case 'right', 'r'
+J8        NOP
+                                   ; cmd = 1
+          LAD       GR7,1
+          LD        GR6,ARG1
+          ST        GR7,0,GR6
+                                   ; Exit Do
+          JUMP      J3
+          JUMP      J5
+                                   ; Case 'down', 'd'
+J9        NOP
+                                   ; cmd = 2
+          LAD       GR7,2
+          LD        GR6,ARG1
+          ST        GR7,0,GR6
+                                   ; Exit Do
+          JUMP      J3
+          JUMP      J5
+                                   ; Case 'left', 'l'
+J10       NOP
+                                   ; cmd = 3
+          LAD       GR7,3
+          LD        GR6,ARG1
+          ST        GR7,0,GR6
+                                   ; Exit Do
+          JUMP      J3
+                                   ; End Select
+J5        NOP
+                                   ; Loop Until Eof(0)
+J2        NOP
+          LD        GR7,EOF
+          AND       GR7,GR7
+          JZE       J1
+J3        NOP
+EXIT      NOP
+          RET
+                                   ; ByRef cmd As Integer [GR1]
+ARG1      DS        1
+                                   ; Dim s As String
+SL1       DS        1
+SB1       DS        256
+EOF       DS        1
+LL1       DC        33
+LB1       DC        'command? (up,right,down,left,end)'
+                                   ; UtilCompareStr
+C4        PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          XOR       GR0,GR0
+J11       AND       GR2,GR2
+          JPL       J12
+          CPL       GR2,GR4
+          JNZ       J13
+          JUMP      J15
+J12       AND       GR4,GR4
+          JZE       J14
+          LD        GR5,0,GR1
+          CPL       GR5,0,GR3
+          JMI       J13
+          JPL       J14
+          LAD       GR1,1,GR1
+          LAD       GR2,-1,GR2
+          LAD       GR3,1,GR3
+          LAD       GR4,-1,GR4
+          JUMP      J11
+J13       LAD       GR0,-1
+J14       OR        GR0,=1
+J15       POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilFill
+C10       PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J16       CPL       GR1,GR3
+          JZE       J17
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J16
+J17       POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+          END
