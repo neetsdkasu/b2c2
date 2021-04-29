@@ -24,7 +24,7 @@ Program INIT
 
     Print "Seed? (1 - 999)"
     Input seed
-    Call RAND(True, Max(1, Min(999, seed)))
+    Call RAND(True, Max(100, Min(1099, seed + 100)))
     For i = 0 To 15
         field(i) = (i + 1) And 15
     Next i
@@ -33,8 +33,7 @@ Program INIT
     For i = 0 To 1000
         Call RAND(False, cmd)
         Call RAND(False, count)
-        count = count Xor (count >> 1)
-        For k = 0 To count
+        For k = 0 To count Xor (count >> 1)
             Select Case cmd
                 Case 0
                     If temp >= 4 Then

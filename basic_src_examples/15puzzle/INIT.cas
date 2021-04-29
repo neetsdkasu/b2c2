@@ -21,10 +21,11 @@ J4        CALL      C0
           LAD       GR7,#FFFF
           ST        GR7,T1
                                    ;   ByRef value As Integer [GR2]
-                                   ;   value = Max(1, Min(999, seed))
-          LAD       GR7,1
-          LAD       GR6,999
+                                   ;   value = Max(100, Min(1099, (seed + 100)))
+          LAD       GR7,100
+          LAD       GR6,1099
           LD        GR5,I3
+          LAD       GR5,100,GR5
           CPA       GR6,GR5
           JMI       J5
           LD        GR6,GR5
@@ -99,14 +100,11 @@ J13       NOP
           LD        GR1,T2
           LAD       GR2,I7
           CALL      RAND
-                                   ; count = (count Xor (count >> 1))
+                                   ; For k = 0 To (count Xor (count >> 1)) Step 1
           LD        GR7,I7
           LD        GR6,I7
           SRA       GR6,1
           XOR       GR7,GR6
-          ST        GR7,I7
-                                   ; For k = 0 To count Step 1
-          LD        GR7,I7
           ST        GR7,T2
           XOR       GR7,GR7
           ST        GR7,I2
