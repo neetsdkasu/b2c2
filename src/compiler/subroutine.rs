@@ -694,7 +694,7 @@ fn get_func_space<T: Gen>(_gen: &mut T, id: Id) -> Src {
        XOR   GR1,GR3
        XOR   GR3,GR1
        XOR   GR1,GR3
-       LAD   GR2,256
+       LAD   GR2,257
        CALL  {fit}
        LD    GR1,GR3
        LD    GR3,GR0
