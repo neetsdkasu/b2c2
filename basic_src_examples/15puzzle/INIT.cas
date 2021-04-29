@@ -21,8 +21,8 @@ J4        CALL      C0
           LAD       GR7,#FFFF
           ST        GR7,T1
                                    ;   ByRef value As Integer [GR2]
-                                   ;   value = Max(100, Min(1099, (seed + 100)))
-          LAD       GR7,100
+                                   ;   value = Max(101, Min(1099, (seed + 100)))
+          LAD       GR7,101
           LAD       GR6,1099
           LD        GR5,I3
           LAD       GR5,100,GR5

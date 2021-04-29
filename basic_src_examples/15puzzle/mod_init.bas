@@ -24,7 +24,7 @@ Program INIT
 
     Print "Seed? (1 - 999)"
     Input seed
-    Call RAND(True, Max(100, Min(1099, seed + 100)))
+    Call RAND(True, Max(101, Min(1099, seed + 100)))
     For i = 0 To 15
         field(i) = (i + 1) And 15
     Next i
