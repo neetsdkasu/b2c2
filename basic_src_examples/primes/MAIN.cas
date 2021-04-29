@@ -4,7 +4,7 @@ MAIN      START
           LAD       GR1,I3
           XOR       GR2,GR2
           LAD       GR3,607
-          CALL      C14
+          CALL      C10
                                    ; For i = 2 To 255 Step 1
           LAD       GR7,2
           ST        GR7,I4
@@ -16,7 +16,7 @@ J1        NOP
           LD        GR7,I4
           LD        GR1,GR7
           LAD       GR2,256
-          CALL      C17
+          CALL      C13
           LAD       GR7,BA1
           ADDL      GR7,GR0
           XOR       GR6,GR6
@@ -43,7 +43,7 @@ J7        NOP
           LD        GR7,I4
           LD        GR1,GR7
           LAD       GR2,256
-          CALL      C17
+          CALL      C13
           LAD       GR7,BA1
           ADDL      GR7,GR0
           LD        GR7,0,GR7
@@ -57,7 +57,7 @@ J10       NOP
           LD        GR7,I3
           LD        GR1,GR7
           LAD       GR2,91
-          CALL      C17
+          CALL      C13
           LAD       GR7,IA2
           ADDL      GR7,GR0
           LD        GR6,I4
@@ -89,7 +89,7 @@ J13       NOP
           LD        GR7,I5
           LD        GR1,GR7
           LAD       GR2,256
-          CALL      C17
+          CALL      C13
           LAD       GR7,BA1
           ADDL      GR7,GR0
           LAD       GR6,#FFFF
@@ -115,24 +115,24 @@ J9        NOP
           LD        GR3,GR7
           LAD       GR1,TB1
           LAD       GR2,TL1
-          CALL      C3
+          CALL      C2
           LAD       GR1,TB2
           LAD       GR2,TL2
           LAD       GR3,='PRIMES: '
           LAD       GR4,8
-          CALL      C11
+          CALL      C7
           LAD       GR1,TB2
           LAD       GR2,TL2
           LAD       GR3,TB1
           LD        GR4,TL1
-          CALL      C9
+          CALL      C5
           OUT       TB2,TL2
                                    ; s = ""
           LAD       GR1,SB6
           LAD       GR2,SL6
           LAD       GR3,=0
           XOR       GR4,GR4
-          CALL      C11
+          CALL      C7
                                    ; For i = 0 To (count - 1) Step 1
           LD        GR7,I3
           LAD       GR7,-1,GR7
@@ -147,7 +147,7 @@ J40       NOP
           LD        GR7,I4
           LD        GR1,GR7
           LAD       GR2,91
-          CALL      C17
+          CALL      C13
           LAD       GR7,IA2
           ADDL      GR7,GR0
           LD        GR7,0,GR7
@@ -164,29 +164,29 @@ J45       LD        GR7,GR0
           LD        GR3,GR7
           LAD       GR1,TB2
           LAD       GR2,TL2
-          CALL      C6
+          CALL      C3
           LAD       GR1,TB1
           LAD       GR2,TL1
           LAD       GR3,SB6
           LD        GR4,SL6
-          CALL      C11
+          CALL      C7
           LAD       GR1,TB1
           LAD       GR2,TL1
           LAD       GR3,TB2
           LD        GR4,TL2
-          CALL      C9
+          CALL      C5
           LAD       GR1,SB6
           LAD       GR2,SL6
           LAD       GR3,TB1
           LD        GR4,TL1
-          CALL      C11
+          CALL      C7
           JUMP      J43
                                    ; ElseIf (prime(i) < 100) Then
 J44       NOP
           LD        GR7,I4
           LD        GR1,GR7
           LAD       GR2,91
-          CALL      C17
+          CALL      C13
           LAD       GR7,IA2
           ADDL      GR7,GR0
           LD        GR7,0,GR7
@@ -203,62 +203,62 @@ J48       LD        GR7,GR0
           LD        GR3,GR7
           LAD       GR1,TB1
           LAD       GR2,TL1
-          CALL      C6
+          CALL      C3
           LAD       GR1,TB2
           LAD       GR2,TL2
           LAD       GR3,SB6
           LD        GR4,SL6
-          CALL      C11
+          CALL      C7
           LAD       GR1,TB2
           LAD       GR2,TL2
           LAD       GR3,TB1
           LD        GR4,TL1
-          CALL      C9
+          CALL      C5
           LAD       GR1,SB6
           LAD       GR2,SL6
           LAD       GR3,TB2
           LD        GR4,TL2
-          CALL      C11
+          CALL      C7
                                    ; End If
 J43       NOP
                                    ; s = ((s & CStr(prime(i))) & ",")
           LD        GR7,I4
           LD        GR1,GR7
           LAD       GR2,91
-          CALL      C17
+          CALL      C13
           LAD       GR7,IA2
           ADDL      GR7,GR0
           LD        GR7,0,GR7
           LD        GR3,GR7
           LAD       GR1,TB2
           LAD       GR2,TL2
-          CALL      C3
+          CALL      C2
           LAD       GR1,TB1
           LAD       GR2,TL1
           LAD       GR3,SB6
           LD        GR4,SL6
-          CALL      C11
+          CALL      C7
           LAD       GR1,TB1
           LAD       GR2,TL1
           LAD       GR3,TB2
           LD        GR4,TL2
-          CALL      C9
+          CALL      C5
           LAD       GR1,TB1
           LAD       GR2,TL1
           LAD       GR3,=','
           LAD       GR4,1
-          CALL      C9
+          CALL      C5
           LAD       GR1,SB6
           LAD       GR2,SL6
           LAD       GR3,TB1
           LD        GR4,TL1
-          CALL      C11
+          CALL      C7
                                    ; If ((i Mod 10) = 9) Then
           LD        GR7,I4
           LAD       GR6,10
           LD        GR3,GR6
           LD        GR2,GR7
-          CALL      C13
+          CALL      C9
           LD        GR0,GR1
           LD        GR7,GR0
           LAD       GR6,9
@@ -275,7 +275,7 @@ J50       XOR       GR7,=#FFFF
           LAD       GR2,SL6
           LAD       GR3,=0
           XOR       GR4,GR4
-          CALL      C11
+          CALL      C7
                                    ; End If
 J49       NOP
                                    ; Next i
@@ -322,13 +322,13 @@ TB1       DS        256
 TL2       DS        1
 TB2       DS        256
                                    ; FuncCStrArgInt
-C3        CPL       GR3,=#8000
+C2        CPL       GR3,=#8000
           JNZ       J16
           PUSH      0,GR3
           PUSH      0,GR4
           LAD       GR3,='-32768'
           LAD       GR4,6
-          CALL      C11
+          CALL      C7
           POP       GR4
           POP       GR3
           RET
@@ -355,7 +355,7 @@ J18       LAD       GR4,V1
           LD        GR5,GR1
           LD        GR2,GR3
           LAD       GR3,10
-J19       CALL      C13
+J19       CALL      C9
           ADDL      GR1,='0'
           ST        GR1,0,GR4
           LAD       GR4,1,GR4
@@ -381,18 +381,18 @@ J20       LD        GR1,0,GR4
           RET
 V1        DS        6
                                    ; FuncSpace
-C6        PUSH      0,GR1
+C3        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           XOR       GR1,GR3
           XOR       GR3,GR1
           XOR       GR1,GR3
-          LAD       GR2,256
-          CALL      C17
+          LAD       GR2,257
+          CALL      C13
           LD        GR1,GR3
           LD        GR3,GR0
           LD        GR2,=' '
-          CALL      C14
+          CALL      C10
           LD        GR0,GR3
           POP       GR3
           POP       GR2
@@ -400,7 +400,7 @@ C6        PUSH      0,GR1
           ST        GR0,0,GR2
           RET
                                    ; UtilConcatStr
-C9        PUSH      0,GR1
+C5        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -427,7 +427,7 @@ J39       LD        GR0,GR1
           ST        GR0,0,GR2
           RET
                                    ; UtilCopyStr
-C11       PUSH      0,GR1
+C7        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -446,7 +446,7 @@ J22       POP       GR4
           POP       GR1
           RET
                                    ; UtilDivMod
-C13       AND       GR3,GR3
+C9        AND       GR3,GR3
           JNZ       J25
           XOR       GR0,GR0
           LAD       GR1,-1
@@ -485,7 +485,7 @@ J30       LD        GR5,GR4
           SRA       GR5,15
           XOR       GR2,GR5
           SUBA      GR2,GR5
-          CALL      C16
+          CALL      C12
           LD        GR1,GR4
           SUBA      GR1,GR0
           LD        GR0,GR2
@@ -495,7 +495,7 @@ J30       LD        GR5,GR4
           POP       GR2
           RET
                                    ; UtilFill
-C14       PUSH      0,GR1
+C10       PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           ADDL      GR3,GR1
@@ -509,7 +509,7 @@ J47       POP       GR3
           POP       GR1
           RET
                                    ; UtilMul
-C16       PUSH      0,GR2
+C12       PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
           PUSH      0,GR5
@@ -540,7 +540,7 @@ J37       POP       GR5
           POP       GR2
           RET
                                    ; UtilSafeIndex
-C17       AND       GR2,GR2
+C13       AND       GR2,GR2
           JNZ       J4
           XOR       GR0,GR0
           RET

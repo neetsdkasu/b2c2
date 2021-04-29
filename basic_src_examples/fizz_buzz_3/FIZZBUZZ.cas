@@ -10,7 +10,7 @@ FIZZBUZZ  START
           LAD       GR6,15
           LD        GR3,GR6
           LD        GR2,GR7
-          CALL      C13
+          CALL      C9
           LD        GR0,GR1
           LD        GR7,GR0
           CPA       GR7,=0
@@ -35,7 +35,7 @@ J1        NOP
           LD        GR2,ARG2
           LAD       GR3,='FizzBuzz'
           LAD       GR4,8
-          CALL      C11
+          CALL      C7
           JUMP      J20
                                    ; Case 3, 6, 9, 12
 J2        NOP
@@ -44,7 +44,7 @@ J2        NOP
           LD        GR2,ARG2
           LAD       GR3,='FIZZ'
           LAD       GR4,4
-          CALL      C11
+          CALL      C7
           JUMP      J20
                                    ; Case 5, 10
 J3        NOP
@@ -53,7 +53,7 @@ J3        NOP
           LD        GR2,ARG2
           LAD       GR3,='BUZZ'
           LAD       GR4,4
-          CALL      C11
+          CALL      C7
           JUMP      J20
                                    ; Case Else
 J4        NOP
@@ -62,12 +62,12 @@ J4        NOP
           LD        GR3,GR7
           LAD       GR1,TB1
           LAD       GR2,TL1
-          CALL      C3
+          CALL      C2
           LD        GR1,ARG3
           LD        GR2,ARG2
           LAD       GR3,TB1
           LD        GR4,TL1
-          CALL      C11
+          CALL      C7
                                    ; End Select
 J20       NOP
 EXIT      NOP
@@ -81,13 +81,13 @@ ARG3      DS        1
 TL1       DS        1
 TB1       DS        256
                                    ; FuncCStrArgInt
-C3        CPL       GR3,=#8000
+C2        CPL       GR3,=#8000
           JNZ       J23
           PUSH      0,GR3
           PUSH      0,GR4
           LAD       GR3,='-32768'
           LAD       GR4,6
-          CALL      C11
+          CALL      C7
           POP       GR4
           POP       GR3
           RET
@@ -114,7 +114,7 @@ J25       LAD       GR4,V1
           LD        GR5,GR1
           LD        GR2,GR3
           LAD       GR3,10
-J26       CALL      C13
+J26       CALL      C9
           ADDL      GR1,='0'
           ST        GR1,0,GR4
           LAD       GR4,1,GR4
@@ -140,7 +140,7 @@ J27       LD        GR1,0,GR4
           RET
 V1        DS        6
                                    ; UtilCopyStr
-C11       PUSH      0,GR1
+C7        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -159,7 +159,7 @@ J22       POP       GR4
           POP       GR1
           RET
                                    ; UtilDivMod
-C13       AND       GR3,GR3
+C9        AND       GR3,GR3
           JNZ       J7
           XOR       GR0,GR0
           LAD       GR1,-1
@@ -198,7 +198,7 @@ J12       LD        GR5,GR4
           SRA       GR5,15
           XOR       GR2,GR5
           SUBA      GR2,GR5
-          CALL      C16
+          CALL      C12
           LD        GR1,GR4
           SUBA      GR1,GR0
           LD        GR0,GR2
@@ -208,7 +208,7 @@ J12       LD        GR5,GR4
           POP       GR2
           RET
                                    ; UtilMul
-C16       PUSH      0,GR2
+C12       PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
           PUSH      0,GR5

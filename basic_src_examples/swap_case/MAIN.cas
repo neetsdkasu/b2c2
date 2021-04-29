@@ -4,7 +4,7 @@ MAIN      START
           LAD       GR1,I2
           XOR       GR2,GR2
           LAD       GR3,258
-          CALL      C14
+          CALL      C10
                                    ; Print "Swapcase Alphabet"
           OUT       LB1,LL1
                                    ; Input s
@@ -33,7 +33,7 @@ J2        NOP
           LD        GR1,GR7
           LD        GR2,SL1
           LAD       GR3,SB1
-          CALL      C15
+          CALL      C11
           LD        GR7,GR0
           LD        GR6,='A'
           XOR       GR0,GR0
@@ -45,7 +45,7 @@ J11       LD        GR7,GR0
           LD        GR1,GR6
           LD        GR2,SL1
           LAD       GR3,SB1
-          CALL      C15
+          CALL      C11
           LD        GR6,GR0
           LD        GR5,='Z'
           XOR       GR0,GR0
@@ -60,14 +60,14 @@ J12       LD        GR6,GR0
           LD        GR7,I2
           LD        GR1,GR7
           LD        GR2,SL1
-          CALL      C17
+          CALL      C13
           LAD       GR7,SB1
           ADDL      GR7,GR0
           LD        GR6,I2
           LD        GR1,GR6
           LD        GR2,SL1
           LAD       GR3,SB1
-          CALL      C15
+          CALL      C11
           LD        GR6,GR0
           ADDA      GR6,='a'
           SUBA      GR6,='A'
@@ -79,7 +79,7 @@ J6        NOP
           LD        GR1,GR7
           LD        GR2,SL1
           LAD       GR3,SB1
-          CALL      C15
+          CALL      C11
           LD        GR7,GR0
           LD        GR6,='a'
           LAD       GR0,#FFFF
@@ -91,7 +91,7 @@ J13       LD        GR7,GR0
           LD        GR1,GR6
           LD        GR2,SL1
           LAD       GR3,SB1
-          CALL      C15
+          CALL      C11
           LD        GR6,GR0
           LD        GR5,='z'
           LAD       GR0,#FFFF
@@ -107,14 +107,14 @@ J14       LD        GR6,GR0
           LD        GR7,I2
           LD        GR1,GR7
           LD        GR2,SL1
-          CALL      C17
+          CALL      C13
           LAD       GR7,SB1
           ADDL      GR7,GR0
           LD        GR6,I2
           LD        GR1,GR6
           LD        GR2,SL1
           LAD       GR3,SB1
-          CALL      C15
+          CALL      C11
           LD        GR6,GR0
           ADDA      GR6,='A'
           SUBA      GR6,='a'
@@ -144,7 +144,7 @@ T1        DS        1
 LL1       DC        17
 LB1       DC        'Swapcase Alphabet'
                                    ; UtilFill
-C14       PUSH      0,GR1
+C10       PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           ADDL      GR3,GR1
@@ -158,18 +158,18 @@ J16       POP       GR3
           POP       GR1
           RET
                                    ; UtilLoadElement
-C15       AND       GR2,GR2
+C11       AND       GR2,GR2
           JNZ       J7
           XOR       GR0,GR0
           RET
-J7        CALL      C17
+J7        CALL      C13
           PUSH      0,GR3
           ADDL      GR3,GR0
           LD        GR0,0,GR3
           POP       GR3
           RET
                                    ; UtilSafeIndex
-C17       AND       GR2,GR2
+C13       AND       GR2,GR2
           JNZ       J8
           XOR       GR0,GR0
           RET

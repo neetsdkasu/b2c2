@@ -4,7 +4,7 @@ MAIN      START
           LAD       GR1,I2
           XOR       GR2,GR2
           LAD       GR3,258
-          CALL      C14
+          CALL      C10
                                    ; Do
 J1        NOP
                                    ; Print "Number?"
@@ -25,7 +25,7 @@ J3        NOP
           LD        GR2,SL1
           LAD       GR3,='end'
           LAD       GR4,3
-          CALL      C8
+          CALL      C4
           SLL       GR0,15
           SRA       GR0,15
           XOR       GR0,=#FFFF
@@ -39,7 +39,7 @@ J4        NOP
                                    ; n = CInt(s)
           LAD       GR1,SB1
           LD        GR2,SL1
-          CALL      C1
+          CALL      C0
           LD        GR7,GR0
           ST        GR7,I2
                                    ; If (n < 1) Then
@@ -63,7 +63,7 @@ J13       NOP
           LAD       GR6,15
           LD        GR3,GR6
           LD        GR2,GR7
-          CALL      C13
+          CALL      C9
           LD        GR0,GR1
           LD        GR7,GR0
           XOR       GR6,GR6
@@ -78,7 +78,7 @@ J34       XOR       GR7,=#FFFF
           LAD       GR2,SL1
           LAD       GR3,='FizzBuzz'
           LAD       GR4,8
-          CALL      C11
+          CALL      C7
           JUMP      J15
                                    ; ElseIf ((n Mod 3) = 0) Then
 J16       NOP
@@ -86,7 +86,7 @@ J16       NOP
           LAD       GR6,3
           LD        GR3,GR6
           LD        GR2,GR7
-          CALL      C13
+          CALL      C9
           LD        GR0,GR1
           LD        GR7,GR0
           XOR       GR6,GR6
@@ -101,7 +101,7 @@ J37       XOR       GR7,=#FFFF
           LAD       GR2,SL1
           LAD       GR3,='Fizz'
           LAD       GR4,4
-          CALL      C11
+          CALL      C7
           JUMP      J15
                                    ; ElseIf ((n Mod 5) = 0) Then
 J17       NOP
@@ -109,7 +109,7 @@ J17       NOP
           LAD       GR6,5
           LD        GR3,GR6
           LD        GR2,GR7
-          CALL      C13
+          CALL      C9
           LD        GR0,GR1
           LD        GR7,GR0
           XOR       GR6,GR6
@@ -124,7 +124,7 @@ J38       XOR       GR7,=#FFFF
           LAD       GR2,SL1
           LAD       GR3,='Buzz'
           LAD       GR4,4
-          CALL      C11
+          CALL      C7
           JUMP      J15
                                    ; Else
 J18       NOP
@@ -133,12 +133,12 @@ J18       NOP
           LD        GR3,GR7
           LAD       GR1,TB1
           LAD       GR2,TL1
-          CALL      C3
+          CALL      C2
           LAD       GR1,SB1
           LAD       GR2,SL1
           LAD       GR3,TB1
           LD        GR4,TL1
-          CALL      C11
+          CALL      C7
                                    ; End If
 J15       NOP
                                    ; Print s
@@ -162,7 +162,7 @@ LB1       DC        'Number?'
 LL2       DC        13
 LB2       DC        'Invalid Input'
                                    ; FuncCInt
-C1        PUSH      0,GR1
+C0        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -204,13 +204,13 @@ J10       XOR       GR0,GR4
           POP       GR1
           RET
                                    ; FuncCStrArgInt
-C3        CPL       GR3,=#8000
+C2        CPL       GR3,=#8000
           JNZ       J39
           PUSH      0,GR3
           PUSH      0,GR4
           LAD       GR3,='-32768'
           LAD       GR4,6
-          CALL      C11
+          CALL      C7
           POP       GR4
           POP       GR3
           RET
@@ -237,7 +237,7 @@ J41       LAD       GR4,V1
           LD        GR5,GR1
           LD        GR2,GR3
           LAD       GR3,10
-J42       CALL      C13
+J42       CALL      C9
           ADDL      GR1,='0'
           ST        GR1,0,GR4
           LAD       GR4,1,GR4
@@ -263,7 +263,7 @@ J43       LD        GR1,0,GR4
           RET
 V1        DS        6
                                    ; UtilCompareStr
-C8        PUSH      0,GR1
+C4        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -294,7 +294,7 @@ J9        POP       GR5
           POP       GR1
           RET
                                    ; UtilCopyStr
-C11       PUSH      0,GR1
+C7        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -313,7 +313,7 @@ J36       POP       GR4
           POP       GR1
           RET
                                    ; UtilDivMod
-C13       AND       GR3,GR3
+C9        AND       GR3,GR3
           JNZ       J21
           XOR       GR0,GR0
           LAD       GR1,-1
@@ -352,7 +352,7 @@ J26       LD        GR5,GR4
           SRA       GR5,15
           XOR       GR2,GR5
           SUBA      GR2,GR5
-          CALL      C16
+          CALL      C12
           LD        GR1,GR4
           SUBA      GR1,GR0
           LD        GR0,GR2
@@ -362,7 +362,7 @@ J26       LD        GR5,GR4
           POP       GR2
           RET
                                    ; UtilFill
-C14       PUSH      0,GR1
+C10       PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           ADDL      GR3,GR1
@@ -376,7 +376,7 @@ J45       POP       GR3
           POP       GR1
           RET
                                    ; UtilMul
-C16       PUSH      0,GR2
+C12       PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
           PUSH      0,GR5

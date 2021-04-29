@@ -4,7 +4,7 @@ MAIN      START
           LAD       GR1,I1
           XOR       GR2,GR2
           LAD       GR3,774
-          CALL      C14
+          CALL      C10
                                    ; Print "NUMBERS? (comma separated)"
           OUT       LB1,LL1
                                    ; Input s
@@ -21,7 +21,7 @@ J1        NOP
                                    ; arr( 0 ) = CInt(s)
           LAD       GR1,SB5
           LD        GR2,SL5
-          CALL      C1
+          CALL      C0
           LD        GR7,GR0
           LAD       GR6,IA7
           ST        GR7,0,GR6
@@ -40,7 +40,7 @@ J5        NOP
           LD        GR1,GR7
           LD        GR2,SL5
           LAD       GR3,SB5
-          CALL      C15
+          CALL      C11
           LD        GR7,GR0
           LD        GR6,=','
           SUBA      GR7,GR6
@@ -58,7 +58,7 @@ J13       XOR       GR7,=#FFFF
           LD        GR7,I1
           LD        GR1,GR7
           LAD       GR2,256
-          CALL      C17
+          CALL      C13
           LAD       GR7,IA7
           ADDL      GR7,GR0
           LD        GR6,I2
@@ -70,12 +70,12 @@ J13       XOR       GR7,=#FFFF
           LD        GR4,SL5
           LD        GR2,GR4
           LD        GR6,GR4
-          CALL      C10
+          CALL      C6
           ST        GR0,TL1
           POP       GR6
           LAD       GR1,TB1
           LD        GR2,TL1
-          CALL      C1
+          CALL      C0
           LD        GR6,GR0
           ST        GR6,0,GR7
                                    ; End If
@@ -114,7 +114,7 @@ J22       NOP
           LAD       GR7,1,GR7
           LD        GR1,GR7
           LAD       GR2,256
-          CALL      C17
+          CALL      C13
           LAD       GR7,IA7
           ADDL      GR7,GR0
           LD        GR7,0,GR7
@@ -123,7 +123,7 @@ J22       NOP
           LD        GR7,I3
           LD        GR1,GR7
           LAD       GR2,256
-          CALL      C17
+          CALL      C13
           LAD       GR7,IA7
           ADDL      GR7,GR0
           LD        GR7,0,GR7
@@ -140,13 +140,13 @@ J26       LD        GR7,GR0
           LAD       GR7,1,GR7
           LD        GR1,GR7
           LAD       GR2,256
-          CALL      C17
+          CALL      C13
           LAD       GR7,IA7
           ADDL      GR7,GR0
           LD        GR6,I3
           LD        GR1,GR6
           LAD       GR2,256
-          CALL      C17
+          CALL      C13
           LAD       GR6,IA7
           ADDL      GR6,GR0
           LD        GR6,0,GR6
@@ -155,7 +155,7 @@ J26       LD        GR7,GR0
           LD        GR7,I3
           LD        GR1,GR7
           LAD       GR2,256
-          CALL      C17
+          CALL      C13
           LAD       GR7,IA7
           ADDL      GR7,GR0
           LD        GR6,I4
@@ -174,34 +174,34 @@ J24       NOP
           LD        GR7,I3
           LD        GR1,GR7
           LAD       GR2,256
-          CALL      C17
+          CALL      C13
           LAD       GR7,IA7
           ADDL      GR7,GR0
           LD        GR7,0,GR7
           LD        GR3,GR7
           LAD       GR1,TB1
           LAD       GR2,TL1
-          CALL      C3
+          CALL      C2
           LAD       GR1,TB2
           LAD       GR2,TL2
           LAD       GR3,SB6
           LD        GR4,SL6
-          CALL      C11
+          CALL      C7
           LAD       GR1,TB2
           LAD       GR2,TL2
           LAD       GR3,TB1
           LD        GR4,TL1
-          CALL      C9
+          CALL      C5
           LAD       GR1,TB2
           LAD       GR2,TL2
           LAD       GR3,=','
           LAD       GR4,1
-          CALL      C9
+          CALL      C5
           LAD       GR1,SB6
           LAD       GR2,SL6
           LAD       GR3,TB2
           LD        GR4,TL2
-          CALL      C11
+          CALL      C7
                                    ; Next i
 J20       NOP
           LAD       GR1,I2
@@ -241,7 +241,7 @@ TB2       DS        256
 LL1       DC        26
 LB1       DC        'NUMBERS? (comma separated)'
                                    ; FuncCInt
-C1        PUSH      0,GR1
+C0        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -283,13 +283,13 @@ J2        XOR       GR0,GR4
           POP       GR1
           RET
                                    ; FuncCStrArgInt
-C3        CPL       GR3,=#8000
+C2        CPL       GR3,=#8000
           JNZ       J27
           PUSH      0,GR3
           PUSH      0,GR4
           LAD       GR3,='-32768'
           LAD       GR4,6
-          CALL      C11
+          CALL      C7
           POP       GR4
           POP       GR3
           RET
@@ -316,7 +316,7 @@ J29       LAD       GR4,V1
           LD        GR5,GR1
           LD        GR2,GR3
           LAD       GR3,10
-J30       CALL      C13
+J30       CALL      C9
           ADDL      GR1,='0'
           ST        GR1,0,GR4
           LAD       GR4,1,GR4
@@ -342,7 +342,7 @@ J31       LD        GR1,0,GR4
           RET
 V1        DS        6
                                    ; UtilConcatStr
-C9        PUSH      0,GR1
+C5        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -369,13 +369,13 @@ J50       LD        GR0,GR1
           ST        GR0,0,GR2
           RET
                                    ; UtilCopyFromOffsetStr
-C10       PUSH      0,GR1
+C6        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
           PUSH      0,GR5
           PUSH      0,GR6
-          CALL      C17
+          CALL      C13
           LD        GR1,GR6
           LD        GR6,GR0
           CPL       GR1,GR2
@@ -408,7 +408,7 @@ J18       POP       GR6
           POP       GR1
           RET
                                    ; UtilCopyStr
-C11       PUSH      0,GR1
+C7        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -427,7 +427,7 @@ J33       POP       GR4
           POP       GR1
           RET
                                    ; UtilDivMod
-C13       AND       GR3,GR3
+C9        AND       GR3,GR3
           JNZ       J36
           XOR       GR0,GR0
           LAD       GR1,-1
@@ -466,7 +466,7 @@ J41       LD        GR5,GR4
           SRA       GR5,15
           XOR       GR2,GR5
           SUBA      GR2,GR5
-          CALL      C16
+          CALL      C12
           LD        GR1,GR4
           SUBA      GR1,GR0
           LD        GR0,GR2
@@ -476,7 +476,7 @@ J41       LD        GR5,GR4
           POP       GR2
           RET
                                    ; UtilFill
-C14       PUSH      0,GR1
+C10       PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           ADDL      GR3,GR1
@@ -490,18 +490,18 @@ J52       POP       GR3
           POP       GR1
           RET
                                    ; UtilLoadElement
-C15       AND       GR2,GR2
+C11       AND       GR2,GR2
           JNZ       J9
           XOR       GR0,GR0
           RET
-J9        CALL      C17
+J9        CALL      C13
           PUSH      0,GR3
           ADDL      GR3,GR0
           LD        GR0,0,GR3
           POP       GR3
           RET
                                    ; UtilMul
-C16       PUSH      0,GR2
+C12       PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
           PUSH      0,GR5
@@ -532,7 +532,7 @@ J48       POP       GR5
           POP       GR2
           RET
                                    ; UtilSafeIndex
-C17       AND       GR2,GR2
+C13       AND       GR2,GR2
           JNZ       J10
           XOR       GR0,GR0
           RET

@@ -4,10 +4,10 @@ MAIN      START
           LAD       GR1,I1
           XOR       GR2,GR2
           LAD       GR3,2
-          CALL      C14
-                                   ; Print "Limit?"
+          CALL      C10
+                                   ; Print "LIMIT?"
           OUT       LB1,LL1
-                                   ; Input c
+                                   ; Input C
           IN        TB1,TL1
           XOR       GR0,GR0
           ST        GR0,EOF
@@ -17,9 +17,9 @@ MAIN      START
           JZE       J4
           ST        GR2,EOF
           XOR       GR2,GR2
-J4        CALL      C1
+J4        CALL      C0
           ST        GR0,I2
-                                   ; c = Max(1, Min(100, c))
+                                   ; C = Max(1, Min(100, C))
           LAD       GR7,1
           LAD       GR6,100
           LD        GR5,I2
@@ -32,7 +32,7 @@ J5        NOP
           LD        GR7,GR6
 J6        NOP
           ST        GR7,I2
-                                   ; For i = 1 To c Step 1
+                                   ; For I = 1 To C Step 1
           LD        GR7,I2
           ST        GR7,T1
           LAD       GR7,1
@@ -41,12 +41,12 @@ J7        NOP
           LD        GR1,I1
           CPA       GR1,T1
           JPL       J9
-                                   ; Select Case (i Mod 15)
+                                   ; Select Case (I Mod 15)
           LD        GR7,I1
           LAD       GR6,15
           LD        GR3,GR6
           LD        GR2,GR7
-          CALL      C13
+          CALL      C9
           LD        GR0,GR1
           LD        GR7,GR0
           CPA       GR7,=0
@@ -66,31 +66,31 @@ J7        NOP
           JUMP      J13
                                    ; Case 0
 J10       NOP
-                                   ; Print "FizzBuzz"
+                                   ; Print "FIZZBUZZ"
           OUT       LB2,LL2
           JUMP      J29
                                    ; Case 3, 6, 9, 12
 J11       NOP
-                                   ; Print "Fizz"
+                                   ; Print "FIZZ"
           OUT       LB3,LL3
           JUMP      J29
                                    ; Case 5, 10
 J12       NOP
-                                   ; Print "Buzz"
+                                   ; Print "BUZZ"
           OUT       LB4,LL4
           JUMP      J29
                                    ; Case Else
 J13       NOP
-                                   ; Print i
+                                   ; Print I
           LD        GR7,I1
           LD        GR3,GR7
           LAD       GR1,TB1
           LAD       GR2,TL1
-          CALL      C3
+          CALL      C2
           OUT       TB1,TL1
                                    ; End Select
 J29       NOP
-                                   ; Next i
+                                   ; Next I
 J8        NOP
           LAD       GR1,I1
           LD        GR2,0,GR1
@@ -101,24 +101,24 @@ J9        NOP
 EXIT      NOP
           RPOP
           RET
-                                   ; Dim i As Integer
+                                   ; Dim I As Integer
 I1        DS        1
-                                   ; Dim c As Integer
+                                   ; Dim C As Integer
 I2        DS        1
 EOF       DS        1
 T1        DS        1
 TL1       DS        1
 TB1       DS        256
 LL1       DC        6
-LB1       DC        'Limit?'
+LB1       DC        'LIMIT?'
 LL2       DC        8
-LB2       DC        'FizzBuzz'
+LB2       DC        'FIZZBUZZ'
 LL3       DC        4
-LB3       DC        'Fizz'
+LB3       DC        'FIZZ'
 LL4       DC        4
-LB4       DC        'Buzz'
+LB4       DC        'BUZZ'
                                    ; FuncCInt
-C1        PUSH      0,GR1
+C0        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -160,13 +160,13 @@ J1        XOR       GR0,GR4
           POP       GR1
           RET
                                    ; FuncCStrArgInt
-C3        CPL       GR3,=#8000
+C2        CPL       GR3,=#8000
           JNZ       J30
           PUSH      0,GR3
           PUSH      0,GR4
           LAD       GR3,='-32768'
           LAD       GR4,6
-          CALL      C11
+          CALL      C7
           POP       GR4
           POP       GR3
           RET
@@ -193,7 +193,7 @@ J32       LAD       GR4,V1
           LD        GR5,GR1
           LD        GR2,GR3
           LAD       GR3,10
-J33       CALL      C13
+J33       CALL      C9
           ADDL      GR1,='0'
           ST        GR1,0,GR4
           LAD       GR4,1,GR4
@@ -219,7 +219,7 @@ J34       LD        GR1,0,GR4
           RET
 V1        DS        6
                                    ; UtilCopyStr
-C11       PUSH      0,GR1
+C7        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -238,7 +238,7 @@ J36       POP       GR4
           POP       GR1
           RET
                                    ; UtilDivMod
-C13       AND       GR3,GR3
+C9        AND       GR3,GR3
           JNZ       J16
           XOR       GR0,GR0
           LAD       GR1,-1
@@ -277,7 +277,7 @@ J21       LD        GR5,GR4
           SRA       GR5,15
           XOR       GR2,GR5
           SUBA      GR2,GR5
-          CALL      C16
+          CALL      C12
           LD        GR1,GR4
           SUBA      GR1,GR0
           LD        GR0,GR2
@@ -287,7 +287,7 @@ J21       LD        GR5,GR4
           POP       GR2
           RET
                                    ; UtilFill
-C14       PUSH      0,GR1
+C10       PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           ADDL      GR3,GR1
@@ -301,7 +301,7 @@ J38       POP       GR3
           POP       GR1
           RET
                                    ; UtilMul
-C16       PUSH      0,GR2
+C12       PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
           PUSH      0,GR5

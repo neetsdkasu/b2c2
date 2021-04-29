@@ -4,7 +4,7 @@ MAIN      START
           LAD       GR1,I1
           XOR       GR2,GR2
           LAD       GR3,2
-          CALL      C14
+          CALL      C10
                                    ; For i = 0 To 20 Step 1
           XOR       GR7,GR7
           ST        GR7,I1
@@ -26,32 +26,32 @@ J1        NOP
           LD        GR3,GR7
           LAD       GR1,TB1
           LAD       GR2,TL1
-          CALL      C3
+          CALL      C2
           LAD       GR1,TB2
           LAD       GR2,TL2
           LAD       GR3,='FIB('
           LAD       GR4,4
-          CALL      C11
+          CALL      C7
           LAD       GR1,TB2
           LAD       GR2,TL2
           LAD       GR3,TB1
           LD        GR4,TL1
-          CALL      C9
+          CALL      C5
           LAD       GR1,TB2
           LAD       GR2,TL2
           LAD       GR3,=') = '
           LAD       GR4,4
-          CALL      C9
+          CALL      C5
           LD        GR7,I2
           LD        GR3,GR7
           LAD       GR1,TB1
           LAD       GR2,TL1
-          CALL      C3
+          CALL      C2
           LAD       GR1,TB2
           LAD       GR2,TL2
           LAD       GR3,TB1
           LD        GR4,TL1
-          CALL      C9
+          CALL      C5
           OUT       TB2,TL2
                                    ; Next i
 J2        NOP
@@ -73,13 +73,13 @@ TB1       DS        256
 TL2       DS        1
 TB2       DS        256
                                    ; FuncCStrArgInt
-C3        CPL       GR3,=#8000
+C2        CPL       GR3,=#8000
           JNZ       J4
           PUSH      0,GR3
           PUSH      0,GR4
           LAD       GR3,='-32768'
           LAD       GR4,6
-          CALL      C11
+          CALL      C7
           POP       GR4
           POP       GR3
           RET
@@ -106,7 +106,7 @@ J6        LAD       GR4,V1
           LD        GR5,GR1
           LD        GR2,GR3
           LAD       GR3,10
-J7        CALL      C13
+J7        CALL      C9
           ADDL      GR1,='0'
           ST        GR1,0,GR4
           LAD       GR4,1,GR4
@@ -132,7 +132,7 @@ J8        LD        GR1,0,GR4
           RET
 V1        DS        6
                                    ; UtilConcatStr
-C9        PUSH      0,GR1
+C5        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -159,7 +159,7 @@ J27       LD        GR0,GR1
           ST        GR0,0,GR2
           RET
                                    ; UtilCopyStr
-C11       PUSH      0,GR1
+C7        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -178,7 +178,7 @@ J10       POP       GR4
           POP       GR1
           RET
                                    ; UtilDivMod
-C13       AND       GR3,GR3
+C9        AND       GR3,GR3
           JNZ       J13
           XOR       GR0,GR0
           LAD       GR1,-1
@@ -217,7 +217,7 @@ J18       LD        GR5,GR4
           SRA       GR5,15
           XOR       GR2,GR5
           SUBA      GR2,GR5
-          CALL      C16
+          CALL      C12
           LD        GR1,GR4
           SUBA      GR1,GR0
           LD        GR0,GR2
@@ -227,7 +227,7 @@ J18       LD        GR5,GR4
           POP       GR2
           RET
                                    ; UtilFill
-C14       PUSH      0,GR1
+C10       PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           ADDL      GR3,GR1
@@ -241,7 +241,7 @@ J29       POP       GR3
           POP       GR1
           RET
                                    ; UtilMul
-C16       PUSH      0,GR2
+C12       PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
           PUSH      0,GR5

@@ -4,13 +4,13 @@ MAIN      START
           LAD       GR1,I1
           XOR       GR2,GR2
           LAD       GR3,515
-          CALL      C14
+          CALL      C10
                                    ; t = ""
           LAD       GR1,SB3
           LAD       GR2,SL3
           LAD       GR3,=0
           XOR       GR4,GR4
-          CALL      C11
+          CALL      C7
                                    ; For i = 1 To 20 Step 1
           LAD       GR7,1
           ST        GR7,I1
@@ -33,22 +33,22 @@ J3        NOP
           LAD       GR2,TL1
           LAD       GR3,SB3
           LD        GR4,SL3
-          CALL      C11
+          CALL      C7
           LAD       GR1,TB1
           LAD       GR2,TL1
           LAD       GR3,SB2
           LD        GR4,SL2
-          CALL      C9
+          CALL      C5
           LAD       GR1,TB1
           LAD       GR2,TL1
           LAD       GR3,=', '
           LAD       GR4,2
-          CALL      C9
+          CALL      C5
           LAD       GR1,SB3
           LAD       GR2,SL3
           LAD       GR3,TB1
           LD        GR4,TL1
-          CALL      C11
+          CALL      C7
                                    ; Next i
 J4        NOP
           LAD       GR1,I1
@@ -73,7 +73,7 @@ SB3       DS        256
 TL1       DS        1
 TB1       DS        256
                                    ; UtilConcatStr
-C9        PUSH      0,GR1
+C5        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -100,7 +100,7 @@ J7        LD        GR0,GR1
           ST        GR0,0,GR2
           RET
                                    ; UtilCopyStr
-C11       PUSH      0,GR1
+C7        PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -119,7 +119,7 @@ J2        POP       GR4
           POP       GR1
           RET
                                    ; UtilFill
-C14       PUSH      0,GR1
+C10       PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           ADDL      GR3,GR1
