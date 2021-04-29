@@ -1,5 +1,5 @@
 '
-' 乱数生成
+' 乱数生成 (線形合同法を使用)
 '
 Option Register Dirty
 Option Variable Uninitialize
