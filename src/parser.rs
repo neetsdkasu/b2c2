@@ -1365,7 +1365,6 @@ impl Parser {
         }
     }
 
-    // Program
     // Program <name>
     fn parse_command_program_name(
         &mut self,
@@ -1373,19 +1372,17 @@ impl Parser {
     ) -> Result<(), SyntaxError> {
         if !self.header_state.can_program_name() {
             return Err(
-                self.syntax_error("この位置にProgramステートメントを置くことはできません".into())
+                self.syntax_error("この位置にSubステートメントを置くことはできません".into())
             );
         }
-        match pos_and_tokens {
-            [] => {}
-            [(pn, Token::Name(name))] => {
-                self.check_valid_program_name(*pn, name)?;
-                assert!(self.temp_progam_name.is_none());
-                assert!(self.temp_argumets.is_empty());
-                self.temp_progam_name = Some(name.clone());
-                self.add_statement(Statement::ProgramName { name: name.clone() });
-            }
-            _ => return Err(self.syntax_error("不正なProgramステートメントです".into())),
+        if let [(pn, Token::Name(name))] = pos_and_tokens {
+            self.check_valid_program_name(*pn, name)?;
+            assert!(self.temp_progam_name.is_none());
+            assert!(self.temp_argumets.is_empty());
+            self.temp_progam_name = Some(name.clone());
+            self.add_statement(Statement::ProgramName { name: name.clone() });
+        } else {
+            return Err(self.syntax_error("不正なSubステートメントです".into()));
         }
         self.header_state = HeaderState::Argument;
         self.end_program_state = EndProgramState::Required;
