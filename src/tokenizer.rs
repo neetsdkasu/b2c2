@@ -1,4 +1,3 @@
-// use crate::jis_x_201;
 use crate::SyntaxError;
 use std::io::{self, BufRead};
 use std::result;
@@ -122,9 +121,6 @@ fn take_char_token(s: &str) -> Option<(Token, &str)> {
     let mut split_position = s.len();
     let mut text: Option<char> = None;
     for (p, ch) in char_indices {
-        // if !jis_x_201::contains(ch) {
-        // return None;
-        // }
         if quotation {
             if ch == '"' {
                 if text.is_some() {
@@ -165,9 +161,6 @@ fn take_string_token(s: &str) -> Option<(Token, &str)> {
     let mut split_position = s.len();
     let mut text = String::new();
     for (p, ch) in char_indices {
-        // if !jis_x_201::contains(ch) {
-        // return None;
-        // }
         if quotation {
             if ch == '"' {
                 quotation = false;
@@ -190,7 +183,7 @@ fn take_string_token(s: &str) -> Option<(Token, &str)> {
 }
 
 fn take_operator_token(s: &str) -> Option<(Token, &str)> {
-    let mut char_indices = s.char_indices().take(4);
+    let mut char_indices = s.char_indices().take(5);
     char_indices
         .next()
         .filter(|(_, ch)| !ch.is_ascii_alphanumeric())?;
@@ -215,10 +208,6 @@ fn take_word(s: &str) -> Option<(&str, &str)> {
 }
 
 fn parse_boolean(token: &str) -> Option<Token> {
-    // [("True", true), ("False", false)]
-    // .iter()
-    // .find(|(lit, _)| lit.eq_ignore_ascii_case(token))
-    // .map(|(_, b)| Token::Boolean(*b))
     token
         .to_ascii_lowercase()
         .parse::<bool>()
@@ -383,8 +372,10 @@ enumdef!(
     NotEqual,
     LessOrEequal,
     GreaterOrEqual,
-    ShiftLeft,
-    ShiftRight,
+    ShiftLeftArithmetic,
+    ShiftRightArithmetic,
+    ShiftLeftLogical,
+    ShiftRightLogical,
     AddInto,
     SubInto,
     Equal,
@@ -412,8 +403,10 @@ impl Operator {
             NotEqual => "<>",
             LessOrEequal => "<=",
             GreaterOrEqual => ">=",
-            ShiftLeft => "<<",
-            ShiftRight => ">>",
+            ShiftLeftArithmetic => "<<",
+            ShiftRightArithmetic => ">>",
+            ShiftLeftLogical => "<<<",
+            ShiftRightLogical => ">>>",
             AddInto => "+=",
             SubInto => "-=",
             Equal => "=",

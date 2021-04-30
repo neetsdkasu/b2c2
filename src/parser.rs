@@ -3343,7 +3343,7 @@ impl Operator {
 
             Not => 2,
 
-            ShiftLeft | ShiftRight => 4,
+            ShiftLeftArithmetic | ShiftRightArithmetic | ShiftLeftLogical | ShiftRightLogical => 4,
 
             Mul | Div | Mod => 6,
 
@@ -3966,7 +3966,8 @@ impl Expr {
             _ if !lhs.return_type().match_for_bin_op(&rhs.return_type()) => return None,
 
             // 整数を受け取って整数を返すもの
-            ShiftLeft | ShiftRight | Mul | Div | Mod | Add | Sub
+            ShiftLeftArithmetic | ShiftRightArithmetic | ShiftLeftLogical | ShiftRightLogical
+            | Mul | Div | Mod | Add | Sub
                 if matches!(lhs.return_type(), ExprType::Integer) =>
             {
                 Expr::BinaryOperatorInteger
@@ -4004,10 +4005,9 @@ impl Expr {
 
             // 受け取る型に対応する演算子ではないのでシンタックスエラー
             // 漏れを無くすため全列挙…
-            ShiftLeft | ShiftRight | Mul | Div | Mod | Add | Sub | Concat | LessOrEequal
-            | GreaterOrEqual | LessThan | GreaterThan | Equal | NotEqual | And | Or | Xor => {
-                return None
-            }
+            ShiftLeftArithmetic | ShiftRightArithmetic | ShiftLeftLogical | ShiftRightLogical
+            | Mul | Div | Mod | Add | Sub | Concat | LessOrEequal | GreaterOrEqual | LessThan
+            | GreaterThan | Equal | NotEqual | And | Or | Xor => return None,
         };
 
         Some(bin_op_expr(op, Box::new(lhs), Box::new(rhs)))
@@ -4170,65 +4170,6 @@ impl Function {
             }
 
             Array | CArray | SubArray => unreachable!("BUG"),
-            /*
-            // 引数は全て真理値もしくは全て整数
-            Array => {
-                if let Expr::ParamList(list) = param {
-                    (1..=MAX_ARRAY_SIZE).contains(&list.len())
-                        && (list
-                            .iter()
-                            .all(|expr| matches!(expr.return_type(), ExprType::Integer))
-                            || list
-                                .iter()
-                                .all(|expr| matches!(expr.return_type(), ExprType::Boolean)))
-                } else {
-                    matches!(param.return_type(), ExprType::Boolean | ExprType::Integer)
-                }
-            }
-
-            // 引数は(配列、整数リテラル)もしくは(文字列、整数リテラル)
-            CArray => {
-                if let Expr::ParamList(list) = param {
-                    if let [expr, Expr::LitInteger(len)] = list.as_slice() {
-                        (1..=MAX_ARRAY_SIZE as i32).contains(len)
-                            && (matches!(expr.return_type(), ExprType::String)
-                                || expr.return_type().is_bool_array()
-                                || expr.return_type().is_int_array())
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            }
-
-            // 引数は(配列、整数、整数リテラル)
-            SubArray => {
-                if let Expr::ParamList(list) = param {
-                    match list.as_slice() {
-                        [Expr::FunctionBooleanArray(size, ..), offset, Expr::LitInteger(len)]
-                        | [Expr::FunctionIntegerArray(size, ..), offset, Expr::LitInteger(len)]
-                        | [Expr::ReferenceOfVar(_, VarType::ArrayOfBoolean(size)), offset, Expr::LitInteger(len)]
-                        | [Expr::ReferenceOfVar(_, VarType::RefArrayOfBoolean(size)), offset, Expr::LitInteger(len)]
-                        | [Expr::ReferenceOfVar(_, VarType::ArrayOfInteger(size)), offset, Expr::LitInteger(len)]
-                        | [Expr::ReferenceOfVar(_, VarType::RefArrayOfInteger(size)), offset, Expr::LitInteger(len)] => {
-                            (1..=*size as i32).contains(len)
-                                && matches!(offset.return_type(), ExprType::Integer)
-                        }
-                        [expr, offset, Expr::LitInteger(_)]
-                            if matches!(offset.return_type(), ExprType::Integer)
-                                && (expr.return_type().is_bool_array()
-                                    || expr.return_type().is_int_array()) =>
-                        {
-                            unreachable!("BUG")
-                        }
-                        _ => false,
-                    }
-                } else {
-                    false
-                }
-            }
-            */
         }
     }
 }

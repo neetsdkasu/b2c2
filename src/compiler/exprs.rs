@@ -118,8 +118,9 @@ impl Compiler {
 
             // 真理値を返さないもの、または単項演算子ではないもの
             And | Xor | Or | NotEqual | LessOrEequal | GreaterOrEqual | Equal | LessThan
-            | GreaterThan | ShiftLeft | ShiftRight | Add | Mul | Div | Mod | AddInto | SubInto
-            | Concat | OpenBracket | CloseBracket | Comma => unreachable!("BUG"),
+            | GreaterThan | ShiftLeftArithmetic | ShiftRightArithmetic | ShiftLeftLogical
+            | ShiftRightLogical | Add | Mul | Div | Mod | AddInto | SubInto | Concat
+            | OpenBracket | CloseBracket | Comma => unreachable!("BUG"),
         }
     }
 
@@ -142,8 +143,9 @@ impl Compiler {
 
             // 真理値を返さないもの、または単項演算子ではないもの
             And | Xor | Or | NotEqual | LessOrEequal | GreaterOrEqual | Equal | LessThan
-            | GreaterThan | ShiftLeft | ShiftRight | Add | Sub | Mul | Div | Mod | AddInto
-            | SubInto | Concat | OpenBracket | CloseBracket | Comma => unreachable!("BUG"),
+            | GreaterThan | ShiftLeftArithmetic | ShiftRightArithmetic | ShiftLeftLogical
+            | ShiftRightLogical | Add | Sub | Mul | Div | Mod | AddInto | SubInto | Concat
+            | OpenBracket | CloseBracket | Comma => unreachable!("BUG"),
         }
     }
 
@@ -747,8 +749,9 @@ impl Compiler {
             GreaterThan => return self.compile_bin_op_boolean_greater_than(lhs, rhs),
 
             // 二項演算子ではないものや、真理値を返さないもの
-            ShiftLeft | ShiftRight | Add | Sub | Mul | Div | Mod | Not | AddInto | SubInto
-            | Concat | OpenBracket | CloseBracket | Comma => {
+            ShiftLeftArithmetic | ShiftRightArithmetic | ShiftLeftLogical | ShiftRightLogical
+            | Add | Sub | Mul | Div | Mod | Not | AddInto | SubInto | Concat | OpenBracket
+            | CloseBracket | Comma => {
                 unreachable!("BUG")
             }
         };

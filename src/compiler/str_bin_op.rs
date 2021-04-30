@@ -15,8 +15,9 @@ impl Compiler {
 
             // 文字列を返さないもの、あるいは二項演算子ではないもの
             And | Xor | Or | NotEqual | LessOrEequal | GreaterOrEqual | Equal | LessThan
-            | GreaterThan | ShiftLeft | ShiftRight | Add | Sub | Mul | Div | Mod | Not
-            | AddInto | SubInto | OpenBracket | CloseBracket | Comma => unreachable!("BUG"),
+            | GreaterThan | ShiftLeftArithmetic | ShiftRightArithmetic | ShiftLeftLogical
+            | ShiftRightLogical | Add | Sub | Mul | Div | Mod | Not | AddInto | SubInto
+            | OpenBracket | CloseBracket | Comma => unreachable!("BUG"),
         }
     }
 

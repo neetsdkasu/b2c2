@@ -80,6 +80,8 @@ fn it_works() {
         int1 = (1 - int1) - 2
         int1 = (1 << int1) << 2
         int1 = (1 >> int1) >> 2
+        int1 = (1 <<< int1) <<< 2
+        int1 = (1 >>> int1) >>> 2
         int1 = (1 And int1) And 2
         int1 = (1 Or int1) Or 2
         int1 = (1 Xor int1) Xor 2

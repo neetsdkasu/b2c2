@@ -177,7 +177,10 @@ fn take_string_token_works() {
 #[test]
 fn take_operator_token_works() {
     let src = [
-        ("<<", Some((Token::Operator(Operator::ShiftLeft), ""))),
+        (
+            "<<",
+            Some((Token::Operator(Operator::ShiftLeftArithmetic), "")),
+        ),
         ("<", Some((Token::Operator(Operator::LessThan), ""))),
         ("<=", Some((Token::Operator(Operator::LessOrEequal), ""))),
         ("<>", Some((Token::Operator(Operator::NotEqual), ""))),
