@@ -127,7 +127,7 @@ impl Flag {
 }
 
 #[derive(Clone)]
-pub struct Labels {
+pub struct LabelSet {
     pub argument_labels: HashMap<String, (ValueLabel, parser::ArgumentInfo)>,
     pub arr_argument_labels: HashMap<String, (ArrayLabel, parser::ArgumentInfo)>,
     pub str_argument_labels: HashMap<String, (StrLabels, parser::ArgumentInfo)>,
@@ -142,7 +142,7 @@ pub struct Labels {
 pub fn compile_for_debugger(
     src: &[parser::Statement],
     flag: &Flag,
-) -> Result<(Labels, CodeWithName), CompileError> {
+) -> Result<(LabelSet, CodeWithName), CompileError> {
     if let Some(program_name) = &flag.program_name {
         for sub_name in src.iter().filter_map(|stmt| {
             if let parser::Statement::ExternSub { name, .. } = stmt {
@@ -166,7 +166,7 @@ pub fn compile_for_debugger(
         compiler.compile(stmt);
     }
 
-    let labels = Labels {
+    let labels = LabelSet {
         argument_labels: compiler.argument_labels.clone(),
         arr_argument_labels: compiler.arr_argument_labels.clone(),
         str_argument_labels: compiler.str_argument_labels.clone(),

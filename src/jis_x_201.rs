@@ -12,7 +12,7 @@ pub fn convert_from_char(ch: char) -> u8 {
             code @ 0xFF61_u32..=0xFF9F_u32 => (code - 0xFF61_u32) as u8 + 0xA1_u8,
             0xFFE3_u32 => 0x7E_u8,
             0xFFE5_u32 => 0x5C_u8,
-            _ => 0xFD_u8,
+            _ => ch as u8,
         }
     }
 }

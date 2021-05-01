@@ -80,7 +80,7 @@ impl Statement {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Label(String);
 
 impl From<String> for Label {
@@ -107,6 +107,11 @@ impl Label {
         label
     }
 
+    pub fn as_string(&self) -> &String {
+        let Label(label) = self;
+        label
+    }
+
     pub fn is_valid(&self) -> bool {
         let Label(label) = self;
         let mut chars = label.chars();
@@ -126,7 +131,7 @@ impl Label {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub enum Adr {
     Dec(i16),           // -32678 ~ 32677
     Hex(u16),           // #0000 ~ #FFFF

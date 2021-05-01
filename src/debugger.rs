@@ -1,5 +1,6 @@
 use crate::casl2;
 use crate::compiler;
+use crate::jis_x_201;
 use crate::parser;
 use crate::stat;
 use crate::Flags;
@@ -25,42 +26,88 @@ pub fn run(src_file: String, mut flags: Flags) -> io::Result<i32> {
 
     flags.compiler.program_name = None;
 
-    todo!();
+    for (src, (entry, label_set)) in emu.variables.iter() {
+        println!("FILE: {} ( {} )", src, entry);
+        if let Some(local_labels) = emu.local_labels.get(entry) {
+            for (var, label) in label_set.int_var_labels.iter() {
+                use compiler::ValueLabel::*;
+                println!("  VAR: {} ( INTEGER )", var);
+                match label {
+                    VarInteger(s) | VarRefInteger(s) => {
+                        if let Some(pos) = local_labels.get(s) {
+                            println!("    LABEL: {}  #{:04X}", s, pos);
+                        } else {
+                            println!("    LABEL: {}  UNKNOWN", s);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            for (var, label) in label_set.bool_var_labels.iter() {
+                use compiler::ValueLabel::*;
+                println!("  VAR: {} ( BOOLEAN )", var);
+                match label {
+                    VarBoolean(s) | VarRefBoolean(s) => {
+                        if let Some(pos) = local_labels.get(s) {
+                            println!("    LABEL: {}  #{:04X}", s, pos);
+                        } else {
+                            println!("    LABEL: {}  UNKNOWN", s);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Ok(0)
 }
 
 // プログラムリスト (ファイル名, ラベル, ソースコード(コードメモリ位置, コード))
-type ProgramList = Vec<(String, String, Vec<(usize, casl2::Statement)>)>;
+type Program = (String, String, Vec<(usize, casl2::Statement)>);
+
+const CALLSTACK_MAX_SIZE: usize = 0x0800;
+const BEGIN_OF_PROGAM: usize = 0x0400;
+const MEMORY_SIZE: usize = 0x10000;
 
 struct Emulator {
     // COMET2のメモリ
-    mem: [u16; 65536],
+    mem: [u16; MEMORY_SIZE],
 
     // 挿入するプログラムの埋め込み開始位置
     compile_pos: usize,
 
-    // 変数名とラベルの対応 (ソースファイル名, 変数ラベルマップ)
-    variables: HashMap<String, compiler::Labels>,
+    // 変数名とラベルの対応 (ソースファイル名, (プログラムエントリラベル, 変数ラベルマップ))
+    variables: HashMap<String, (String, compiler::LabelSet)>,
 
-    // ファイルごとのラベルとメモリ位置の対応 (ファイル名, (ラベル, メモリ位置))
+    // プログラムごとのラベルとメモリ位置の対応 (プログラムエントリラベル, (ラベル, メモリ位置))
     local_labels: HashMap<String, HashMap<String, usize>>,
 
     // プログラムのエントリラベルとメモリ位置の対応 (ラベル, メモリ位置)
     program_labels: HashMap<String, usize>,
 
     // プログラムリスト (ファイル名, ラベル, ソースコード(コードメモリ位置, コード))
-    program_list: ProgramList,
+    program_list: Vec<Program>,
+
+    // 未解決ラベル(おそらく外部定義)
+    unknown_labels: HashMap<String, Vec<usize>>,
 }
 
 impl Emulator {
     fn new() -> Self {
         Self {
-            mem: [0; 65536],
+            mem: [0; MEMORY_SIZE],
             variables: HashMap::new(),
-            compile_pos: 0x0400,
+            compile_pos: BEGIN_OF_PROGAM,
             local_labels: HashMap::new(),
             program_labels: HashMap::new(),
-            program_list: ProgramList::new(),
+            program_list: Vec::new(),
+            unknown_labels: HashMap::new(),
         }
+    }
+
+    fn enough_remain(&self, len: usize) -> bool {
+        len < self.mem.len() - self.compile_pos - CALLSTACK_MAX_SIZE
     }
 }
 
@@ -92,8 +139,8 @@ impl Emulator {
             }
             Ok((labels, list)) => {
                 if let Some((name, _)) = list.last() {
-                    self.variables.insert(name.clone(), labels.clone());
-                    self.variables.insert(src_file.into(), labels);
+                    self.variables
+                        .insert(src_file.into(), (name.clone(), labels));
                 } else {
                     unreachable!("BUG");
                 };
@@ -117,7 +164,12 @@ impl Emulator {
                     if save {
                         save_casl2_src(&mut path, "EOF", &src, flags.statistics)?;
                     }
-                    self.compile("EOF.cas", "EOF".into(), src);
+                    if !self.program_labels.contains_key(&"EOF".to_string()) {
+                        if let Err(msg) = self.compile("EOF.cas", "EOF".into(), src) {
+                            eprintln!("CompileError{{ {} }}", msg);
+                            return Ok(100);
+                        }
+                    }
                 }
                 parser::CompileOption::Allocator {
                     enabled: true,
@@ -128,7 +180,12 @@ impl Emulator {
                     if save {
                         save_casl2_src(&mut path, "ALLOC", &src, flags.statistics)?;
                     }
-                    self.compile("ALLOC.cas", "ALLOC".into(), src);
+                    if !self.program_labels.contains_key(&"ALLOC".to_string()) {
+                        if let Err(msg) = self.compile("ALLOC.cas", "ALLOC".into(), src) {
+                            eprintln!("CompileError{{ {} }}", msg);
+                            return Ok(100);
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -139,7 +196,14 @@ impl Emulator {
                 save_casl2_src(&mut path, &name, &casl2_src, flags.statistics)?;
             }
 
-            self.compile(src_file, name, casl2_src);
+            if self.program_labels.contains_key(&name) {
+                continue;
+            }
+
+            if let Err(msg) = self.compile(src_file, name, casl2_src) {
+                eprintln!("CompileError{{ {} }}", msg);
+                return Ok(100);
+            }
         }
 
         Ok(0)
@@ -189,27 +253,192 @@ impl Emulator {
 }
 
 impl Emulator {
-    fn compile(&mut self, src_file: &str, name: String, src: Vec<casl2::Statement>) {
-        let _ = (src_file, name);
-
+    fn compile(
+        &mut self,
+        src_file: &str,
+        name: String,
+        src: Vec<casl2::Statement>,
+    ) -> Result<(), String> {
         let mut code = Vec::with_capacity(src.len());
         let mut labels = HashMap::new();
+        let mut literals = HashMap::new();
 
         for stmt in src {
             let pos = self.compile_pos;
             if let casl2::Statement::Code { label, command, .. } = &stmt {
-                self.compile_pos += command.len();
+                let len = command.len();
+                if !self.enough_remain(len) {
+                    return Err("メモリ不足でプログラムをロードできませんでした".into());
+                }
+                self.compile_pos += len;
                 if let Some(label) = label {
                     if !matches!(command, casl2::Command::Start { .. }) {
-                        labels.insert(label.as_str().to_string(), pos);
+                        labels.insert(label.as_string().clone(), pos);
                     }
+                }
+                match command {
+                    casl2::Command::A { adr, .. } | casl2::Command::P { adr, .. } => {
+                        literals.insert(adr.clone(), 0_usize);
+                    }
+                    _ => {}
                 }
                 self.compile_command(pos, command);
             }
             code.push((pos, stmt));
         }
 
-        todo!()
+        for (adr, pos) in literals.iter_mut() {
+            match adr {
+                casl2::Adr::LiteralDec(d) => {
+                    if !self.enough_remain(1) {
+                        return Err("メモリ不足でプログラムをロードできませんでした".into());
+                    }
+                    *pos = self.compile_pos;
+                    self.mem[*pos] = *d as u16;
+                    self.compile_pos += 1;
+                }
+                casl2::Adr::LiteralHex(h) => {
+                    if !self.enough_remain(1) {
+                        return Err("メモリ不足でプログラムをロードできませんでした".into());
+                    }
+                    *pos = self.compile_pos;
+                    self.mem[*pos] = *h;
+                    self.compile_pos += 1;
+                }
+                casl2::Adr::LiteralStr(s) => {
+                    let len = s.chars().count();
+                    if !self.enough_remain(len) {
+                        return Err("メモリ不足でプログラムをロードできませんでした".into());
+                    }
+                    *pos = self.compile_pos;
+                    for (i, ch) in s.chars().enumerate() {
+                        let ch = jis_x_201::convert_from_char(ch);
+                        self.mem[*pos + i] = ch as u16;
+                    }
+                    self.compile_pos += len;
+                }
+                _ => {}
+            }
+        }
+
+        for (mempos, stmt) in code.iter() {
+            let command = if let casl2::Statement::Code { command, .. } = stmt {
+                command
+            } else {
+                continue;
+            };
+            match command {
+                casl2::Command::Start { entry_point } => {
+                    if let Some(label) = entry_point {
+                        let label = label.as_str().to_string();
+                        if let Some(pos) = labels.get(&label) {
+                            self.program_labels.insert(name.clone(), *pos);
+                        } else {
+                            return Err(format!("指定されたラベルが見つかりません ( {} )", label));
+                        }
+                    } else {
+                        self.program_labels.insert(name.clone(), *mempos);
+                    }
+                }
+                casl2::Command::Dc { constants } => {
+                    let mut pos = *mempos;
+                    for cnst in constants.iter() {
+                        match cnst {
+                            casl2::Constant::Dec(d) => {
+                                self.mem[pos] = *d as u16;
+                                pos += 1;
+                            }
+                            casl2::Constant::Hex(h) => {
+                                self.mem[pos] = *h;
+                                pos += 1;
+                            }
+                            casl2::Constant::Str(s) => {
+                                for ch in s.chars() {
+                                    self.mem[pos] = jis_x_201::convert_from_char(ch) as u16;
+                                    pos += 1;
+                                }
+                            }
+                            casl2::Constant::Label(label) => {
+                                let label = label.as_string();
+                                if let Some(label_pos) = labels.get(label) {
+                                    self.mem[pos] = *label_pos as u16;
+                                } else if let Some(label_pos) =
+                                    self.program_labels.get(label).copied()
+                                {
+                                    self.mem[pos] = label_pos as u16;
+                                } else {
+                                    self.unknown_labels
+                                        .entry(label.clone())
+                                        .or_insert_with(Vec::new)
+                                        .push(pos);
+                                }
+                                pos += 1;
+                            }
+                        }
+                    }
+                }
+                casl2::Command::In { pos, len } | casl2::Command::Out { pos, len } => {
+                    let pos = pos.as_string();
+                    let len = len.as_string();
+                    if let Some(label_pos) = labels.get(pos) {
+                        self.mem[*mempos + 5] = *label_pos as u16;
+                    } else if let Some(label_pos) = self.program_labels.get(pos).copied() {
+                        self.mem[*mempos + 5] = label_pos as u16;
+                    } else {
+                        self.unknown_labels
+                            .entry(pos.clone())
+                            .or_insert_with(Vec::new)
+                            .push(*mempos + 5);
+                    }
+                    if let Some(label_pos) = labels.get(len) {
+                        self.mem[*mempos + 7] = *label_pos as u16;
+                    } else if let Some(label_pos) = self.program_labels.get(len).copied() {
+                        self.mem[*mempos + 7] = label_pos as u16;
+                    } else {
+                        self.unknown_labels
+                            .entry(len.clone())
+                            .or_insert_with(Vec::new)
+                            .push(*mempos + 7);
+                    }
+                }
+                casl2::Command::A { adr, .. } | casl2::Command::P { adr, .. } => match adr {
+                    casl2::Adr::Dec(d) => self.mem[*mempos + 1] = *d as u16,
+                    casl2::Adr::Hex(h) => self.mem[*mempos + 1] = *h,
+                    casl2::Adr::Label(label) => {
+                        let label = label.as_string();
+                        if let Some(label_pos) = labels.get(label) {
+                            self.mem[*mempos + 1] = *label_pos as u16;
+                        } else if let Some(label_pos) = self.program_labels.get(label).copied() {
+                            self.mem[*mempos + 1] = label_pos as u16;
+                        } else {
+                            self.unknown_labels
+                                .entry(label.clone())
+                                .or_insert_with(Vec::new)
+                                .push(*mempos + 1);
+                        }
+                    }
+                    casl2::Adr::LiteralDec(_)
+                    | casl2::Adr::LiteralHex(_)
+                    | casl2::Adr::LiteralStr(_) => {
+                        let label_pos = literals.get(adr).expect("BUG");
+                        self.mem[*mempos + 1] = *label_pos as u16;
+                    }
+                },
+                _ => {}
+            }
+        }
+
+        if let Some(pos_list) = self.unknown_labels.remove(&name) {
+            let label_pos = *self.program_labels.get(&name).expect("BUG");
+            for pos in pos_list {
+                self.mem[pos] = label_pos as u16;
+            }
+        }
+
+        self.local_labels.insert(name.clone(), labels);
+        self.program_list.push((src_file.into(), name, code));
+
+        Ok(())
     }
 
     fn compile_command(&mut self, pos: usize, command: &casl2::Command) {
