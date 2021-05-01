@@ -85,42 +85,106 @@ pub struct Flag {
     pub try_make_snippets: bool,
 }
 
+type CodeWithName = Vec<(String, Vec<casl2::Statement>)>;
+
 // 条件付き(?)コンパイル
 pub fn compile_with_flag(
     src: &[parser::Statement],
     flag: Flag,
-) -> Result<Vec<(String, Vec<casl2::Statement>)>, CompileError> {
-    let mut statements = compile(flag.program_name.clone(), src)?;
+) -> Result<CodeWithName, CompileError> {
+    let statements = compile(flag.program_name.clone(), src)?;
 
-    if flag.remove_comment {
-        statements = optimize::remove_comment(&statements);
+    Ok(flag.apply(statements))
+}
+
+impl Flag {
+    pub fn apply(&self, mut statements: Vec<casl2::Statement>) -> CodeWithName {
+        if self.remove_comment {
+            statements = optimize::remove_comment(&statements);
+        }
+
+        if self.remove_unreferenced_label {
+            statements = optimize::remove_unreferenced_label(&statements);
+        }
+
+        if self.try_make_snippets {
+            statements = optimize::collect_duplicates(statements);
+        }
+
+        if self.remove_nop {
+            statements = optimize::remove_nop(&statements);
+        }
+
+        if !self.split_subroutines {
+            let name = casl2::utils::get_program_name(&statements)
+                .expect("BUG")
+                .to_string();
+            return vec![(name, statements)];
+        }
+
+        utils::split_subroutines(statements)
+    }
+}
+
+#[derive(Clone)]
+pub struct Labels {
+    pub argument_labels: HashMap<String, (ValueLabel, parser::ArgumentInfo)>,
+    pub arr_argument_labels: HashMap<String, (ArrayLabel, parser::ArgumentInfo)>,
+    pub str_argument_labels: HashMap<String, (StrLabels, parser::ArgumentInfo)>,
+    pub bool_var_labels: HashMap<String, ValueLabel>,
+    pub int_var_labels: HashMap<String, ValueLabel>,
+    pub str_var_labels: HashMap<String, StrLabels>,
+    pub bool_arr_labels: HashMap<String, ArrayLabel>,
+    pub int_arr_labels: HashMap<String, ArrayLabel>,
+}
+
+// デバッグ用コンパイル
+pub fn compile_for_debugger(
+    src: &[parser::Statement],
+    flag: &Flag,
+) -> Result<(Labels, CodeWithName), CompileError> {
+    if let Some(program_name) = &flag.program_name {
+        for sub_name in src.iter().filter_map(|stmt| {
+            if let parser::Statement::ExternSub { name, .. } = stmt {
+                Some(name)
+            } else {
+                None
+            }
+        }) {
+            if sub_name == program_name {
+                return Err(format!(
+                    "ソースコード内で既に使用されている名前です: {}",
+                    program_name
+                ));
+            }
+        }
     }
 
-    if flag.remove_unreferenced_label {
-        statements = optimize::remove_unreferenced_label(&statements);
+    let mut compiler = Compiler::new(flag.program_name.clone())?;
+
+    for stmt in src.iter() {
+        compiler.compile(stmt);
     }
 
-    if flag.try_make_snippets {
-        statements = optimize::collect_duplicates(statements);
-    }
+    let labels = Labels {
+        argument_labels: compiler.argument_labels.clone(),
+        arr_argument_labels: compiler.arr_argument_labels.clone(),
+        str_argument_labels: compiler.str_argument_labels.clone(),
+        bool_var_labels: compiler.bool_var_labels.clone(),
+        int_var_labels: compiler.int_var_labels.clone(),
+        str_var_labels: compiler.str_var_labels.clone(),
+        bool_arr_labels: compiler.bool_arr_labels.clone(),
+        int_arr_labels: compiler.int_arr_labels.clone(),
+    };
 
-    if flag.remove_nop {
-        statements = optimize::remove_nop(&statements);
-    }
+    let statements = compiler.finish();
 
-    if !flag.split_subroutines {
-        let name = casl2::utils::get_program_name(&statements)
-            .expect("BUG")
-            .to_string();
-        return Ok(vec![(name, statements)]);
-    }
-
-    Ok(utils::split_subroutines(statements))
+    Ok((labels, flag.apply(statements)))
 }
 
 // 文字列ラベルのタイプ判定に使う
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
-enum StrLabelType {
+pub enum StrLabelType {
     Const(String), // IN/OUTの定数 LB**/LL**
     Lit(String),   // リテラル ='abc'/=3
     Temp,          // 一時変数 TB**/TL**
@@ -133,16 +197,16 @@ enum StrLabelType {
 
 // 文字列のラベル
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
-struct StrLabels {
-    pos: String,
-    len: String,
-    label_type: StrLabelType,
+pub struct StrLabels {
+    pub pos: String,
+    pub len: String,
+    pub label_type: StrLabelType,
 }
 
 // 配列参照
 // (一時的な配列は一時的な文字列変数の文字領域(pos)を借用する(長さ領域(len)の値は使用しない))
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
-enum ArrayLabel {
+pub enum ArrayLabel {
     TempArrayOfBoolean(StrLabels, usize),
     TempArrayOfInteger(StrLabels, usize),
     VarArrayOfBoolean(String, usize),
@@ -156,7 +220,7 @@ enum ArrayLabel {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
-enum ValueLabel {
+pub enum ValueLabel {
     VarBoolean(String),
     VarInteger(String),
     VarRefBoolean(String),

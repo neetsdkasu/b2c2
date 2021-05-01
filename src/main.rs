@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 mod casl2;
 mod compiler;
 #[allow(dead_code)]
+mod debugger;
+#[allow(dead_code)]
 mod jis_x_201;
 mod parser;
 mod stat;
@@ -22,6 +24,7 @@ const FLAG_SPLIT_SUBROUTINES: &str = "-split-subroutines";
 const FLAG_TRY_MAKE_SNIPPETS: &str = "-try-make-snippets";
 const FLAG_PROGRAM_NAME: &str = "-program-name";
 const FLAG_STATISTICS: &str = "-statistics";
+const FLAG_RUN_DEBUGGER: &str = "-run";
 
 #[derive(Debug)]
 pub struct SyntaxError {
@@ -51,11 +54,12 @@ fn main() {
 }
 
 #[derive(Default)]
-struct Flags {
+pub struct Flags {
     src_file: Option<String>,
-    compiler: compiler::Flag,
-    statistics: bool,
-    dst_dir: Option<String>,
+    pub compiler: compiler::Flag,
+    pub statistics: bool,
+    pub dst_dir: Option<String>,
+    run_debugger: bool,
 }
 
 // コマンドライン引数を解釈して指定の処理を実行する
@@ -73,6 +77,10 @@ fn run_app() -> io::Result<i32> {
             return show_usage();
         }
     };
+
+    if flags.run_debugger {
+        return debugger::run(src_file, flags);
+    }
 
     if src_file.to_ascii_lowercase().ends_with(".cas") {
         return process_casl2(src_file, flags);
@@ -135,40 +143,9 @@ fn compile_basic(src_file: String, flags: Flags) -> io::Result<i32> {
         }
     };
 
-    let mut path = if let Some(dir) = flags.dst_dir.as_ref() {
-        let path = Path::new(dir);
-        if !path.exists() || !path.is_dir() {
-            fs::create_dir_all(dir)?;
-        }
-        path.to_path_buf()
-    } else {
-        PathBuf::new()
-    };
+    let path = flags.create_dst_dir()?;
 
-    for (name, casl2_src) in casl2_src_list {
-        let file_name = format!("{}.cas", name);
-        path.push(file_name);
-        {
-            let mut dst_file = fs::File::create(&path)?;
-
-            for stmt in casl2_src.iter() {
-                writeln!(&mut dst_file, "{}", stmt)?;
-            }
-
-            dst_file.flush()?;
-        }
-        eprintln!("生成されたファイル: {}", path.display());
-        path.pop();
-
-        if flags.statistics {
-            let file_name = format!("{}.stat.txt", name);
-            path.push(file_name);
-            let statistics = stat::analyze(&casl2_src);
-            fs::write(&path, statistics)?;
-            eprintln!("生成されたファイル: {}", path.display());
-            path.pop();
-        }
-    }
+    save_casl2_src_list(path, casl2_src_list, flags.statistics)?;
 
     Ok(0)
 }
@@ -190,7 +167,7 @@ fn process_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
         return Ok(7);
     }
 
-    let mut casl2_src = if let Some(new_name) = flags.compiler.program_name.as_ref() {
+    let casl2_src = if let Some(new_name) = flags.compiler.program_name.as_ref() {
         if !casl2::Label::from(new_name).is_valid() {
             eprintln!("ERROR: 禁止されている名前です  ( {} )", new_name);
             return Ok(8);
@@ -210,40 +187,9 @@ fn process_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
         casl2_src
     };
 
-    if flags.compiler.remove_comment {
-        casl2_src = compiler::optimize::remove_comment(&casl2_src);
-    }
+    let casl2_src_list = flags.compiler.apply(casl2_src);
 
-    if flags.compiler.remove_unreferenced_label {
-        casl2_src = compiler::optimize::remove_unreferenced_label(&casl2_src);
-    }
-
-    if flags.compiler.try_make_snippets {
-        casl2_src = compiler::optimize::collect_duplicates(casl2_src);
-    }
-
-    if flags.compiler.remove_nop {
-        casl2_src = compiler::optimize::remove_nop(&casl2_src);
-    }
-
-    let casl2_src_list = if flags.compiler.split_subroutines {
-        compiler::utils::split_subroutines(casl2_src)
-    } else {
-        let program_name = casl2::utils::get_program_name(&casl2_src)
-            .expect("BUG")
-            .to_string();
-        vec![(program_name, casl2_src)]
-    };
-
-    let mut path = if let Some(dir) = flags.dst_dir.as_ref() {
-        let path = Path::new(dir);
-        if !path.exists() || !path.is_dir() {
-            fs::create_dir_all(dir)?;
-        }
-        path.to_path_buf()
-    } else {
-        PathBuf::new()
-    };
+    let mut path = flags.create_dst_dir()?;
 
     let backup = src_file.clone() + ".backup";
     let backup = Path::new(&backup);
@@ -256,6 +202,32 @@ fn process_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
         }
     }
 
+    save_casl2_src_list(path, casl2_src_list, flags.statistics)?;
+
+    Ok(0)
+}
+
+impl Flags {
+    // 出力先ディレクトリの生成
+    pub fn create_dst_dir(&self) -> io::Result<PathBuf> {
+        if let Some(dir) = self.dst_dir.as_ref() {
+            let path = Path::new(dir);
+            if !path.exists() || !path.is_dir() {
+                fs::create_dir_all(dir)?;
+            }
+            Ok(path.to_path_buf())
+        } else {
+            Ok(PathBuf::new())
+        }
+    }
+}
+
+// 生成したCASL2ソースコードの保存
+fn save_casl2_src_list(
+    mut path: PathBuf,
+    casl2_src_list: Vec<(String, Vec<casl2::Statement>)>,
+    statistics: bool,
+) -> io::Result<()> {
     for (name, casl2_src) in casl2_src_list {
         let file_name = format!("{}.cas", name);
         path.push(file_name);
@@ -271,7 +243,7 @@ fn process_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
         eprintln!("生成されたファイル: {}", path.display());
         path.pop();
 
-        if flags.statistics {
+        if statistics {
             let file_name = format!("{}.stat.txt", name);
             path.push(file_name);
             let statistics = stat::analyze(&casl2_src);
@@ -281,7 +253,7 @@ fn process_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
         }
     }
 
-    Ok(0)
+    Ok(())
 }
 
 // 使い方表示
@@ -318,6 +290,9 @@ OPTIONS:
 
     {flag_statistics}
                         生成されるCASL2ソースコードの統計情報ぽいものを出力する
+
+    {flag_run_debugger}
+                        生成されるCASL2プログラムをステップ実行する
 ",
         flag_src = FLAG_SOURCE_FILE,
         flag_destination_directory = FLAG_DESTINATION_DIRECTORY,
@@ -328,6 +303,7 @@ OPTIONS:
         flag_split_subroutines = FLAG_SPLIT_SUBROUTINES,
         flag_program_name = FLAG_PROGRAM_NAME,
         flag_statistics = FLAG_STATISTICS,
+        flag_run_debugger = FLAG_RUN_DEBUGGER,
         current_exe = current_exe,
     );
 
@@ -423,6 +399,13 @@ impl Flags {
                         return show_usage();
                     }
                     self.statistics = true;
+                }
+                FLAG_RUN_DEBUGGER => {
+                    if self.run_debugger {
+                        eprintln!("ERROR: {}が重複してます", arg);
+                        return show_usage();
+                    }
+                    self.run_debugger = true;
                 }
                 _ => {
                     eprintln!("ERROR: 不正なコマンドライン引数です ( {} )", arg);
