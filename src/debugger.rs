@@ -24,40 +24,16 @@ pub fn run(src_file: String, mut flags: Flags) -> io::Result<i32> {
         }
     }
 
+    if emu.start_point.is_none() {
+        eprintln!("入力ファイルが正しくありません");
+        return Ok(101);
+    }
+
     flags.compiler.program_name = None;
 
-    for (src, (entry, label_set)) in emu.variables.iter() {
-        println!("FILE: {} ( {} )", src, entry);
-        if let Some(local_labels) = emu.local_labels.get(entry) {
-            for (var, label) in label_set.int_var_labels.iter() {
-                use compiler::ValueLabel::*;
-                println!("  VAR: {} ( INTEGER )", var);
-                match label {
-                    VarInteger(s) | VarRefInteger(s) => {
-                        if let Some(pos) = local_labels.get(s) {
-                            println!("    LABEL: {}  #{:04X}", s, pos);
-                        } else {
-                            println!("    LABEL: {}  UNKNOWN", s);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            for (var, label) in label_set.bool_var_labels.iter() {
-                use compiler::ValueLabel::*;
-                println!("  VAR: {} ( BOOLEAN )", var);
-                match label {
-                    VarBoolean(s) | VarRefBoolean(s) => {
-                        if let Some(pos) = local_labels.get(s) {
-                            println!("    LABEL: {}  #{:04X}", s, pos);
-                        } else {
-                            println!("    LABEL: {}  UNKNOWN", s);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
+    if !emu.unknown_labels.is_empty() {
+        // 未解決ラベルを解決する処理を入れる
+        todo!();
     }
 
     Ok(0)
@@ -66,13 +42,60 @@ pub fn run(src_file: String, mut flags: Flags) -> io::Result<i32> {
 // プログラムリスト (ファイル名, ラベル, ソースコード(コードメモリ位置, コード))
 type Program = (String, String, Vec<(usize, casl2::Statement)>);
 
-const CALLSTACK_MAX_SIZE: usize = 0x0800;
-const BEGIN_OF_PROGAM: usize = 0x0400;
+// コールスタック用に確保する最大サイズ　(1呼び出しにつき、RPUSHで7語、MEMで1語、合計8語として、再帰呼び出しの深さ200とすると2000語分程度あればよいか？)
+const CALLSTACK_MAX_SIZE: usize = 0x0800; // 2048
+                                          // プログラムコードを埋め込みを開始する位置 (0はダメ)
+const BEGIN_OF_PROGRAM: usize = 0x0400; // 1024
+                                        // COMET2の容量(語数)
 const MEMORY_SIZE: usize = 0x10000;
+// スタックポインタの始点
+// 仕様どおりにするなら最初のプログラム起動時はOSからCALLが呼ばれるはずで
+// SP   <- (SP) - 1  (SP = 0xFFFD)
+// (SP) <- (PR)      (0xFFFDの位置に初期PRの値が放り込まれる)
+// PR   <- address
+// RET命令で取り出した値が初期PRの値と同じならプログラム終了と同等になるが
+// RET命令でSPが0xFFFDでは無い時に初期PRの値と同じならスタックが壊れてる(笑)
+// またSPが0xFFFDのRET命令で初期PRと異なる値を得たならプログラムが暴走する(笑)
+const CALLSTACK_START_POSITION: usize = 0xFFFF;
+// プログラムレジスタ(PR)の初期値
+// OSがCALLでプログラムを呼び出した位置に相当する
+// RET命令でこの値が取り出されたら、プログラム終了だがSP値が適切ではない場合はOSが暴走する(笑)
+// 今回OSは作らないため、OSのコード実体はないため、RETでこの値が来たらエミュレータ終了である
+// BEGIN_OF_PROGRAMより手前のメモリ帯にOSのコードがあると想定してる
+const INITIAL_PROGRAM_REGISTER: usize = 0x0234; // 564
 
 struct Emulator {
     // COMET2のメモリ
     mem: [u16; MEMORY_SIZE],
+
+    // レジスタ GR0～GR7
+    general_registers: [u16; 8],
+
+    // スタックポインタ SP
+    // (CASL2からのアクセス手段はないため利便性からu16ではなくusizeで管理)
+    // (OSはSPを直接操作できるような事が仕様に書かれてるが具体的手段自体は実装依存ぽい)
+    // CALLやPUSHでは先にSPが更新される、つまりSPはスタックの値の存在する先頭アドレス、か
+    stack_pointer: usize,
+
+    // プログラムレジスタ PR
+    // (CALL命令でスタックに積む以外でu16である必要性はないため利便性からusizeで管理)
+    // "次に"実行すべき命令のアドレスらしい
+    // つまり命令をCPUに伝える前にPRは更新する必要があるぽい？(CALL/RETの仕様を考えると)
+    //  CALLが  (SP) <- (PR), PR <- address
+    //  RETが   PR <- ( (SP) )
+    program_register: usize,
+
+    // フラグレジスタ FR (CASL2からの直接的なアクセス手段はないため、boolで管理)
+    //  OF overflow_flag 加減算ではオーバーフロー、シフト演算では溢れビット
+    //  SF sign_flag 算術か論理に関わらず符号ビットが立ってるか否からしい？
+    //  ZF zero_flag 値が0ならフラグ立つ
+    overflow_flag: bool,
+    sign_flag: bool,
+    zero_flag: bool,
+
+    // プログラムの開始点のエントリラベル
+    // (START命令に引数があるとBEGIN_OF_PROGRAMにはならないこともあるため)
+    start_point: Option<String>,
 
     // 挿入するプログラムの埋め込み開始位置
     compile_pos: usize,
@@ -97,8 +120,16 @@ impl Emulator {
     fn new() -> Self {
         Self {
             mem: [0; MEMORY_SIZE],
+            general_registers: [0; 8],
+            stack_pointer: CALLSTACK_START_POSITION,
+            program_register: INITIAL_PROGRAM_REGISTER,
+            overflow_flag: false,
+            sign_flag: false,
+            zero_flag: false,
+
+            start_point: None,
             variables: HashMap::new(),
-            compile_pos: BEGIN_OF_PROGAM,
+            compile_pos: BEGIN_OF_PROGRAM,
             local_labels: HashMap::new(),
             program_labels: HashMap::new(),
             program_list: Vec::new(),
@@ -108,6 +139,390 @@ impl Emulator {
 
     fn enough_remain(&self, len: usize) -> bool {
         len < self.mem.len() - self.compile_pos - CALLSTACK_MAX_SIZE
+    }
+
+    fn has_asccess_permission(&self, pos: usize) -> bool {
+        (BEGIN_OF_PROGRAM..self.compile_pos).contains(&pos)
+    }
+}
+
+#[derive(Clone, Debug)]
+enum RuntimeError {
+    NormalTermination {
+        position: usize,
+    },
+    AbnormalTermination {
+        position: usize,
+        op_code: String,
+    },
+    ExecutePermissionDenied {
+        position: usize,
+    },
+    AccessPermissionDenied {
+        position: usize,
+        op_code: String,
+        address: usize,
+    },
+    InvalidOpCode {
+        position: usize,
+        op_code: String,
+    },
+    StackOverflow {
+        position: usize,
+        op_code: String,
+        stack_pointer: usize,
+    },
+}
+
+impl Emulator {
+    fn step_through_code(&mut self) -> Result<(), RuntimeError> {
+        let pr = self.program_register;
+        if !self.has_asccess_permission(pr) {
+            return Err(RuntimeError::ExecutePermissionDenied { position: pr });
+        }
+        self.program_register += 1;
+        let op_code = self.mem[pr];
+        let r1 = ((op_code >> 4) & 0xF) as usize;
+        let r2 = (op_code & 0xF) as usize;
+        let op_code_size = get_op_code_size(op_code);
+
+        if op_code_size == 0 {
+            return Err(RuntimeError::InvalidOpCode {
+                position: pr,
+                op_code: get_op_code_form(op_code, 0),
+            });
+        }
+
+        if op_code_size == 1 {
+            if !(0..8).contains(&r1) || !(0..8).contains(&r2) {
+                return Err(RuntimeError::InvalidOpCode {
+                    position: pr,
+                    op_code: get_op_code_form(op_code, 0),
+                });
+            }
+            match (op_code >> 8) & 0xFF {
+                0x14 => {
+                    // LD r1,r2  (OF=0,SF,ZF)
+                    let r2_value = self.general_registers[r2];
+                    self.general_registers[r1] = r2_value;
+                    self.overflow_flag = false;
+                    self.sign_flag = (r2_value as i16) < 0;
+                    self.zero_flag = r2_value == 0;
+                }
+                0x24 => {
+                    // ADDA r1,r2 (OF,SF,ZF)
+                    let r1_value = self.general_registers[r1] as i16;
+                    let r2_value = self.general_registers[r2] as i16;
+                    let (value, overflow) = r1_value.overflowing_add(r2_value);
+                    self.general_registers[r1] = value as u16;
+                    self.overflow_flag = overflow;
+                    self.sign_flag = value < 0;
+                    self.zero_flag = value == 0;
+                }
+                0x26 => {
+                    // ADDL r1,r2 (OF,SF,ZF)
+                    let r1_value = self.general_registers[r1];
+                    let r2_value = self.general_registers[r2];
+                    let (value, overflow) = r1_value.overflowing_add(r2_value);
+                    self.general_registers[r1] = value;
+                    self.overflow_flag = overflow;
+                    self.sign_flag = (value as i16) < 0;
+                    self.zero_flag = value == 0;
+                }
+                0x25 => {
+                    // SUBA r1,r2 (OF,SF,ZF)
+                    let r1_value = self.general_registers[r1] as i16;
+                    let r2_value = self.general_registers[r2] as i16;
+                    let (value, overflow) = r1_value.overflowing_sub(r2_value);
+                    self.general_registers[r1] = value as u16;
+                    self.overflow_flag = overflow;
+                    self.sign_flag = value < 0;
+                    self.zero_flag = value == 0;
+                }
+                0x27 => {
+                    // SUBL r1,r2 (OF,SF,ZF)
+                    let r1_value = self.general_registers[r1];
+                    let r2_value = self.general_registers[r2];
+                    let (value, overflow) = r1_value.overflowing_sub(r2_value);
+                    self.general_registers[r1] = value;
+                    self.overflow_flag = overflow;
+                    self.sign_flag = (value as i16) < 0;
+                    self.zero_flag = value == 0;
+                }
+                0x34 => {
+                    // AND r1,r2 (OF=0,SF,ZF)
+                    let r2_value = self.general_registers[r2];
+                    let value = self.general_registers[r1] & r2_value;
+                    self.general_registers[r1] = value;
+                    self.overflow_flag = false;
+                    self.sign_flag = (value as i16) < 0;
+                    self.zero_flag = value == 0;
+                }
+                0x35 => {
+                    // OR r1,r2 (OF=0,SF,ZF)
+                    let r2_value = self.general_registers[r2];
+                    let value = self.general_registers[r1] | r2_value;
+                    self.general_registers[r1] = value;
+                    self.overflow_flag = false;
+                    self.sign_flag = (value as i16) < 0;
+                    self.zero_flag = value == 0;
+                }
+                0x36 => {
+                    // XOR r1,r2 (OF=0,SF,ZF)
+                    let r2_value = self.general_registers[r2];
+                    let value = self.general_registers[r1] ^ r2_value;
+                    self.general_registers[r1] = value;
+                    self.overflow_flag = false;
+                    self.sign_flag = (value as i16) < 0;
+                    self.zero_flag = value == 0;
+                }
+                0x44 => {
+                    // CPA r1,r2 (OF=0,SF,ZF)
+                    let r1_value = self.general_registers[r1] as i16;
+                    let r2_value = self.general_registers[r2] as i16;
+                    self.overflow_flag = false;
+                    self.sign_flag = r1_value < r2_value;
+                    self.zero_flag = r1_value == r2_value;
+                }
+                0x45 => {
+                    // CPL r1,r2 (OF=0,SF,ZF)
+                    let r1_value = self.general_registers[r1];
+                    let r2_value = self.general_registers[r2];
+                    self.overflow_flag = false;
+                    self.sign_flag = r1_value < r2_value;
+                    self.zero_flag = r1_value == r2_value;
+                }
+                0x71 if r2 == 0 => {
+                    // POP r
+                    if self.stack_pointer >= CALLSTACK_START_POSITION {
+                        return Err(RuntimeError::StackOverflow {
+                            position: pr,
+                            op_code: get_op_code_form(op_code, 0),
+                            stack_pointer: self.stack_pointer,
+                        });
+                    }
+                    let value = self.mem[self.stack_pointer];
+                    self.stack_pointer += 1;
+                    self.general_registers[r1] = value;
+                }
+                0x81 if r1 == 0 && r2 == 0 => {
+                    // RET
+                    if self.stack_pointer >= CALLSTACK_START_POSITION {
+                        return Err(RuntimeError::StackOverflow {
+                            position: pr,
+                            op_code: get_op_code_form(op_code, 0),
+                            stack_pointer: self.stack_pointer,
+                        });
+                    }
+                    let adr = self.mem[self.stack_pointer] as usize;
+                    self.stack_pointer += 1;
+                    if adr == INITIAL_PROGRAM_REGISTER {
+                        if self.stack_pointer == CALLSTACK_START_POSITION {
+                            return Err(RuntimeError::NormalTermination { position: pr });
+                        } else {
+                            return Err(RuntimeError::AbnormalTermination {
+                                position: pr,
+                                op_code: get_op_code_form(op_code, 0),
+                            });
+                        }
+                    }
+                    if !self.has_asccess_permission(adr) {
+                        return Err(RuntimeError::AccessPermissionDenied {
+                            position: pr,
+                            op_code: get_op_code_form(op_code, 0),
+                            address: adr,
+                        });
+                    }
+                    self.program_register = adr;
+                }
+                0x00 if r1 == 0 && r2 == 0 => {
+                    // NOP
+                }
+                _ => {
+                    return Err(RuntimeError::InvalidOpCode {
+                        position: pr,
+                        op_code: get_op_code_form(op_code, 0),
+                    })
+                }
+            }
+            return Ok(());
+        }
+
+        assert_eq!(op_code_size, 2);
+
+        let adr = self.mem[pr + 1];
+        self.program_register += 1;
+
+        if !(0..8).contains(&r1) || !(0..8).contains(&r2) {
+            return Err(RuntimeError::InvalidOpCode {
+                position: pr,
+                op_code: get_op_code_form(op_code, adr),
+            });
+        }
+
+        match (op_code >> 8) & 0xFF {
+            0x12 => {
+                // LAD r,adr,x
+                let value = adr.wrapping_add(if r2 == 0 {
+                    0
+                } else {
+                    self.general_registers[r2]
+                });
+                self.general_registers[r1] = value;
+                return Ok(());
+            }
+            0x70 => {
+                // PUSH adr,x
+                if r1 != 0 {
+                    return Err(RuntimeError::InvalidOpCode {
+                        position: pr,
+                        op_code: get_op_code_form(op_code, adr),
+                    });
+                }
+                let value = adr.wrapping_add(if r2 == 0 {
+                    0
+                } else {
+                    self.general_registers[r2]
+                });
+                let sp = self.stack_pointer - 1;
+                if sp < self.mem.len() - CALLSTACK_MAX_SIZE {
+                    return Err(RuntimeError::StackOverflow {
+                        position: pr,
+                        op_code: get_op_code_form(op_code, adr),
+                        stack_pointer: self.stack_pointer,
+                    });
+                }
+                self.stack_pointer = sp;
+                self.mem[sp] = value;
+                return Ok(());
+            }
+            0xF0 => {
+                // SVC adr,x
+                if r1 != 0 {
+                    return Err(RuntimeError::InvalidOpCode {
+                        position: pr,
+                        op_code: get_op_code_form(op_code, adr),
+                    });
+                }
+                let value = adr.wrapping_add(if r2 == 0 {
+                    0
+                } else {
+                    self.general_registers[r2]
+                });
+                if value == 1 {
+                    // IN
+                    todo!("IN");
+                } else if value == 2 {
+                    // OUT
+                    todo!("OUT");
+                }
+                return Ok(());
+            }
+            _ => {}
+        }
+
+        let access = adr as usize
+            + if r2 == 0 {
+                0
+            } else {
+                self.general_registers[r2] as usize
+            };
+
+        if !self.has_asccess_permission(access) {
+            return Err(RuntimeError::AccessPermissionDenied {
+                position: pr,
+                op_code: get_op_code_form(op_code, adr),
+                address: access,
+            });
+        }
+
+        match (op_code >> 8) & 0xFF {
+            0x10 => {
+                // LD r,adr,x (OF=0,SF,ZF)
+            }
+            0x11 => {
+                // ST r,adr,x
+            }
+            0x20 => {
+                // ADDA r,adr,x
+            }
+            0x22 => {
+                // ADDL r,adr,x
+            }
+            0x21 => {
+                // SUBA r,adr,x
+            }
+            0x23 => {
+                // SUBL r,adr,x
+            }
+            0x30 => {
+                // AND r,adr,x
+            }
+            0x31 => {
+                // OR r,adr,x
+            }
+            0x32 => {
+                // XOR r,adr,x
+            }
+            0x40 => {
+                // CPA r,adr,x
+            }
+            0x41 => {
+                // CPL r,adr,x
+            }
+            0x50 => {
+                // SLA r,adr,x
+            }
+            0x51 => {
+                // SRA r,adr,x
+            }
+            0x52 => {
+                // SLL r,adr,x
+            }
+            0x53 => {
+                // SRL r,adr,x
+            }
+            _ => {}
+        }
+
+        if r1 != 0 {
+            return Err(RuntimeError::InvalidOpCode {
+                position: pr,
+                op_code: get_op_code_form(op_code, adr),
+            });
+        }
+
+        match (op_code >> 8) & 0xFF {
+            0x65 => {
+                // JPL adr,x
+            }
+            0x61 => {
+                // JMI adr,x
+            }
+            0x62 => {
+                // JNZ adr,x
+            }
+            0x63 => {
+                // JZE adr,x
+            }
+            0x66 => {
+                // JOV adr,x
+            }
+            0x64 => {
+                // JUMP adr,x
+            }
+            0x80 => {
+                // CALL adr,x
+            }
+            _ => {
+                // UNKNOWN CODE
+                return Err(RuntimeError::InvalidOpCode {
+                    position: pr,
+                    op_code: get_op_code_form(op_code, adr),
+                });
+            }
+        }
+        Ok(())
     }
 }
 
@@ -139,6 +554,9 @@ impl Emulator {
             }
             Ok((labels, list)) => {
                 if let Some((name, _)) = list.last() {
+                    if self.start_point.is_none() {
+                        self.start_point = Some(name.clone());
+                    }
                     self.variables
                         .insert(src_file.into(), (name.clone(), labels));
                 } else {
@@ -453,7 +871,7 @@ impl Emulator {
                         PUSH 0,GR2
                         LAD GR1,0
                         LAD GR2,0
-                        SVC 0
+                        SVC 1
                         POP GR2
                         POP GR1
                     "#,
@@ -473,7 +891,7 @@ impl Emulator {
                         PUSH 0,GR2
                         LAD GR1,0
                         LAD GR2,0
-                        SVC 1
+                        SVC 2
                         POP GR2
                         POP GR1
                     "#,
@@ -520,6 +938,100 @@ impl Emulator {
                 self.mem[pos] = command.first_byte();
             }
         }
+    }
+}
+
+fn get_op_code_form(op_code: u16, adr: u16) -> String {
+    let r1 = (op_code >> 4) & 0xF;
+    let r2 = op_code & 0xF;
+    match (op_code >> 8) & 0xFF {
+        0x14 => format!("#{:04X}: LD GR{},GR{}", op_code, r1, r2),
+        0x24 => format!("#{:04X}: ADDA GR{},GR{}", op_code, r1, r2),
+        0x26 => format!("#{:04X}: ADDL GR{},GR{}", op_code, r1, r2),
+        0x25 => format!("#{:04X}: SUBA GR{},GR{}", op_code, r1, r2),
+        0x27 => format!("#{:04X}: SUBL GR{},GR{}", op_code, r1, r2),
+        0x34 => format!("#{:04X}: AND GR{},GR{}", op_code, r1, r2),
+        0x35 => format!("#{:04X}: OR GR{},GR{}", op_code, r1, r2),
+        0x36 => format!("#{:04X}: XOR GR{},GR{}", op_code, r1, r2),
+        0x44 => format!("#{:04X}: CPA GR{},GR{}", op_code, r1, r2),
+        0x45 => format!("#{:04X}: CPL GR{},GR{}", op_code, r1, r2),
+        0x12 => format!("#{:04X}: LAD GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x70 => format!("#{:04X}: PUSH #{:04X},GR{}", op_code, adr, r2),
+        0xF0 => format!("#{:04X}: SVC #{:04X},GR{}", op_code, adr, r2),
+        0x71 => format!("#{:04X}: POP GR{}", op_code, r1),
+        0x81 => format!("#{:04X}: RET", op_code),
+        0x00 => format!("#{:04X}: NOP", op_code),
+        0x10 => format!("#{:04X}: LD GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x11 => format!("#{:04X}: ST GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x20 => format!("#{:04X}: ADDA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x22 => format!("#{:04X}: ADDL GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x21 => format!("#{:04X}: SUBA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x23 => format!("#{:04X}: SUBL GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x30 => format!("#{:04X}: AND GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x31 => format!("#{:04X}: OR GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x32 => format!("#{:04X}: XOR GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x40 => format!("#{:04X}: CPA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x41 => format!("#{:04X}: CPL GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x50 => format!("#{:04X}: SLA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x51 => format!("#{:04X}: SRA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x52 => format!("#{:04X}: SLL GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x53 => format!("#{:04X}: SRL GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x65 => format!("#{:04X}: JPL #{:04X},GR{}", op_code, adr, r2),
+        0x61 => format!("#{:04X}: JMI #{:04X},GR{}", op_code, adr, r2),
+        0x62 => format!("#{:04X}: JNZ #{:04X},GR{}", op_code, adr, r2),
+        0x63 => format!("#{:04X}: JZE #{:04X},GR{}", op_code, adr, r2),
+        0x66 => format!("#{:04X}: JOV #{:04X},GR{}", op_code, adr, r2),
+        0x64 => format!("#{:04X}: JUMP #{:04X},GR{}", op_code, adr, r2),
+        0x80 => format!("#{:04X}: CALL #{:04X},GR{}", op_code, adr, r2),
+        _ => format!("#{:04X}: UNKNOWN", op_code),
+    }
+}
+
+fn get_op_code_size(op_code: u16) -> usize {
+    match (op_code >> 8) & 0xFF {
+        0x14 => 1, //format!("#{:04X}: LD GR{},GR{}", op_code, r1, r2),
+        0x24 => 1, //format!("#{:04X}: ADDA GR{},GR{}",op_code,  r1, r2),
+        0x26 => 1, //format!("#{:04X}: ADDL GR{},GR{}", op_code, r1, r2),
+        0x25 => 1, //format!("#{:04X}: SUBA GR{},GR{}", op_code, r1, r2),
+        0x27 => 1, //format!("#{:04X}: SUBL GR{},GR{}", op_code, r1, r2),
+        0x34 => 1, //format!("#{:04X}: AND GR{},GR{}", op_code, r1, r2),
+        0x35 => 1, //format!("#{:04X}: OR GR{},GR{}", op_code, r1, r2),
+        0x36 => 1, //format!("#{:04X}: XOR GR{},GR{}", op_code, r1, r2),
+        0x44 => 1, //format!("#{:04X}: CPA GR{},GR{}", op_code, r1, r2),
+        0x45 => 1, //format!("#{:04X}: CPL GR{},GR{}", op_code, r1, r2),
+
+        0x12 => 2, //format!("#{:04X}: LAD GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x70 => 2, //format!("#{:04X}: PUSH #{:04X},GR{}",op_code,  adr, r2),
+        0xF0 => 2, //format!("#{:04X}: SVC #{:04X},GR{}", op_code, adr, r2),
+
+        0x71 => 1, //format!("#{:04X}: POP GR{}", op_code, r1),
+        0x81 => 1, //format!("#{:04X}: RET",op_code),
+        0x00 => 1, //format!("#{:04X}: NOP",op_code),
+
+        0x10 => 2, //format!("#{:04X}: LD GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x11 => 2, //format!("#{:04X}: ST GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x20 => 2, //format!("#{:04X}: ADDA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x22 => 2, //format!("#{:04X}: ADDL GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x21 => 2, //format!("#{:04X}: SUBA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x23 => 2, //format!("#{:04X}: SUBL GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x30 => 2, //format!("#{:04X}: AND GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x31 => 2, //format!("#{:04X}: OR GR{},#{:04X},GR{}",op_code,  r1, adr, r2),
+        0x32 => 2, //format!("#{:04X}: XOR GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x40 => 2, //format!("#{:04X}: CPA GR{},#{:04X},GR{}",op_code,  r1, adr, r2),
+        0x41 => 2, //format!("#{:04X}: CPL GR{},#{:04X},GR{}",op_code,  r1, adr, r2),
+        0x50 => 2, //format!("#{:04X}: SLA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x51 => 2, //format!("#{:04X}: SRA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x52 => 2, //format!("#{:04X}: SLL GR{},#{:04X},GR{}",op_code,  r1, adr, r2),
+        0x53 => 2, //format!("#{:04X}: SRL GR{},#{:04X},GR{}",op_code,  r1, adr, r2),
+        0x65 => 2, //format!("#{:04X}: JPL #{:04X},GR{}", op_code, adr, r2),
+        0x61 => 2, //format!("#{:04X}: JMI #{:04X},GR{}", op_code, adr, r2),
+        0x62 => 2, //format!("#{:04X}: JNZ #{:04X},GR{}", op_code, adr, r2),
+        0x63 => 2, //format!("#{:04X}: JZE #{:04X},GR{}", op_code, adr, r2),
+        0x66 => 2, //format!("#{:04X}: JOV #{:04X},GR{}", op_code, adr, r2),
+        0x64 => 2, //format!("#{:04X}: JUMP #{:04X},GR{}",op_code,  adr, r2),
+        0x80 => 2, //format!("#{:04X}: CALL #{:04X},GR{}", op_code, adr, r2),
+
+        _ => 0, //format!("#{:04X}: UNKNOWN",op_code),
     }
 }
 
@@ -638,7 +1150,7 @@ impl casl2::Command {
                 // 2  4 PUSH 0,GR2
                 // 2  6 LAD GR1,POS
                 // 2  8 LAD GR2,LEN
-                // 2 10 SVC 0 (or 1)
+                // 2 10 SVC 1 (or 2)
                 // 1 11 POP GR2
                 // 1 12 POP GR1
                 12
