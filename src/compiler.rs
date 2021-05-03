@@ -312,6 +312,8 @@ struct Compiler {
     temp_int_var_labels: BinaryHeap<Reverse<String>>,
     // 使用中の一時変数
     engaged_temp_int_var_labels: HashSet<String>,
+    // Call呼び出し時にForで使用中な一時変数を保持
+    save_temp_int_var_labels: HashSet<String>,
 
     // 式展開時の一時変数(文字列)のラベルを保持 (長さラベル, 内容位置ラベル)
     temp_str_var_labels: BinaryHeap<Reverse<StrLabels>>,
@@ -411,6 +413,7 @@ impl Compiler {
             lit_str_labels: HashMap::new(),
             temp_int_var_labels: BinaryHeap::new(),
             engaged_temp_int_var_labels: HashSet::new(),
+            save_temp_int_var_labels: HashSet::new(),
             temp_str_var_labels: BinaryHeap::new(),
             subroutine_codes: HashMap::new(),
             loop_labels: HashMap::new(),
@@ -868,6 +871,7 @@ impl Compiler {
             int_arr_labels,
             lit_str_labels,
             temp_int_var_labels,
+            save_temp_int_var_labels,
             temp_str_var_labels,
             subroutine_codes,
             mut statements,
@@ -883,6 +887,12 @@ impl Compiler {
             ..
         } = self;
 
+        let save_temp_int_var_labels = save_temp_int_var_labels
+            .into_iter()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+
         // プログラム終了ポイント
         statements.labeled("EXIT", casl2::Command::Nop);
 
@@ -896,6 +906,18 @@ impl Compiler {
                     POP   GR1
                     ST    GR1,MEM"#,
             );
+        }
+
+        // 一時変数の復帰
+        if option_use_allocator && !save_temp_int_var_labels.is_empty() {
+            statements.comment("Recover Temporary Values");
+            for label in save_temp_int_var_labels.iter() {
+                statements.code(format!(
+                    r#" POP GR0
+                        ST  GR0,{}"#,
+                    label
+                ));
+            }
         }
 
         // プログラム開始時のレジスタの状態の復帰
@@ -1064,6 +1086,29 @@ impl Compiler {
         // プログラム開始時のレジスタの状態の保存
         if option_restore_registers {
             temp_statements.code(casl2::Command::Rpush);
+        }
+
+        if option_use_allocator && !save_temp_int_var_labels.is_empty() {
+            // Forステートメントで使用する一時変数の退避
+            let use_gr7 = arguments.iter().any(|arg| {
+                matches!(arg.register1, casl2::IndexRegister::Gr7)
+                    || matches!(arg.register2, Some(casl2::IndexRegister::Gr7))
+            });
+            temp_statements.comment("Save Temporary Values");
+            if use_gr7 {
+                temp_statements.code(" LD GR0,GR7");
+            }
+            let mut save_temp_int_var_labels = save_temp_int_var_labels;
+            while let Some(label) = save_temp_int_var_labels.pop() {
+                temp_statements.code(format!(
+                    r#" LD    GR7,{}
+                        PUSH  0,GR7"#,
+                    label
+                ));
+            }
+            if use_gr7 {
+                temp_statements.code(" LD GR7,GR0");
+            }
         }
 
         if option_use_allocator {

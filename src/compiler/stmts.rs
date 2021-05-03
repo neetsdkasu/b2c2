@@ -39,6 +39,11 @@ impl Compiler {
         use casl2::IndexRegister;
         use parser::{Expr, ExprType, VarType};
 
+        if self.option_use_allocator {
+            self.save_temp_int_var_labels
+                .extend(self.engaged_temp_int_var_labels.iter().cloned());
+        }
+
         let name = match self.original_program_name.as_ref() {
             Some(origin) if origin == name => self.program_name.clone().expect("BUG"),
             _ => name.to_string(),
@@ -802,7 +807,8 @@ impl Compiler {
             self.program_name = Some(name.into());
         }
         self.original_program_name = Some(name.into());
-        self.callables.insert(name.to_string(), Vec::new());
+        let program_name = self.program_name.clone().unwrap();
+        self.callables.insert(program_name, Vec::new());
     }
 
     // Extern Sub ステートメント

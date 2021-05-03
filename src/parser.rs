@@ -283,7 +283,10 @@ impl Parser {
 
         if !self.header_state.can_command() {
             return Err(self.syntax_error("この位置に代入のステートメントは置けません".into()));
-        } else {
+        } else if self.header_state.in_header() {
+            if let Some(name) = self.temp_progam_name.take() {
+                self.callables.insert(name, Vec::new());
+            }
             self.header_state = HeaderState::NotHeader;
         }
 
