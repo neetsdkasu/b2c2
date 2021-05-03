@@ -69,7 +69,7 @@ J005      XOR       GR6,=#FFFF
           LD        GR4,TL001
           CALL      C005
           OUT       TB002,TL002
-                                   ; Exit Program
+                                   ; Exit Sub
           JUMP      EXIT
                                    ; End If
 J003      NOP

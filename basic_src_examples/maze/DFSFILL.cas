@@ -102,7 +102,7 @@ J005      NOP
           ADDL      GR7,GR0
           LD        GR6,='#'
           ST        GR6,0,GR7
-                                   ; Exit Program
+                                   ; Exit Sub
           JUMP      EXIT
                                    ; End Select
 J007      NOP
@@ -176,7 +176,7 @@ J009      NOP
           ADDL      GR7,GR0
           LD        GR6,='#'
           ST        GR6,0,GR7
-                                   ; Exit Program
+                                   ; Exit Sub
           JUMP      EXIT
                                    ; End Select
 J010      NOP
@@ -250,7 +250,7 @@ J012      NOP
           ADDL      GR7,GR0
           LD        GR6,='#'
           ST        GR6,0,GR7
-                                   ; Exit Program
+                                   ; Exit Sub
           JUMP      EXIT
                                    ; End Select
 J013      NOP
@@ -324,7 +324,7 @@ J015      NOP
           ADDL      GR7,GR0
           LD        GR6,='#'
           ST        GR6,0,GR7
-                                   ; Exit Program
+                                   ; Exit Sub
           JUMP      EXIT
                                    ; End Select
 J016      NOP

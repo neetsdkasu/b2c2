@@ -49,7 +49,7 @@ J009      NOP
           XOR       GR7,GR7
           LD        GR6,ARG3
           ST        GR7,0,GR6
-                                   ; Exit Program
+                                   ; Exit Sub
           JUMP      EXIT
                                    ; End If
 J008      NOP

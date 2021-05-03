@@ -817,10 +817,11 @@ impl Compiler {
         self.callables.insert(name.into(), arguments.into());
     }
 
-    // Exit Program ステートメント
+    // Exit Sub ステートメント
     pub(super) fn compile_exit_program(&mut self) {
+        self.add_debugger_hint(|| "Exit Sub".to_string());
         self.show_debugger_hint();
-        self.comment("Exit Program");
+        self.comment("Exit Sub");
         self.code(casl2::Command::P {
             code: casl2::P::Jump,
             adr: casl2::Adr::label("EXIT"),
@@ -1060,6 +1061,7 @@ impl Compiler {
     pub(super) fn compile_continue_loop(&mut self, exit_id: usize, keyword: &str) {
         assert!(matches!(keyword, "Do" | "For"));
         let loop_label = self.get_loop_label(exit_id);
+        self.add_debugger_hint(|| format!("Continue {}", keyword));
         self.show_debugger_hint();
         self.comment(format!("Continue {}", keyword));
         // JUMP {loop}
@@ -1074,6 +1076,7 @@ impl Compiler {
     pub(super) fn compile_exit_block(&mut self, exit_id: usize, keyword: &str) {
         assert!(matches!(keyword, "Do" | "For" | "Select"));
         let exit_label = self.get_exit_label(exit_id);
+        self.add_debugger_hint(|| format!("Exit {}", keyword));
         self.show_debugger_hint();
         self.comment(format!("Exit {}", keyword));
         // JUMP {exit}
