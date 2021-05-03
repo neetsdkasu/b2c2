@@ -610,7 +610,7 @@ impl Emulator {
                     match io::stdin().read_line(&mut line)? {
                         0 => self.mem[len] = (-1_i16) as u16,
                         _ => {
-                            // 改行文字のtrim忘れ
+                            let line = line.lines().next().unwrap();
                             let line = jis_x_201::convert_kana_wide_full_to_half(&line);
                             self.mem[len] = line.chars().count().min(256) as u16;
                             for (i, ch) in line.chars().enumerate().take(256) {
