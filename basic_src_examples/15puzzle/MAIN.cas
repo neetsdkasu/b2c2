@@ -4,18 +4,18 @@ MAIN      START
                                    ;   ByRef field(15) As Integer [GR1]
                                    ;   field = field
                                    ;   Set Arguments And Call INIT
-          LAD       GR1,IA2
+          LAD       GR1,IA002
           CALL      INIT
                                    ; Do
-J1        NOP
+J001      NOP
                                    ; Call SHOW
                                    ;   ByVal steps As Integer [GR1]
                                    ;   steps = steps
                                    ;   ByRef field(15) As Integer [GR2]
                                    ;   field = field
                                    ;   Set Arguments And Call SHOW
-          LD        GR1,I1
-          LAD       GR2,IA2
+          LD        GR1,I001
+          LAD       GR2,IA002
           CALL      SHOW
                                    ; Call CHECK
                                    ;   ByRef ok As Boolean [GR1]
@@ -25,40 +25,40 @@ J1        NOP
                                    ;   ByRef field(15) As Integer [GR3]
                                    ;   field = field
                                    ;   Set Arguments And Call CHECK
-          LAD       GR1,B3
-          LD        GR2,I1
-          LAD       GR3,IA2
+          LAD       GR1,B003
+          LD        GR2,I001
+          LAD       GR3,IA002
           CALL      CHECK
                                    ; If ok Then
-          LD        GR7,B3
+          LD        GR7,B003
           AND       GR7,GR7
-          JZE       J3
+          JZE       J003
                                    ; Print "Complete!"
-          OUT       LB1,LL1
+          OUT       LB001,LL001
                                    ; Exit Do
-          JUMP      J2
+          JUMP      J002
                                    ; End If
-J3        NOP
+J003      NOP
                                    ; Call CMD
                                    ;   ByRef cmd As Integer [GR1]
                                    ;   cmd = cmd
                                    ;   Set Arguments And Call CMD
-          LAD       GR1,I4
+          LAD       GR1,I004
           CALL      CMD
                                    ; If (cmd < 0) Then
-          LD        GR7,I4
+          LD        GR7,I004
           XOR       GR6,GR6
           LAD       GR0,#FFFF
           CPA       GR7,GR6
-          JMI       J5
+          JMI       J005
           XOR       GR0,GR0
-J5        LD        GR7,GR0
+J005      LD        GR7,GR0
           AND       GR7,GR7
-          JZE       J4
+          JZE       J004
                                    ; Exit Do
-          JUMP      J2
+          JUMP      J002
                                    ; End If
-J4        NOP
+J004      NOP
                                    ; Call MOVE
                                    ;   ByVal cmd As Integer [GR1]
                                    ;   cmd = cmd
@@ -67,37 +67,37 @@ J4        NOP
                                    ;   ByRef field(15) As Integer [GR3]
                                    ;   field = field
                                    ;   Set Arguments And Call MOVE
-          LD        GR1,I4
-          LAD       GR2,I1
-          LAD       GR3,IA2
+          LD        GR1,I004
+          LAD       GR2,I001
+          LAD       GR3,IA002
           CALL      MOVE
                                    ; Loop
-          JUMP      J1
-J2        NOP
+          JUMP      J001
+J002      NOP
 EXIT      NOP
           RPOP
           RET
                                    ; Dim ok As Boolean
-B3        DS        1
+B003      DS        1
                                    ; Dim steps As Integer
-I1        DS        1
+I001      DS        1
                                    ; Dim cmd As Integer
-I4        DS        1
+I004      DS        1
                                    ; Dim field(15) As Integer
-IA2       DS        16
-LL1       DC        9
-LB1       DC        'Complete!'
+IA002     DS        16
+LL001     DC        9
+LB001     DC        'Complete!'
                                    ; UtilFill
-C10       PUSH      0,GR1
+C010      PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           ADDL      GR3,GR1
-J6        CPL       GR1,GR3
-          JZE       J7
+J006      CPL       GR1,GR3
+          JZE       J007
           ST        GR2,0,GR1
           LAD       GR1,1,GR1
-          JUMP      J6
-J7        POP       GR3
+          JUMP      J006
+J007      POP       GR3
           POP       GR2
           POP       GR1
           RET

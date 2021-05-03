@@ -38,7 +38,7 @@ DFSFAR    START
           LD        GR2,MEM
           LD        GR2,0,GR2
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,MEM
           LD        GR7,1,GR7
           ADDL      GR7,GR0
@@ -58,11 +58,11 @@ DFSFAR    START
           LD        GR6,0,GR6
           LAD       GR0,#FFFF
           CPA       GR7,GR6
-          JPL       J5
+          JPL       J005
           XOR       GR0,GR0
-J5        LD        GR7,GR0
+J005      LD        GR7,GR0
           AND       GR7,GR7
-          JZE       J4
+          JZE       J004
                                    ; maxDepth = depth
           LD        GR7,MEM
           LD        GR7,3,GR7
@@ -76,7 +76,7 @@ J5        LD        GR7,GR0
           LD        GR6,5,GR6
           ST        GR7,0,GR6
                                    ; End If
-J4        NOP
+J004      NOP
                                    ; x = (pos - 15)
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -92,15 +92,15 @@ J4        NOP
           LD        GR2,0,GR2
           LD        GR3,MEM
           LD        GR3,1,GR3
-          CALL      C11
+          CALL      C011
           LD        GR7,GR0
           LD        GR6,=' '
           SUBA      GR7,GR6
-          JZE       J8
+          JZE       J008
           LAD       GR7,#FFFF
-J8        XOR       GR7,=#FFFF
+J008      XOR       GR7,=#FFFF
           AND       GR7,GR7
-          JZE       J6
+          JZE       J006
                                    ; Call DFSFAR
                                    ;   ByRef maze As String [GR1,GR2]
                                    ;   maze = maze
@@ -127,7 +127,7 @@ J8        XOR       GR7,=#FFFF
           LD        GR6,5,GR6
           CALL      DFSFAR
                                    ; End If
-J6        NOP
+J006      NOP
                                    ; x = (pos + 1)
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -143,15 +143,15 @@ J6        NOP
           LD        GR2,0,GR2
           LD        GR3,MEM
           LD        GR3,1,GR3
-          CALL      C11
+          CALL      C011
           LD        GR7,GR0
           LD        GR6,=' '
           SUBA      GR7,GR6
-          JZE       J10
+          JZE       J010
           LAD       GR7,#FFFF
-J10       XOR       GR7,=#FFFF
+J010      XOR       GR7,=#FFFF
           AND       GR7,GR7
-          JZE       J9
+          JZE       J009
                                    ; Call DFSFAR
                                    ;   ByRef maze As String [GR1,GR2]
                                    ;   maze = maze
@@ -178,7 +178,7 @@ J10       XOR       GR7,=#FFFF
           LD        GR6,5,GR6
           CALL      DFSFAR
                                    ; End If
-J9        NOP
+J009      NOP
                                    ; x = (pos + 15)
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -194,15 +194,15 @@ J9        NOP
           LD        GR2,0,GR2
           LD        GR3,MEM
           LD        GR3,1,GR3
-          CALL      C11
+          CALL      C011
           LD        GR7,GR0
           LD        GR6,=' '
           SUBA      GR7,GR6
-          JZE       J12
+          JZE       J012
           LAD       GR7,#FFFF
-J12       XOR       GR7,=#FFFF
+J012      XOR       GR7,=#FFFF
           AND       GR7,GR7
-          JZE       J11
+          JZE       J011
                                    ; Call DFSFAR
                                    ;   ByRef maze As String [GR1,GR2]
                                    ;   maze = maze
@@ -229,7 +229,7 @@ J12       XOR       GR7,=#FFFF
           LD        GR6,5,GR6
           CALL      DFSFAR
                                    ; End If
-J11       NOP
+J011      NOP
                                    ; x = (pos - 1)
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -245,15 +245,15 @@ J11       NOP
           LD        GR2,0,GR2
           LD        GR3,MEM
           LD        GR3,1,GR3
-          CALL      C11
+          CALL      C011
           LD        GR7,GR0
           LD        GR6,=' '
           SUBA      GR7,GR6
-          JZE       J14
+          JZE       J014
           LAD       GR7,#FFFF
-J14       XOR       GR7,=#FFFF
+J014      XOR       GR7,=#FFFF
           AND       GR7,GR7
-          JZE       J13
+          JZE       J013
                                    ; Call DFSFAR
                                    ;   ByRef maze As String [GR1,GR2]
                                    ;   maze = maze
@@ -280,7 +280,7 @@ J14       XOR       GR7,=#FFFF
           LD        GR6,5,GR6
           CALL      DFSFAR
                                    ; End If
-J13       NOP
+J013      NOP
                                    ; maze( pos ) = " "c
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -288,7 +288,7 @@ J13       NOP
           LD        GR2,MEM
           LD        GR2,0,GR2
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,MEM
           LD        GR7,1,GR7
           ADDL      GR7,GR0
@@ -305,56 +305,56 @@ EXIT      NOP
 MEM       DS        1
                                    ; UtilAllocator
 ALLOC     AND       GR0,GR0
-          JNZ       J17
-          LAD       GR0,V3
-          ADDL      GR0,V1
-          CPL       GR0,V2
-          JZE       J16
-J15       ST        GR1,V1
-          LAD       GR0,V3
+          JNZ       J017
+          LAD       GR0,V003
+          ADDL      GR0,V001
+          CPL       GR0,V002
+          JZE       J016
+J015      ST        GR1,V001
+          LAD       GR0,V003
           ADDL      GR1,GR0
-          ST        GR1,V2
+          ST        GR1,V002
           RET
-J16       ADDL      GR0,GR1
-          CPL       GR0,V4
-          JPL       J15
-          ST        GR0,V2
+J016      ADDL      GR0,GR1
+          CPL       GR0,V004
+          JPL       J015
+          ST        GR0,V002
           SUBL      GR0,GR1
-          ADDL      GR1,V1
-          ST        GR1,V1
+          ADDL      GR1,V001
+          ST        GR1,V001
           RET
-J17       ST        GR1,V2
-          LAD       GR0,V3
+J017      ST        GR1,V002
+          LAD       GR0,V003
           SUBL      GR1,GR0
-          ST        GR1,V1
+          ST        GR1,V001
           RET
-V1        DS        1
-V2        DS        1
-V3        DS        3000
-V4        DC        V4
+V001      DS        1
+V002      DS        1
+V003      DS        3000
+V004      DC        V004
                                    ; UtilLoadElement
-C11       AND       GR2,GR2
-          JNZ       J7
+C011      AND       GR2,GR2
+          JNZ       J007
           XOR       GR0,GR0
           RET
-J7        CALL      C13
+J007      CALL      C013
           PUSH      0,GR3
           ADDL      GR3,GR0
           LD        GR0,0,GR3
           POP       GR3
           RET
                                    ; UtilSafeIndex
-C13       AND       GR2,GR2
-          JNZ       J1
+C013      AND       GR2,GR2
+          JNZ       J001
           XOR       GR0,GR0
           RET
-J1        LD        GR0,GR1
-          JPL       J2
+J001      LD        GR0,GR1
+          JPL       J002
           XOR       GR0,GR0
           RET
-J2        CPL       GR0,GR2
-          JMI       J3
+J002      CPL       GR0,GR2
+          JMI       J003
           LAD       GR0,-1
           ADDL      GR0,GR2
-J3        RET
+J003      RET
           END

@@ -8,32 +8,32 @@ MAKE      START
                                    ; Argument best
           ST        GR4,ARG4
                                    ; Init Variables
-          LAD       GR1,I1
+          LAD       GR1,I001
           XOR       GR2,GR2
           LAD       GR3,4
-          CALL      C10
+          CALL      C010
                                    ; For k = 30 To 195 Step 30
           LAD       GR7,30
-          ST        GR7,I2
-J1        NOP
-          LD        GR1,I2
+          ST        GR7,I002
+J001      NOP
+          LD        GR1,I002
           CPA       GR1,=195
-          JPL       J3
+          JPL       J003
                                    ; For i = 2 To 12 Step 2
           LAD       GR7,2
-          ST        GR7,I1
-J4        NOP
-          LD        GR1,I1
+          ST        GR7,I001
+J004      NOP
+          LD        GR1,I001
           CPA       GR1,=12
-          JPL       J6
+          JPL       J006
                                    ; maze( (k + i) ) = "#"c
-          LD        GR7,I2
-          LD        GR6,I1
+          LD        GR7,I002
+          LD        GR6,I001
           ADDA      GR7,GR6
           LD        GR1,GR7
           LD        GR2,ARG1
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,ARG2
           ADDL      GR7,GR0
           LD        GR6,='#'
@@ -42,109 +42,109 @@ J4        NOP
                                    ;   ByVal init As Boolean [GR1]
                                    ;   init = False
           XOR       GR7,GR7
-          ST        GR7,T1
+          ST        GR7,T001
                                    ;   ByRef value As Integer [GR2]
                                    ;   value = x
                                    ;   Set Arguments And Call RAND
-          LD        GR1,T1
-          LAD       GR2,I3
+          LD        GR1,T001
+          LAD       GR2,I003
           CALL      RAND
                                    ; Select Case x
-          LD        GR7,I3
+          LD        GR7,I003
           CPA       GR7,=0
-          JZE       J10
+          JZE       J010
           CPA       GR7,=1
-          JZE       J11
+          JZE       J011
           CPA       GR7,=2
-          JZE       J12
+          JZE       J012
           CPA       GR7,=3
-          JZE       J13
-          JUMP      J14
+          JZE       J013
+          JUMP      J014
                                    ; Case 0
-J10       NOP
+J010      NOP
                                    ; x = ((k + i) - 15)
-          LD        GR7,I2
-          LD        GR6,I1
+          LD        GR7,I002
+          LD        GR6,I001
           ADDA      GR7,GR6
           LAD       GR7,-15,GR7
-          ST        GR7,I3
-          JUMP      J14
+          ST        GR7,I003
+          JUMP      J014
                                    ; Case 1
-J11       NOP
+J011      NOP
                                    ; x = ((k + i) + 1)
-          LD        GR7,I2
-          LD        GR6,I1
+          LD        GR7,I002
+          LD        GR6,I001
           ADDA      GR7,GR6
           LAD       GR7,1,GR7
-          ST        GR7,I3
-          JUMP      J14
+          ST        GR7,I003
+          JUMP      J014
                                    ; Case 2
-J12       NOP
+J012      NOP
                                    ; x = ((k + i) + 15)
-          LD        GR7,I2
-          LD        GR6,I1
+          LD        GR7,I002
+          LD        GR6,I001
           ADDA      GR7,GR6
           LAD       GR7,15,GR7
-          ST        GR7,I3
-          JUMP      J14
+          ST        GR7,I003
+          JUMP      J014
                                    ; Case 3
-J13       NOP
+J013      NOP
                                    ; x = ((k + i) - 1)
-          LD        GR7,I2
-          LD        GR6,I1
+          LD        GR7,I002
+          LD        GR6,I001
           ADDA      GR7,GR6
           LAD       GR7,-1,GR7
-          ST        GR7,I3
+          ST        GR7,I003
                                    ; End Select
-J14       NOP
+J014      NOP
                                    ; maze( x ) = "#"c
-          LD        GR7,I3
+          LD        GR7,I003
           LD        GR1,GR7
           LD        GR2,ARG1
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,ARG2
           ADDL      GR7,GR0
           LD        GR6,='#'
           ST        GR6,0,GR7
                                    ; Next i
-J5        NOP
-          LAD       GR1,I1
+J005      NOP
+          LAD       GR1,I001
           LD        GR2,0,GR1
           LAD       GR2,2,GR2
           ST        GR2,0,GR1
-          JUMP      J4
-J6        NOP
+          JUMP      J004
+J006      NOP
                                    ; Next k
-J2        NOP
-          LAD       GR1,I2
+J002      NOP
+          LAD       GR1,I002
           LD        GR2,0,GR1
           LAD       GR2,30,GR2
           ST        GR2,0,GR1
-          JUMP      J1
-J3        NOP
+          JUMP      J001
+J003      NOP
                                    ; For i = 73 To 223 Step 15
           LAD       GR7,73
-          ST        GR7,I1
-J15       NOP
-          LD        GR1,I1
+          ST        GR7,I001
+J015      NOP
+          LD        GR1,I001
           CPA       GR1,=223
-          JPL       J17
+          JPL       J017
                                    ; If (maze(i) = " "c) Then
-          LD        GR7,I1
+          LD        GR7,I001
           LD        GR1,GR7
           LD        GR2,ARG1
           LD        GR2,0,GR2
           LD        GR3,ARG2
-          CALL      C11
+          CALL      C011
           LD        GR7,GR0
           LD        GR6,=' '
           SUBA      GR7,GR6
-          JZE       J20
+          JZE       J020
           LAD       GR7,#FFFF
-J20       XOR       GR7,=#FFFF
+J020      XOR       GR7,=#FFFF
           AND       GR7,GR7
-          JZE       J18
+          JZE       J018
                                    ; Call DFSFILL
                                    ;   ByRef s As String [GR1,GR2]
                                    ;   s = maze
@@ -153,65 +153,65 @@ J20       XOR       GR7,=#FFFF
                                    ;   Set Arguments And Call DFSFILL
           LD        GR1,ARG1
           LD        GR2,ARG2
-          LD        GR3,I1
+          LD        GR3,I001
           CALL      DFSFILL
                                    ; gPos = i
-          LD        GR7,I1
-          ST        GR7,I4
+          LD        GR7,I001
+          ST        GR7,I004
                                    ; Exit For
-          JUMP      J17
+          JUMP      J017
                                    ; End If
-J18       NOP
+J018      NOP
                                    ; Next i
-J16       NOP
-          LAD       GR1,I1
+J016      NOP
+          LAD       GR1,I001
           LD        GR2,0,GR1
           LAD       GR2,15,GR2
           ST        GR2,0,GR1
-          JUMP      J15
-J17       NOP
+          JUMP      J015
+J017      NOP
                                    ; For i = 0 To 224 Step 1
           XOR       GR7,GR7
-          ST        GR7,I1
-J21       NOP
-          LD        GR1,I1
+          ST        GR7,I001
+J021      NOP
+          LD        GR1,I001
           CPA       GR1,=224
-          JPL       J23
+          JPL       J023
                                    ; If (maze(i) <> "#"c) Then
-          LD        GR7,I1
+          LD        GR7,I001
           LD        GR1,GR7
           LD        GR2,ARG1
           LD        GR2,0,GR2
           LD        GR3,ARG2
-          CALL      C11
+          CALL      C011
           LD        GR7,GR0
           LD        GR6,='#'
           SUBA      GR7,GR6
-          JZE       J25
+          JZE       J025
           LAD       GR7,#FFFF
-J25       NOP
+J025      NOP
           AND       GR7,GR7
-          JZE       J24
+          JZE       J024
                                    ; maze( i ) = " "c
-          LD        GR7,I1
+          LD        GR7,I001
           LD        GR1,GR7
           LD        GR2,ARG1
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,ARG2
           ADDL      GR7,GR0
           LD        GR6,=' '
           ST        GR6,0,GR7
                                    ; End If
-J24       NOP
+J024      NOP
                                    ; Next i
-J22       NOP
-          LAD       GR1,I1
+J022      NOP
+          LAD       GR1,I001
           LD        GR2,0,GR1
           LAD       GR2,1,GR2
           ST        GR2,0,GR1
-          JUMP      J21
-J23       NOP
+          JUMP      J021
+J023      NOP
                                    ; Call DFSFAR
                                    ;   ByRef maze As String [GR1,GR2]
                                    ;   maze = maze
@@ -220,19 +220,19 @@ J23       NOP
                                    ;   ByVal depth As Integer [GR4]
                                    ;   depth = 0
           XOR       GR7,GR7
-          ST        GR7,T1
+          ST        GR7,T001
                                    ;   ByRef maxDepth As Integer [GR5]
                                    ;   maxDepth = 0
           XOR       GR7,GR7
-          ST        GR7,T2
+          ST        GR7,T002
                                    ;   ByRef deepestPos As Integer [GR6]
                                    ;   deepestPos = sPos
                                    ;   Set Arguments And Call DFSFAR
           LD        GR1,ARG1
           LD        GR2,ARG2
-          LD        GR3,I4
-          LD        GR4,T1
-          LAD       GR5,T2
+          LD        GR3,I004
+          LD        GR4,T001
+          LAD       GR5,T002
           LD        GR6,ARG3
           CALL      DFSFAR
                                    ; best = 0
@@ -247,7 +247,7 @@ J23       NOP
                                    ;   ByVal depth As Integer [GR4]
                                    ;   depth = 0
           XOR       GR7,GR7
-          ST        GR7,T2
+          ST        GR7,T001
                                    ;   ByRef maxDepth As Integer [GR5]
                                    ;   maxDepth = best
                                    ;   ByRef deepestPos As Integer [GR6]
@@ -257,9 +257,9 @@ J23       NOP
           LD        GR2,ARG2
           LD        GR3,ARG3
           LD        GR3,0,GR3
-          LD        GR4,T2
+          LD        GR4,T001
           LD        GR5,ARG4
-          LAD       GR6,I4
+          LAD       GR6,I004
           CALL      DFSFAR
                                    ; maze( sPos ) = "S"c
           LD        GR7,ARG3
@@ -267,17 +267,17 @@ J23       NOP
           LD        GR1,GR7
           LD        GR2,ARG1
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,ARG2
           ADDL      GR7,GR0
           LD        GR6,='S'
           ST        GR6,0,GR7
                                    ; maze( gPos ) = "G"c
-          LD        GR7,I4
+          LD        GR7,I004
           LD        GR1,GR7
           LD        GR2,ARG1
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,ARG2
           ADDL      GR7,GR0
           LD        GR6,='G'
@@ -293,52 +293,52 @@ ARG3      DS        1
                                    ; ByRef best As Integer [GR4]
 ARG4      DS        1
                                    ; Dim i As Integer
-I1        DS        1
+I001      DS        1
                                    ; Dim k As Integer
-I2        DS        1
+I002      DS        1
                                    ; Dim x As Integer
-I3        DS        1
+I003      DS        1
                                    ; Dim gPos As Integer
-I4        DS        1
-T1        DS        1
-T2        DS        1
+I004      DS        1
+T001      DS        1
+T002      DS        1
                                    ; UtilFill
-C10       PUSH      0,GR1
+C010      PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           ADDL      GR3,GR1
-J26       CPL       GR1,GR3
-          JZE       J27
+J026      CPL       GR1,GR3
+          JZE       J027
           ST        GR2,0,GR1
           LAD       GR1,1,GR1
-          JUMP      J26
-J27       POP       GR3
+          JUMP      J026
+J027      POP       GR3
           POP       GR2
           POP       GR1
           RET
                                    ; UtilLoadElement
-C11       AND       GR2,GR2
-          JNZ       J19
+C011      AND       GR2,GR2
+          JNZ       J019
           XOR       GR0,GR0
           RET
-J19       CALL      C13
+J019      CALL      C013
           PUSH      0,GR3
           ADDL      GR3,GR0
           LD        GR0,0,GR3
           POP       GR3
           RET
                                    ; UtilSafeIndex
-C13       AND       GR2,GR2
-          JNZ       J7
+C013      AND       GR2,GR2
+          JNZ       J007
           XOR       GR0,GR0
           RET
-J7        LD        GR0,GR1
-          JPL       J8
+J007      LD        GR0,GR1
+          JPL       J008
           XOR       GR0,GR0
           RET
-J8        CPL       GR0,GR2
-          JMI       J9
+J008      CPL       GR0,GR2
+          JMI       J009
           LAD       GR0,-1
           ADDL      GR0,GR2
-J9        RET
+J009      RET
           END

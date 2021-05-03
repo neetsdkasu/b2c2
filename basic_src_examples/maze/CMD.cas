@@ -6,195 +6,195 @@ CMD       START
           LD        GR6,ARG1
           ST        GR7,0,GR6
                                    ; Do
-J1        NOP
+J001      NOP
                                    ; Print "command? (up,right,down,left,end)"
-          OUT       LB1,LL1
+          OUT       LB001,LL001
                                    ; Input s
-          IN        SB1,SL1
+          IN        SB001,SL001
           XOR       GR0,GR0
           ST        GR0,EOF
-          LD        GR0,SL1
-          JPL       J4
-          JZE       J4
+          LD        GR0,SL001
+          JPL       J004
+          JZE       J004
           ST        GR0,EOF
           XOR       GR0,GR0
-          ST        GR0,SL1
-J4        NOP
+          ST        GR0,SL001
+J004      NOP
                                    ; Call LOWER
                                    ;   ByRef s As String [GR1,GR2]
                                    ;   s = s
                                    ;   Set Arguments And Call LOWER
-          LAD       GR1,SL1
-          LAD       GR2,SB1
+          LAD       GR1,SL001
+          LAD       GR2,SB001
           CALL      LOWER
                                    ; Select Case s
-          LAD       GR1,SB1
-          LD        GR2,SL1
+          LAD       GR1,SB001
+          LD        GR2,SL001
           LAD       GR3,='end'
           LAD       GR4,3
-          CALL      C4
+          CALL      C004
           AND       GR0,GR0
-          JZE       J6
+          JZE       J006
           LAD       GR3,='up'
           LAD       GR4,2
-          CALL      C4
+          CALL      C004
           AND       GR0,GR0
-          JZE       J7
+          JZE       J007
           LAD       GR3,='u'
           LAD       GR4,1
-          CALL      C4
+          CALL      C004
           AND       GR0,GR0
-          JZE       J7
+          JZE       J007
           LAD       GR3,='right'
           LAD       GR4,5
-          CALL      C4
+          CALL      C004
           AND       GR0,GR0
-          JZE       J8
+          JZE       J008
           LAD       GR3,='r'
           LAD       GR4,1
-          CALL      C4
+          CALL      C004
           AND       GR0,GR0
-          JZE       J8
+          JZE       J008
           LAD       GR3,='down'
           LAD       GR4,4
-          CALL      C4
+          CALL      C004
           AND       GR0,GR0
-          JZE       J9
+          JZE       J009
           LAD       GR3,='d'
           LAD       GR4,1
-          CALL      C4
+          CALL      C004
           AND       GR0,GR0
-          JZE       J9
+          JZE       J009
           LAD       GR3,='left'
           LAD       GR4,4
-          CALL      C4
+          CALL      C004
           AND       GR0,GR0
-          JZE       J10
+          JZE       J010
           LAD       GR3,='l'
           LAD       GR4,1
-          CALL      C4
+          CALL      C004
           AND       GR0,GR0
-          JZE       J10
+          JZE       J010
           LAD       GR3,='view'
           LAD       GR4,4
-          CALL      C4
+          CALL      C004
           AND       GR0,GR0
-          JZE       J11
+          JZE       J011
           LAD       GR3,='v'
           LAD       GR4,1
-          CALL      C4
+          CALL      C004
           AND       GR0,GR0
-          JZE       J11
-          JUMP      J5
+          JZE       J011
+          JUMP      J005
                                    ; Case 'end'
-J6        NOP
+J006      NOP
                                    ; Exit Do
-          JUMP      J3
-          JUMP      J5
+          JUMP      J003
+          JUMP      J005
                                    ; Case 'up', 'u'
-J7        NOP
+J007      NOP
                                    ; cmd = -15
           LAD       GR7,-15
           LD        GR6,ARG1
           ST        GR7,0,GR6
                                    ; Exit Do
-          JUMP      J3
-          JUMP      J5
+          JUMP      J003
+          JUMP      J005
                                    ; Case 'right', 'r'
-J8        NOP
+J008      NOP
                                    ; cmd = 1
           LAD       GR7,1
           LD        GR6,ARG1
           ST        GR7,0,GR6
                                    ; Exit Do
-          JUMP      J3
-          JUMP      J5
+          JUMP      J003
+          JUMP      J005
                                    ; Case 'down', 'd'
-J9        NOP
+J009      NOP
                                    ; cmd = 15
           LAD       GR7,15
           LD        GR6,ARG1
           ST        GR7,0,GR6
                                    ; Exit Do
-          JUMP      J3
-          JUMP      J5
+          JUMP      J003
+          JUMP      J005
                                    ; Case 'left', 'l'
-J10       NOP
+J010      NOP
                                    ; cmd = -1
           LAD       GR7,-1
           LD        GR6,ARG1
           ST        GR7,0,GR6
                                    ; Exit Do
-          JUMP      J3
-          JUMP      J5
+          JUMP      J003
+          JUMP      J005
                                    ; Case 'view', 'v'
-J11       NOP
+J011      NOP
                                    ; cmd = 1000
           LAD       GR7,1000
           LD        GR6,ARG1
           ST        GR7,0,GR6
                                    ; Exit Do
-          JUMP      J3
+          JUMP      J003
                                    ; End Select
-J5        NOP
+J005      NOP
                                    ; Loop Until Eof(0)
-J2        NOP
+J002      NOP
           LD        GR7,EOF
           AND       GR7,GR7
-          JZE       J1
-J3        NOP
+          JZE       J001
+J003      NOP
 EXIT      NOP
           RET
                                    ; ByRef cmd As Integer [GR1]
 ARG1      DS        1
                                    ; Dim s As String
-SL1       DS        1
-SB1       DS        256
+SL001     DS        1
+SB001     DS        256
 EOF       DS        1
-LL1       DC        33
-LB1       DC        'command? (up,right,down,left,end)'
+LL001     DC        33
+LB001     DC        'command? (up,right,down,left,end)'
                                    ; UtilCompareStr
-C4        PUSH      0,GR1
+C004      PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
           PUSH      0,GR5
           XOR       GR0,GR0
-J12       AND       GR2,GR2
-          JPL       J13
+J012      AND       GR2,GR2
+          JPL       J013
           CPL       GR2,GR4
-          JNZ       J14
-          JUMP      J16
-J13       AND       GR4,GR4
-          JZE       J15
+          JNZ       J014
+          JUMP      J016
+J013      AND       GR4,GR4
+          JZE       J015
           LD        GR5,0,GR1
           CPL       GR5,0,GR3
-          JMI       J14
-          JPL       J15
+          JMI       J014
+          JPL       J015
           LAD       GR1,1,GR1
           LAD       GR2,-1,GR2
           LAD       GR3,1,GR3
           LAD       GR4,-1,GR4
-          JUMP      J12
-J14       LAD       GR0,-1
-J15       OR        GR0,=1
-J16       POP       GR5
+          JUMP      J012
+J014      LAD       GR0,-1
+J015      OR        GR0,=1
+J016      POP       GR5
           POP       GR4
           POP       GR3
           POP       GR2
           POP       GR1
           RET
                                    ; UtilFill
-C10       PUSH      0,GR1
+C010      PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           ADDL      GR3,GR1
-J17       CPL       GR1,GR3
-          JZE       J18
+J017      CPL       GR1,GR3
+          JZE       J018
           ST        GR2,0,GR1
           LAD       GR1,1,GR1
-          JUMP      J17
-J18       POP       GR3
+          JUMP      J017
+J018      POP       GR3
           POP       GR2
           POP       GR1
           RET

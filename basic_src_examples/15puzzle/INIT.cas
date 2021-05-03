@@ -2,294 +2,294 @@ INIT      START
                                    ; Argument field
           ST        GR1,ARG1
                                    ; Print "Seed? (1 - 999)"
-          OUT       LB1,LL1
+          OUT       LB001,LL001
                                    ; Input seed
-          IN        TB1,TL1
+          IN        TB001,TL001
           XOR       GR0,GR0
           ST        GR0,EOF
-          LAD       GR1,TB1
-          LD        GR2,TL1
-          JPL       J4
-          JZE       J4
+          LAD       GR1,TB001
+          LD        GR2,TL001
+          JPL       J004
+          JZE       J004
           ST        GR2,EOF
           XOR       GR2,GR2
-J4        CALL      C0
-          ST        GR0,I3
+J004      CALL      C000
+          ST        GR0,I003
                                    ; Call RAND
                                    ;   ByVal init As Boolean [GR1]
                                    ;   init = True
           LAD       GR7,#FFFF
-          ST        GR7,T1
+          ST        GR7,T001
                                    ;   ByRef value As Integer [GR2]
                                    ;   value = Max(101, Min(1099, (seed + 100)))
           LAD       GR7,101
           LAD       GR6,1099
-          LD        GR5,I3
+          LD        GR5,I003
           LAD       GR5,100,GR5
           CPA       GR6,GR5
-          JMI       J5
+          JMI       J005
           LD        GR6,GR5
-J5        NOP
+J005      NOP
           CPA       GR7,GR6
-          JPL       J6
+          JPL       J006
           LD        GR7,GR6
-J6        NOP
-          ST        GR7,T2
+J006      NOP
+          ST        GR7,T002
                                    ;   Set Arguments And Call RAND
-          LD        GR1,T1
-          LAD       GR2,T2
+          LD        GR1,T001
+          LAD       GR2,T002
           CALL      RAND
                                    ; For i = 0 To 15 Step 1
           XOR       GR7,GR7
-          ST        GR7,I1
-J7        NOP
-          LD        GR1,I1
+          ST        GR7,I001
+J007      NOP
+          LD        GR1,I001
           CPA       GR1,=15
-          JPL       J9
+          JPL       J009
                                    ; field( i ) = ((i + 1) And 15)
-          LD        GR7,I1
+          LD        GR7,I001
           LD        GR1,GR7
           LAD       GR2,16
-          CALL      C13
+          CALL      C013
           LD        GR7,ARG1
           ADDL      GR7,GR0
-          LD        GR6,I1
+          LD        GR6,I001
           LAD       GR6,1,GR6
           AND       GR6,=15
           ST        GR6,0,GR7
                                    ; Next i
-J8        NOP
-          LAD       GR1,I1
+J008      NOP
+          LAD       GR1,I001
           LD        GR2,0,GR1
           LAD       GR2,1,GR2
           ST        GR2,0,GR1
-          JUMP      J7
-J9        NOP
+          JUMP      J007
+J009      NOP
                                    ; pos = 15
           LAD       GR7,15
-          ST        GR7,I6
+          ST        GR7,I006
                                    ; temp = pos
-          LD        GR7,I6
-          ST        GR7,I5
+          LD        GR7,I006
+          ST        GR7,I005
                                    ; For i = 0 To 1000 Step 1
           XOR       GR7,GR7
-          ST        GR7,I1
-J13       NOP
-          LD        GR1,I1
+          ST        GR7,I001
+J013      NOP
+          LD        GR1,I001
           CPA       GR1,=1000
-          JPL       J15
+          JPL       J015
                                    ; Call RAND
                                    ;   ByVal init As Boolean [GR1]
                                    ;   init = False
           XOR       GR7,GR7
-          ST        GR7,T2
+          ST        GR7,T001
                                    ;   ByRef value As Integer [GR2]
                                    ;   value = cmd
                                    ;   Set Arguments And Call RAND
-          LD        GR1,T2
-          LAD       GR2,I4
+          LD        GR1,T001
+          LAD       GR2,I004
           CALL      RAND
                                    ; Call RAND
                                    ;   ByVal init As Boolean [GR1]
                                    ;   init = False
           XOR       GR7,GR7
-          ST        GR7,T2
+          ST        GR7,T001
                                    ;   ByRef value As Integer [GR2]
                                    ;   value = count
                                    ;   Set Arguments And Call RAND
-          LD        GR1,T2
-          LAD       GR2,I7
+          LD        GR1,T001
+          LAD       GR2,I007
           CALL      RAND
                                    ; For k = 0 To (count Xor (count >> 1)) Step 1
-          LD        GR7,I7
-          LD        GR6,I7
+          LD        GR7,I007
+          LD        GR6,I007
           SRA       GR6,1
           XOR       GR7,GR6
-          ST        GR7,T2
+          ST        GR7,T001
           XOR       GR7,GR7
-          ST        GR7,I2
-J16       NOP
-          LD        GR1,I2
-          CPA       GR1,T2
-          JPL       J18
+          ST        GR7,I002
+J016      NOP
+          LD        GR1,I002
+          CPA       GR1,T001
+          JPL       J018
                                    ; Select Case cmd
-          LD        GR7,I4
+          LD        GR7,I004
           CPA       GR7,=0
-          JZE       J19
+          JZE       J019
           CPA       GR7,=1
-          JZE       J20
+          JZE       J020
           CPA       GR7,=2
-          JZE       J21
+          JZE       J021
           CPA       GR7,=3
-          JZE       J22
-          JUMP      J23
+          JZE       J022
+          JUMP      J023
                                    ; Case 0
-J19       NOP
+J019      NOP
                                    ; If (temp >= 4) Then
-          LD        GR7,I5
+          LD        GR7,I005
           LAD       GR6,4
           XOR       GR0,GR0
           CPA       GR7,GR6
-          JMI       J25
+          JMI       J025
           LAD       GR0,#FFFF
-J25       LD        GR7,GR0
+J025      LD        GR7,GR0
           AND       GR7,GR7
-          JZE       J24
+          JZE       J024
                                    ; temp -= 4
           LAD       GR7,4
-          LD        GR6,I5
+          LD        GR6,I005
           SUBA      GR6,GR7
-          ST        GR6,I5
+          ST        GR6,I005
                                    ; End If
-J24       NOP
-          JUMP      J23
+J024      NOP
+          JUMP      J023
                                    ; Case 1
-J20       NOP
+J020      NOP
                                    ; If ((temp And 3) <> 3) Then
-          LD        GR7,I5
+          LD        GR7,I005
           AND       GR7,=3
           LAD       GR6,3
           SUBA      GR7,GR6
-          JZE       J27
+          JZE       J027
           LAD       GR7,#FFFF
-J27       NOP
+J027      NOP
           AND       GR7,GR7
-          JZE       J26
+          JZE       J026
                                    ; temp += 1
           LAD       GR7,1
-          LAD       GR6,I5
+          LAD       GR6,I005
           ADDA      GR7,0,GR6
           ST        GR7,0,GR6
                                    ; End If
-J26       NOP
-          JUMP      J23
+J026      NOP
+          JUMP      J023
                                    ; Case 2
-J21       NOP
+J021      NOP
                                    ; If (temp < 12) Then
-          LD        GR7,I5
+          LD        GR7,I005
           LAD       GR6,12
           LAD       GR0,#FFFF
           CPA       GR7,GR6
-          JMI       J29
+          JMI       J029
           XOR       GR0,GR0
-J29       LD        GR7,GR0
+J029      LD        GR7,GR0
           AND       GR7,GR7
-          JZE       J28
+          JZE       J028
                                    ; temp += 4
           LAD       GR7,4
-          LAD       GR6,I5
+          LAD       GR6,I005
           ADDA      GR7,0,GR6
           ST        GR7,0,GR6
                                    ; End If
-J28       NOP
-          JUMP      J23
+J028      NOP
+          JUMP      J023
                                    ; Case 3
-J22       NOP
+J022      NOP
                                    ; If ((temp And 3) <> 0) Then
-          LD        GR7,I5
+          LD        GR7,I005
           AND       GR7,=3
           XOR       GR6,GR6
           SUBA      GR7,GR6
-          JZE       J31
+          JZE       J031
           LAD       GR7,#FFFF
-J31       NOP
+J031      NOP
           AND       GR7,GR7
-          JZE       J30
+          JZE       J030
                                    ; temp -= 1
           LAD       GR7,1
-          LD        GR6,I5
+          LD        GR6,I005
           SUBA      GR6,GR7
-          ST        GR6,I5
+          ST        GR6,I005
                                    ; End If
-J30       NOP
+J030      NOP
                                    ; End Select
-J23       NOP
+J023      NOP
                                    ; If (temp = pos) Then
-          LD        GR7,I5
-          LD        GR6,I6
+          LD        GR7,I005
+          LD        GR6,I006
           SUBA      GR7,GR6
-          JZE       J34
+          JZE       J034
           LAD       GR7,#FFFF
-J34       XOR       GR7,=#FFFF
+J034      XOR       GR7,=#FFFF
           AND       GR7,GR7
-          JZE       J33
+          JZE       J033
                                    ; Exit For
-          JUMP      J18
-          JUMP      J32
+          JUMP      J018
+          JUMP      J032
                                    ; Else
-J33       NOP
+J033      NOP
                                    ; field( pos ) = field(temp)
-          LD        GR7,I6
+          LD        GR7,I006
           LD        GR1,GR7
           LAD       GR2,16
-          CALL      C13
+          CALL      C013
           LD        GR7,ARG1
           ADDL      GR7,GR0
-          LD        GR6,I5
+          LD        GR6,I005
           LD        GR1,GR6
           LAD       GR2,16
-          CALL      C13
+          CALL      C013
           LD        GR6,ARG1
           ADDL      GR6,GR0
           LD        GR6,0,GR6
           ST        GR6,0,GR7
                                    ; pos = temp
-          LD        GR7,I5
-          ST        GR7,I6
+          LD        GR7,I005
+          ST        GR7,I006
                                    ; field( pos ) = 0
-          LD        GR7,I6
+          LD        GR7,I006
           LD        GR1,GR7
           LAD       GR2,16
-          CALL      C13
+          CALL      C013
           LD        GR7,ARG1
           ADDL      GR7,GR0
           XOR       GR6,GR6
           ST        GR6,0,GR7
                                    ; End If
-J32       NOP
+J032      NOP
                                    ; Next k
-J17       NOP
-          LAD       GR1,I2
+J017      NOP
+          LAD       GR1,I002
           LD        GR2,0,GR1
           LAD       GR2,1,GR2
           ST        GR2,0,GR1
-          JUMP      J16
-J18       NOP
+          JUMP      J016
+J018      NOP
                                    ; Next i
-J14       NOP
-          LAD       GR1,I1
+J014      NOP
+          LAD       GR1,I001
           LD        GR2,0,GR1
           LAD       GR2,1,GR2
           ST        GR2,0,GR1
-          JUMP      J13
-J15       NOP
+          JUMP      J013
+J015      NOP
 EXIT      NOP
           RET
                                    ; ByRef field(15) As Integer [GR1]
 ARG1      DS        1
                                    ; Dim i As Integer
-I1        DS        1
+I001      DS        1
                                    ; Dim k As Integer
-I2        DS        1
+I002      DS        1
                                    ; Dim seed As Integer
-I3        DS        1
+I003      DS        1
                                    ; Dim cmd As Integer
-I4        DS        1
+I004      DS        1
                                    ; Dim temp As Integer
-I5        DS        1
+I005      DS        1
                                    ; Dim pos As Integer
-I6        DS        1
+I006      DS        1
                                    ; Dim count As Integer
-I7        DS        1
+I007      DS        1
 EOF       DS        1
-T1        DS        1
-T2        DS        1
-TL1       DS        1
-TB1       DS        256
-LL1       DC        15
-LB1       DC        'Seed? (1 - 999)'
+T001      DS        1
+T002      DS        1
+TL001     DS        1
+TB001     DS        256
+LL001     DC        15
+LB001     DC        'Seed? (1 - 999)'
                                    ; FuncCInt
-C0        PUSH      0,GR1
+C000      PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -298,31 +298,31 @@ C0        PUSH      0,GR1
           XOR       GR0,GR0
           XOR       GR4,GR4
           CPL       GR1,GR2
-          JZE       J1
+          JZE       J001
           LD        GR3,0,GR1
           CPL       GR3,='+'
-          JNZ       J3
+          JNZ       J003
           LAD       GR1,1,GR1
-          JUMP      J2
-J3        CPL       GR3,='-'
-          JNZ       J2
+          JUMP      J002
+J003      CPL       GR3,='-'
+          JNZ       J002
           LAD       GR4,-1
           LAD       GR1,1,GR1
-J2        CPL       GR1,GR2
-          JZE       J1
+J002      CPL       GR1,GR2
+          JZE       J001
           LD        GR3,0,GR1
           SUBL      GR3,='0'
-          JMI       J1
+          JMI       J001
           CPL       GR3,=9
-          JPL       J1
+          JPL       J001
           LD        GR5,GR0
           SLL       GR0,3
           ADDL      GR0,GR5
           ADDL      GR0,GR5
           ADDL      GR0,GR3
           LAD       GR1,1,GR1
-          JUMP      J2
-J1        XOR       GR0,GR4
+          JUMP      J002
+J001      XOR       GR0,GR4
           SUBL      GR0,GR4
           POP       GR5
           POP       GR4
@@ -331,31 +331,31 @@ J1        XOR       GR0,GR4
           POP       GR1
           RET
                                    ; UtilFill
-C10       PUSH      0,GR1
+C010      PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           ADDL      GR3,GR1
-J35       CPL       GR1,GR3
-          JZE       J36
+J035      CPL       GR1,GR3
+          JZE       J036
           ST        GR2,0,GR1
           LAD       GR1,1,GR1
-          JUMP      J35
-J36       POP       GR3
+          JUMP      J035
+J036      POP       GR3
           POP       GR2
           POP       GR1
           RET
                                    ; UtilSafeIndex
-C13       AND       GR2,GR2
-          JNZ       J10
+C013      AND       GR2,GR2
+          JNZ       J010
           XOR       GR0,GR0
           RET
-J10       LD        GR0,GR1
-          JPL       J11
+J010      LD        GR0,GR1
+          JPL       J011
           XOR       GR0,GR0
           RET
-J11       CPL       GR0,GR2
-          JMI       J12
+J011      CPL       GR0,GR2
+          JMI       J012
           LAD       GR0,-1
           ADDL      GR0,GR2
-J12       RET
+J012      RET
           END

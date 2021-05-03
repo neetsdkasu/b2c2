@@ -26,7 +26,7 @@ DFSFILL   START
           LD        GR2,MEM
           LD        GR2,0,GR2
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,MEM
           LD        GR7,1,GR7
           ADDL      GR7,GR0
@@ -47,19 +47,19 @@ DFSFILL   START
           LD        GR2,0,GR2
           LD        GR3,MEM
           LD        GR3,1,GR3
-          CALL      C11
+          CALL      C011
           LD        GR7,GR0
           CPA       GR7,=' '
-          JZE       J4
+          JZE       J004
           CPA       GR7,='U'
-          JZE       J5
+          JZE       J005
           CPA       GR7,='L'
-          JZE       J5
+          JZE       J005
           CPA       GR7,='R'
-          JZE       J5
-          JUMP      J7
+          JZE       J005
+          JUMP      J007
                                    ; Case " "c
-J4        NOP
+J004      NOP
                                    ; maze( pos ) = "U"c
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -67,7 +67,7 @@ J4        NOP
           LD        GR2,MEM
           LD        GR2,0,GR2
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,MEM
           LD        GR7,1,GR7
           ADDL      GR7,GR0
@@ -86,9 +86,9 @@ J4        NOP
           LD        GR3,MEM
           LD        GR3,3,GR3
           CALL      DFSFILL
-          JUMP      J7
+          JUMP      J007
                                    ; Case "U"c, "L"c, "R"c
-J5        NOP
+J005      NOP
                                    ; maze( pos ) = "#"c
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -96,7 +96,7 @@ J5        NOP
           LD        GR2,MEM
           LD        GR2,0,GR2
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,MEM
           LD        GR7,1,GR7
           ADDL      GR7,GR0
@@ -105,7 +105,7 @@ J5        NOP
                                    ; Exit Program
           JUMP      EXIT
                                    ; End Select
-J7        NOP
+J007      NOP
                                    ; x = (pos + 1)
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -121,19 +121,19 @@ J7        NOP
           LD        GR2,0,GR2
           LD        GR3,MEM
           LD        GR3,1,GR3
-          CALL      C11
+          CALL      C011
           LD        GR7,GR0
           CPA       GR7,=' '
-          JZE       J8
+          JZE       J008
           CPA       GR7,='U'
-          JZE       J9
+          JZE       J009
           CPA       GR7,='R'
-          JZE       J9
+          JZE       J009
           CPA       GR7,='D'
-          JZE       J9
-          JUMP      J10
+          JZE       J009
+          JUMP      J010
                                    ; Case " "c
-J8        NOP
+J008      NOP
                                    ; maze( pos ) = "R"c
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -141,7 +141,7 @@ J8        NOP
           LD        GR2,MEM
           LD        GR2,0,GR2
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,MEM
           LD        GR7,1,GR7
           ADDL      GR7,GR0
@@ -160,9 +160,9 @@ J8        NOP
           LD        GR3,MEM
           LD        GR3,3,GR3
           CALL      DFSFILL
-          JUMP      J10
+          JUMP      J010
                                    ; Case "U"c, "R"c, "D"c
-J9        NOP
+J009      NOP
                                    ; maze( pos ) = "#"c
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -170,7 +170,7 @@ J9        NOP
           LD        GR2,MEM
           LD        GR2,0,GR2
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,MEM
           LD        GR7,1,GR7
           ADDL      GR7,GR0
@@ -179,7 +179,7 @@ J9        NOP
                                    ; Exit Program
           JUMP      EXIT
                                    ; End Select
-J10       NOP
+J010      NOP
                                    ; x = (pos + 15)
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -195,19 +195,19 @@ J10       NOP
           LD        GR2,0,GR2
           LD        GR3,MEM
           LD        GR3,1,GR3
-          CALL      C11
+          CALL      C011
           LD        GR7,GR0
           CPA       GR7,=' '
-          JZE       J11
+          JZE       J011
           CPA       GR7,='R'
-          JZE       J12
+          JZE       J012
           CPA       GR7,='L'
-          JZE       J12
+          JZE       J012
           CPA       GR7,='D'
-          JZE       J12
-          JUMP      J13
+          JZE       J012
+          JUMP      J013
                                    ; Case " "c
-J11       NOP
+J011      NOP
                                    ; maze( pos ) = "D"c
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -215,7 +215,7 @@ J11       NOP
           LD        GR2,MEM
           LD        GR2,0,GR2
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,MEM
           LD        GR7,1,GR7
           ADDL      GR7,GR0
@@ -234,9 +234,9 @@ J11       NOP
           LD        GR3,MEM
           LD        GR3,3,GR3
           CALL      DFSFILL
-          JUMP      J13
+          JUMP      J013
                                    ; Case "R"c, "L"c, "D"c
-J12       NOP
+J012      NOP
                                    ; maze( pos ) = "#"c
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -244,7 +244,7 @@ J12       NOP
           LD        GR2,MEM
           LD        GR2,0,GR2
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,MEM
           LD        GR7,1,GR7
           ADDL      GR7,GR0
@@ -253,7 +253,7 @@ J12       NOP
                                    ; Exit Program
           JUMP      EXIT
                                    ; End Select
-J13       NOP
+J013      NOP
                                    ; x = (pos - 1)
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -269,19 +269,19 @@ J13       NOP
           LD        GR2,0,GR2
           LD        GR3,MEM
           LD        GR3,1,GR3
-          CALL      C11
+          CALL      C011
           LD        GR7,GR0
           CPA       GR7,=' '
-          JZE       J14
+          JZE       J014
           CPA       GR7,='L'
-          JZE       J15
+          JZE       J015
           CPA       GR7,='U'
-          JZE       J15
+          JZE       J015
           CPA       GR7,='D'
-          JZE       J15
-          JUMP      J16
+          JZE       J015
+          JUMP      J016
                                    ; Case " "c
-J14       NOP
+J014      NOP
                                    ; maze( pos ) = "L"c
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -289,7 +289,7 @@ J14       NOP
           LD        GR2,MEM
           LD        GR2,0,GR2
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,MEM
           LD        GR7,1,GR7
           ADDL      GR7,GR0
@@ -308,9 +308,9 @@ J14       NOP
           LD        GR3,MEM
           LD        GR3,3,GR3
           CALL      DFSFILL
-          JUMP      J16
+          JUMP      J016
                                    ; Case "L"c, "U"c, "D"c
-J15       NOP
+J015      NOP
                                    ; maze( pos ) = "#"c
           LD        GR7,MEM
           LD        GR7,2,GR7
@@ -318,7 +318,7 @@ J15       NOP
           LD        GR2,MEM
           LD        GR2,0,GR2
           LD        GR2,0,GR2
-          CALL      C13
+          CALL      C013
           LD        GR7,MEM
           LD        GR7,1,GR7
           ADDL      GR7,GR0
@@ -327,7 +327,7 @@ J15       NOP
                                    ; Exit Program
           JUMP      EXIT
                                    ; End Select
-J16       NOP
+J016      NOP
 EXIT      NOP
                                    ; Release Memory
           LAD       GR0,1
@@ -339,56 +339,56 @@ EXIT      NOP
 MEM       DS        1
                                    ; UtilAllocator
 ALLOC     AND       GR0,GR0
-          JNZ       J19
-          LAD       GR0,V3
-          ADDL      GR0,V1
-          CPL       GR0,V2
-          JZE       J18
-J17       ST        GR1,V1
-          LAD       GR0,V3
+          JNZ       J019
+          LAD       GR0,V003
+          ADDL      GR0,V001
+          CPL       GR0,V002
+          JZE       J018
+J017      ST        GR1,V001
+          LAD       GR0,V003
           ADDL      GR1,GR0
-          ST        GR1,V2
+          ST        GR1,V002
           RET
-J18       ADDL      GR0,GR1
-          CPL       GR0,V4
-          JPL       J17
-          ST        GR0,V2
+J018      ADDL      GR0,GR1
+          CPL       GR0,V004
+          JPL       J017
+          ST        GR0,V002
           SUBL      GR0,GR1
-          ADDL      GR1,V1
-          ST        GR1,V1
+          ADDL      GR1,V001
+          ST        GR1,V001
           RET
-J19       ST        GR1,V2
-          LAD       GR0,V3
+J019      ST        GR1,V002
+          LAD       GR0,V003
           SUBL      GR1,GR0
-          ST        GR1,V1
+          ST        GR1,V001
           RET
-V1        DS        1
-V2        DS        1
-V3        DS        2000
-V4        DC        V4
+V001      DS        1
+V002      DS        1
+V003      DS        2000
+V004      DC        V004
                                    ; UtilLoadElement
-C11       AND       GR2,GR2
-          JNZ       J6
+C011      AND       GR2,GR2
+          JNZ       J006
           XOR       GR0,GR0
           RET
-J6        CALL      C13
+J006      CALL      C013
           PUSH      0,GR3
           ADDL      GR3,GR0
           LD        GR0,0,GR3
           POP       GR3
           RET
                                    ; UtilSafeIndex
-C13       AND       GR2,GR2
-          JNZ       J1
+C013      AND       GR2,GR2
+          JNZ       J001
           XOR       GR0,GR0
           RET
-J1        LD        GR0,GR1
-          JPL       J2
+J001      LD        GR0,GR1
+          JPL       J002
           XOR       GR0,GR0
           RET
-J2        CPL       GR0,GR2
-          JMI       J3
+J002      CPL       GR0,GR2
+          JMI       J003
           LAD       GR0,-1
           ADDL      GR0,GR2
-J3        RET
+J003      RET
           END

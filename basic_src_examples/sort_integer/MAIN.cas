@@ -1,247 +1,247 @@
 MAIN      START
           RPUSH
                                    ; Init Variables
-          LAD       GR1,I1
+          LAD       GR1,I001
           XOR       GR2,GR2
           LAD       GR3,774
-          CALL      C10
+          CALL      C010
                                    ; Print "NUMBERS? (comma separated)"
-          OUT       LB1,LL1
+          OUT       LB001,LL001
                                    ; Input s
-          IN        SB5,SL5
+          IN        SB005,SL005
           XOR       GR0,GR0
           ST        GR0,EOF
-          LD        GR0,SL5
-          JPL       J1
-          JZE       J1
+          LD        GR0,SL005
+          JPL       J001
+          JZE       J001
           ST        GR0,EOF
           XOR       GR0,GR0
-          ST        GR0,SL5
-J1        NOP
+          ST        GR0,SL005
+J001      NOP
                                    ; arr( 0 ) = CInt(s)
-          LAD       GR1,SB5
-          LD        GR2,SL5
-          CALL      C0
+          LAD       GR1,SB005
+          LD        GR2,SL005
+          CALL      C000
           LD        GR7,GR0
-          LAD       GR6,IA7
+          LAD       GR6,IA007
           ST        GR7,0,GR6
                                    ; For i = 0 To (Len(s) - 1) Step 1
-          LD        GR7,SL5
+          LD        GR7,SL005
           LAD       GR7,-1,GR7
-          ST        GR7,T1
+          ST        GR7,T001
           XOR       GR7,GR7
-          ST        GR7,I2
-J5        NOP
-          LD        GR1,I2
-          CPA       GR1,T1
-          JPL       J7
+          ST        GR7,I002
+J005      NOP
+          LD        GR1,I002
+          CPA       GR1,T001
+          JPL       J007
                                    ; If (s(i) = ","c) Then
-          LD        GR7,I2
+          LD        GR7,I002
           LD        GR1,GR7
-          LD        GR2,SL5
-          LAD       GR3,SB5
-          CALL      C11
+          LD        GR2,SL005
+          LAD       GR3,SB005
+          CALL      C011
           LD        GR7,GR0
           LD        GR6,=','
           SUBA      GR7,GR6
-          JZE       J13
+          JZE       J013
           LAD       GR7,#FFFF
-J13       XOR       GR7,=#FFFF
+J013      XOR       GR7,=#FFFF
           AND       GR7,GR7
-          JZE       J8
+          JZE       J008
                                    ; c += 1
           LAD       GR7,1
-          LAD       GR6,I1
+          LAD       GR6,I001
           ADDA      GR7,0,GR6
           ST        GR7,0,GR6
                                    ; arr( c ) = CInt(Mid(s, (i + 1)))
-          LD        GR7,I1
+          LD        GR7,I001
           LD        GR1,GR7
           LAD       GR2,256
-          CALL      C13
-          LAD       GR7,IA7
+          CALL      C013
+          LAD       GR7,IA007
           ADDL      GR7,GR0
-          LD        GR6,I2
+          LD        GR6,I002
           LAD       GR6,1,GR6
           PUSH      0,GR6
           LD        GR1,GR6
-          LAD       GR5,TB1
-          LAD       GR3,SB5
-          LD        GR4,SL5
+          LAD       GR5,TB001
+          LAD       GR3,SB005
+          LD        GR4,SL005
           LD        GR2,GR4
           LD        GR6,GR4
-          CALL      C6
-          ST        GR0,TL1
+          CALL      C006
+          ST        GR0,TL001
           POP       GR6
-          LAD       GR1,TB1
-          LD        GR2,TL1
-          CALL      C0
+          LAD       GR1,TB001
+          LD        GR2,TL001
+          CALL      C000
           LD        GR6,GR0
           ST        GR6,0,GR7
                                    ; End If
-J8        NOP
+J008      NOP
                                    ; Next i
-J6        NOP
-          LAD       GR1,I2
+J006      NOP
+          LAD       GR1,I002
           LD        GR2,0,GR1
           LAD       GR2,1,GR2
           ST        GR2,0,GR1
-          JUMP      J5
-J7        NOP
+          JUMP      J005
+J007      NOP
                                    ; For i = 0 To c Step 1
-          LD        GR7,I1
-          ST        GR7,T1
+          LD        GR7,I001
+          ST        GR7,T001
           XOR       GR7,GR7
-          ST        GR7,I2
-J19       NOP
-          LD        GR1,I2
-          CPA       GR1,T1
-          JPL       J21
+          ST        GR7,I002
+J019      NOP
+          LD        GR1,I002
+          CPA       GR1,T001
+          JPL       J021
                                    ; For j = 0 To ((c - 1) - i) Step 1
-          LD        GR7,I1
+          LD        GR7,I001
           LAD       GR7,-1,GR7
-          LD        GR6,I2
+          LD        GR6,I002
           SUBA      GR7,GR6
-          ST        GR7,T2
+          ST        GR7,T002
           XOR       GR7,GR7
-          ST        GR7,I3
-J22       NOP
-          LD        GR1,I3
-          CPA       GR1,T2
-          JPL       J24
+          ST        GR7,I003
+J022      NOP
+          LD        GR1,I003
+          CPA       GR1,T002
+          JPL       J024
                                    ; p = arr(j + 1)
-          LD        GR7,I3
+          LD        GR7,I003
           LAD       GR7,1,GR7
           LD        GR1,GR7
           LAD       GR2,256
-          CALL      C13
-          LAD       GR7,IA7
+          CALL      C013
+          LAD       GR7,IA007
           ADDL      GR7,GR0
           LD        GR7,0,GR7
-          ST        GR7,I4
+          ST        GR7,I004
                                    ; If (arr(j) < p) Then
-          LD        GR7,I3
+          LD        GR7,I003
           LD        GR1,GR7
           LAD       GR2,256
-          CALL      C13
-          LAD       GR7,IA7
+          CALL      C013
+          LAD       GR7,IA007
           ADDL      GR7,GR0
           LD        GR7,0,GR7
-          LD        GR6,I4
+          LD        GR6,I004
           LAD       GR0,#FFFF
           CPA       GR7,GR6
-          JMI       J26
+          JMI       J026
           XOR       GR0,GR0
-J26       LD        GR7,GR0
+J026      LD        GR7,GR0
           AND       GR7,GR7
-          JZE       J25
+          JZE       J025
                                    ; arr( (j + 1) ) = arr(j)
-          LD        GR7,I3
+          LD        GR7,I003
           LAD       GR7,1,GR7
           LD        GR1,GR7
           LAD       GR2,256
-          CALL      C13
-          LAD       GR7,IA7
+          CALL      C013
+          LAD       GR7,IA007
           ADDL      GR7,GR0
-          LD        GR6,I3
+          LD        GR6,I003
           LD        GR1,GR6
           LAD       GR2,256
-          CALL      C13
-          LAD       GR6,IA7
+          CALL      C013
+          LAD       GR6,IA007
           ADDL      GR6,GR0
           LD        GR6,0,GR6
           ST        GR6,0,GR7
                                    ; arr( j ) = p
-          LD        GR7,I3
+          LD        GR7,I003
           LD        GR1,GR7
           LAD       GR2,256
-          CALL      C13
-          LAD       GR7,IA7
+          CALL      C013
+          LAD       GR7,IA007
           ADDL      GR7,GR0
-          LD        GR6,I4
+          LD        GR6,I004
           ST        GR6,0,GR7
                                    ; End If
-J25       NOP
+J025      NOP
                                    ; Next j
-J23       NOP
-          LAD       GR1,I3
+J023      NOP
+          LAD       GR1,I003
           LD        GR2,0,GR1
           LAD       GR2,1,GR2
           ST        GR2,0,GR1
-          JUMP      J22
-J24       NOP
+          JUMP      J022
+J024      NOP
                                    ; t = ((t & CStr(arr(j))) & ",")
-          LD        GR7,I3
+          LD        GR7,I003
           LD        GR1,GR7
           LAD       GR2,256
-          CALL      C13
-          LAD       GR7,IA7
+          CALL      C013
+          LAD       GR7,IA007
           ADDL      GR7,GR0
           LD        GR7,0,GR7
           LD        GR3,GR7
-          LAD       GR1,TB1
-          LAD       GR2,TL1
-          CALL      C2
-          LAD       GR1,TB2
-          LAD       GR2,TL2
-          LAD       GR3,SB6
-          LD        GR4,SL6
-          CALL      C7
-          LAD       GR1,TB2
-          LAD       GR2,TL2
-          LAD       GR3,TB1
-          LD        GR4,TL1
-          CALL      C5
-          LAD       GR1,TB2
-          LAD       GR2,TL2
+          LAD       GR1,TB001
+          LAD       GR2,TL001
+          CALL      C002
+          LAD       GR1,TB002
+          LAD       GR2,TL002
+          LAD       GR3,SB006
+          LD        GR4,SL006
+          CALL      C007
+          LAD       GR1,TB002
+          LAD       GR2,TL002
+          LAD       GR3,TB001
+          LD        GR4,TL001
+          CALL      C005
+          LAD       GR1,TB002
+          LAD       GR2,TL002
           LAD       GR3,=','
           LAD       GR4,1
-          CALL      C5
-          LAD       GR1,SB6
-          LAD       GR2,SL6
-          LAD       GR3,TB2
-          LD        GR4,TL2
-          CALL      C7
+          CALL      C005
+          LAD       GR1,SB006
+          LAD       GR2,SL006
+          LAD       GR3,TB002
+          LD        GR4,TL002
+          CALL      C007
                                    ; Next i
-J20       NOP
-          LAD       GR1,I2
+J020      NOP
+          LAD       GR1,I002
           LD        GR2,0,GR1
           LAD       GR2,1,GR2
           ST        GR2,0,GR1
-          JUMP      J19
-J21       NOP
+          JUMP      J019
+J021      NOP
                                    ; Print t
-          OUT       SB6,SL6
+          OUT       SB006,SL006
 EXIT      NOP
           RPOP
           RET
                                    ; Dim c As Integer
-I1        DS        1
+I001      DS        1
                                    ; Dim i As Integer
-I2        DS        1
+I002      DS        1
                                    ; Dim j As Integer
-I3        DS        1
+I003      DS        1
                                    ; Dim p As Integer
-I4        DS        1
+I004      DS        1
                                    ; Dim s As String
-SL5       DS        1
-SB5       DS        256
+SL005     DS        1
+SB005     DS        256
                                    ; Dim t As String
-SL6       DS        1
-SB6       DS        256
+SL006     DS        1
+SB006     DS        256
                                    ; Dim arr(255) As Integer
-IA7       DS        256
+IA007     DS        256
 EOF       DS        1
-T1        DS        1
-T2        DS        1
-TL1       DS        1
-TB1       DS        256
-TL2       DS        1
-TB2       DS        256
-LL1       DC        26
-LB1       DC        'NUMBERS? (comma separated)'
+T001      DS        1
+T002      DS        1
+TL001     DS        1
+TB001     DS        256
+TL002     DS        1
+TB002     DS        256
+LL001     DC        26
+LB001     DC        'NUMBERS? (comma separated)'
                                    ; FuncCInt
-C0        PUSH      0,GR1
+C000      PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -250,31 +250,31 @@ C0        PUSH      0,GR1
           XOR       GR0,GR0
           XOR       GR4,GR4
           CPL       GR1,GR2
-          JZE       J2
+          JZE       J002
           LD        GR3,0,GR1
           CPL       GR3,='+'
-          JNZ       J4
+          JNZ       J004
           LAD       GR1,1,GR1
-          JUMP      J3
-J4        CPL       GR3,='-'
-          JNZ       J3
+          JUMP      J003
+J004      CPL       GR3,='-'
+          JNZ       J003
           LAD       GR4,-1
           LAD       GR1,1,GR1
-J3        CPL       GR1,GR2
-          JZE       J2
+J003      CPL       GR1,GR2
+          JZE       J002
           LD        GR3,0,GR1
           SUBL      GR3,='0'
-          JMI       J2
+          JMI       J002
           CPL       GR3,=9
-          JPL       J2
+          JPL       J002
           LD        GR5,GR0
           SLL       GR0,3
           ADDL      GR0,GR5
           ADDL      GR0,GR5
           ADDL      GR0,GR3
           LAD       GR1,1,GR1
-          JUMP      J3
-J2        XOR       GR0,GR4
+          JUMP      J003
+J002      XOR       GR0,GR4
           SUBL      GR0,GR4
           POP       GR5
           POP       GR4
@@ -283,54 +283,54 @@ J2        XOR       GR0,GR4
           POP       GR1
           RET
                                    ; FuncCStrArgInt
-C2        CPL       GR3,=#8000
-          JNZ       J27
+C002      CPL       GR3,=#8000
+          JNZ       J027
           PUSH      0,GR3
           PUSH      0,GR4
           LAD       GR3,='-32768'
           LAD       GR4,6
-          CALL      C7
+          CALL      C007
           POP       GR4
           POP       GR3
           RET
-J27       AND       GR3,GR3
-          JNZ       J28
+J027      AND       GR3,GR3
+          JNZ       J028
           LAD       GR3,1
           ST        GR3,0,GR2
           LD        GR3,='0'
           ST        GR3,0,GR1
           XOR       GR3,GR3
           RET
-J28       PUSH      0,GR1
+J028      PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
           PUSH      0,GR5
-          JPL       J29
+          JPL       J029
           LD        GR4,='-'
           ST        GR4,0,GR1
           LAD       GR1,1,GR1
           XOR       GR3,=#FFFF
           LAD       GR3,1,GR3
-J29       LAD       GR4,V1
+J029      LAD       GR4,V001
           LD        GR5,GR1
           LD        GR2,GR3
           LAD       GR3,10
-J30       CALL      C9
+J030      CALL      C009
           ADDL      GR1,='0'
           ST        GR1,0,GR4
           LAD       GR4,1,GR4
           LD        GR2,GR0
-          JPL       J30
-          LAD       GR2,V1
+          JPL       J030
+          LAD       GR2,V001
           LAD       GR4,-1,GR4
-J31       LD        GR1,0,GR4
+J031      LD        GR1,0,GR4
           ST        GR1,0,GR5
           LAD       GR5,1,GR5
           LAD       GR4,-1,GR4
           CPL       GR4,GR2
-          JPL       J31
-          JZE       J31
+          JPL       J031
+          JZE       J031
           LD        GR0,GR5
           POP       GR5
           POP       GR4
@@ -340,9 +340,9 @@ J31       LD        GR1,0,GR4
           SUBL      GR0,GR1
           ST        GR0,0,GR2
           RET
-V1        DS        6
+V001      DS        6
                                    ; UtilConcatStr
-C5        PUSH      0,GR1
+C005      PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
@@ -351,16 +351,16 @@ C5        PUSH      0,GR1
           ADDL      GR1,GR0
           LAD       GR2,256,GR2
           ADDL      GR4,GR3
-J49       CPL       GR1,GR2
-          JZE       J50
+J049      CPL       GR1,GR2
+          JZE       J050
           CPL       GR3,GR4
-          JZE       J50
+          JZE       J050
           LD        GR0,0,GR3
           ST        GR0,0,GR1
           LAD       GR1,1,GR1
           LAD       GR3,1,GR3
-          JUMP      J49
-J50       LD        GR0,GR1
+          JUMP      J049
+J050      LD        GR0,GR1
           POP       GR4
           POP       GR3
           POP       GR2
@@ -369,38 +369,38 @@ J50       LD        GR0,GR1
           ST        GR0,0,GR2
           RET
                                    ; UtilCopyFromOffsetStr
-C6        PUSH      0,GR1
+C006      PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
           PUSH      0,GR5
           PUSH      0,GR6
-          CALL      C13
+          CALL      C013
           LD        GR1,GR6
           LD        GR6,GR0
           CPL       GR1,GR2
-          JMI       J14
+          JMI       J014
           LD        GR1,GR2
-J14       ADDL      GR1,GR6
+J014      ADDL      GR1,GR6
           LD        GR0,GR1
           CPL       GR0,GR2
-          JMI       J15
+          JMI       J015
           LD        GR0,GR2
-J15       SUBL      GR0,GR6
+J015      SUBL      GR0,GR6
           CPL       GR0,GR4
-          JMI       J16
+          JMI       J016
           LD        GR0,GR4
-J16       ADDL      GR3,GR6
+J016      ADDL      GR3,GR6
           LD        GR6,GR5
           ADDL      GR6,GR0
-J17       CPL       GR5,GR6
-          JZE       J18
+J017      CPL       GR5,GR6
+          JZE       J018
           LD        GR1,0,GR3
           ST        GR1,0,GR5
           LAD       GR3,1,GR3
           LAD       GR5,1,GR5
-          JUMP      J17
-J18       POP       GR6
+          JUMP      J017
+J018      POP       GR6
           POP       GR5
           POP       GR4
           POP       GR3
@@ -408,65 +408,65 @@ J18       POP       GR6
           POP       GR1
           RET
                                    ; UtilCopyStr
-C7        PUSH      0,GR1
+C007      PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
           ST        GR4,0,GR2
           AND       GR4,GR4
-          JZE       J33
-J32       LD        GR2,0,GR3
+          JZE       J033
+J032      LD        GR2,0,GR3
           ST        GR2,0,GR1
           LAD       GR3,1,GR3
           LAD       GR1,1,GR1
           SUBL      GR4,=1
-          JPL       J32
-J33       POP       GR4
+          JPL       J032
+J033      POP       GR4
           POP       GR3
           POP       GR2
           POP       GR1
           RET
                                    ; UtilDivMod
-C9        AND       GR3,GR3
-          JNZ       J36
+C009      AND       GR3,GR3
+          JNZ       J036
           XOR       GR0,GR0
           LAD       GR1,-1
           RET
-J36       PUSH      0,GR2
+J036      PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
           PUSH      0,GR5
           LD        GR4,GR2
           LD        GR5,GR2
-          JPL       J34
+          JPL       J034
           XOR       GR5,GR5
           SUBA      GR5,GR2
-J34       LD        GR1,GR3
-          JPL       J35
+J034      LD        GR1,GR3
+          JPL       J035
           XOR       GR1,GR1
           SUBA      GR1,GR3
-J35       LAD       GR0,1
-J37       ADDL      GR1,GR1
-          JOV       J38
+J035      LAD       GR0,1
+J037      ADDL      GR1,GR1
+          JOV       J038
           ADDL      GR0,GR0
-          JUMP      J37
-J38       SRL       GR1,1
+          JUMP      J037
+J038      SRL       GR1,1
           LAD       GR1,#8000,GR1
           XOR       GR2,GR2
-J39       CPL       GR5,GR1
-          JMI       J40
+J039      CPL       GR5,GR1
+          JMI       J040
           SUBL      GR5,GR1
           ADDL      GR2,GR0
-J40       SRL       GR0,1
-          JZE       J41
+J040      SRL       GR0,1
+          JZE       J041
           SRL       GR1,1
-          JUMP      J39
-J41       LD        GR5,GR4
+          JUMP      J039
+J041      LD        GR5,GR4
           XOR       GR5,GR3
           SRA       GR5,15
           XOR       GR2,GR5
           SUBA      GR2,GR5
-          CALL      C12
+          CALL      C012
           LD        GR1,GR4
           SUBA      GR1,GR0
           LD        GR0,GR2
@@ -476,32 +476,32 @@ J41       LD        GR5,GR4
           POP       GR2
           RET
                                    ; UtilFill
-C10       PUSH      0,GR1
+C010      PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           ADDL      GR3,GR1
-J51       CPL       GR1,GR3
-          JZE       J52
+J051      CPL       GR1,GR3
+          JZE       J052
           ST        GR2,0,GR1
           LAD       GR1,1,GR1
-          JUMP      J51
-J52       POP       GR3
+          JUMP      J051
+J052      POP       GR3
           POP       GR2
           POP       GR1
           RET
                                    ; UtilLoadElement
-C11       AND       GR2,GR2
-          JNZ       J9
+C011      AND       GR2,GR2
+          JNZ       J009
           XOR       GR0,GR0
           RET
-J9        CALL      C13
+J009      CALL      C013
           PUSH      0,GR3
           ADDL      GR3,GR0
           LD        GR0,0,GR3
           POP       GR3
           RET
                                    ; UtilMul
-C12       PUSH      0,GR2
+C012      PUSH      0,GR2
           PUSH      0,GR3
           PUSH      0,GR4
           PUSH      0,GR5
@@ -509,40 +509,40 @@ C12       PUSH      0,GR2
           XOR       GR1,GR1
           LD        GR4,GR2
           LD        GR5,GR3
-J42       SRL       GR2,1
-          JOV       J43
-          JNZ       J45
-          JUMP      J46
-J43       ADDL      GR0,GR3
-          JOV       J44
-          JUMP      J45
-J44       LAD       GR1,1,GR1
-J45       SLL       GR3,1
-          JUMP      J42
-J46       SRL       GR5,1
+J042      SRL       GR2,1
+          JOV       J043
+          JNZ       J045
+          JUMP      J046
+J043      ADDL      GR0,GR3
+          JOV       J044
+          JUMP      J045
+J044      LAD       GR1,1,GR1
+J045      SLL       GR3,1
+          JUMP      J042
+J046      SRL       GR5,1
           SLL       GR4,1
-          JOV       J47
-          JNZ       J46
-          JUMP      J48
-J47       ADDL      GR1,GR5
-          JUMP      J46
-J48       POP       GR5
+          JOV       J047
+          JNZ       J046
+          JUMP      J048
+J047      ADDL      GR1,GR5
+          JUMP      J046
+J048      POP       GR5
           POP       GR4
           POP       GR3
           POP       GR2
           RET
                                    ; UtilSafeIndex
-C13       AND       GR2,GR2
-          JNZ       J10
+C013      AND       GR2,GR2
+          JNZ       J010
           XOR       GR0,GR0
           RET
-J10       LD        GR0,GR1
-          JPL       J11
+J010      LD        GR0,GR1
+          JPL       J011
           XOR       GR0,GR0
           RET
-J11       CPL       GR0,GR2
-          JMI       J12
+J011      CPL       GR0,GR2
+          JMI       J012
           LAD       GR0,-1
           ADDL      GR0,GR2
-J12       RET
+J012      RET
           END

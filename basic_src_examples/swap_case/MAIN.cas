@@ -1,185 +1,185 @@
 MAIN      START
           RPUSH
                                    ; Init Variables
-          LAD       GR1,I2
+          LAD       GR1,I002
           XOR       GR2,GR2
           LAD       GR3,258
-          CALL      C10
+          CALL      C010
                                    ; Print "Swapcase Alphabet"
-          OUT       LB1,LL1
+          OUT       LB001,LL001
                                    ; Input s
-          IN        SB1,SL1
+          IN        SB001,SL001
           XOR       GR0,GR0
           ST        GR0,EOF
-          LD        GR0,SL1
-          JPL       J1
-          JZE       J1
+          LD        GR0,SL001
+          JPL       J001
+          JZE       J001
           ST        GR0,EOF
           XOR       GR0,GR0
-          ST        GR0,SL1
-J1        NOP
+          ST        GR0,SL001
+J001      NOP
                                    ; For i = 0 To (Len(s) - 1) Step 1
-          LD        GR7,SL1
+          LD        GR7,SL001
           LAD       GR7,-1,GR7
-          ST        GR7,T1
+          ST        GR7,T001
           XOR       GR7,GR7
-          ST        GR7,I2
-J2        NOP
-          LD        GR1,I2
-          CPA       GR1,T1
-          JPL       J4
+          ST        GR7,I002
+J002      NOP
+          LD        GR1,I002
+          CPA       GR1,T001
+          JPL       J004
                                    ; If ((s(i) >= "A"c) And (s(i) <= "Z"c)) Then
-          LD        GR7,I2
+          LD        GR7,I002
           LD        GR1,GR7
-          LD        GR2,SL1
-          LAD       GR3,SB1
-          CALL      C11
+          LD        GR2,SL001
+          LAD       GR3,SB001
+          CALL      C011
           LD        GR7,GR0
           LD        GR6,='A'
           XOR       GR0,GR0
           CPA       GR7,GR6
-          JMI       J11
+          JMI       J011
           LAD       GR0,#FFFF
-J11       LD        GR7,GR0
-          LD        GR6,I2
+J011      LD        GR7,GR0
+          LD        GR6,I002
           LD        GR1,GR6
-          LD        GR2,SL1
-          LAD       GR3,SB1
-          CALL      C11
+          LD        GR2,SL001
+          LAD       GR3,SB001
+          CALL      C011
           LD        GR6,GR0
           LD        GR5,='Z'
           XOR       GR0,GR0
           CPA       GR6,GR5
-          JPL       J12
+          JPL       J012
           LAD       GR0,#FFFF
-J12       LD        GR6,GR0
+J012      LD        GR6,GR0
           AND       GR7,GR6
           AND       GR7,GR7
-          JZE       J6
+          JZE       J006
                                    ; s( i ) = ((s(i) + "a"c) - "A"c)
-          LD        GR7,I2
+          LD        GR7,I002
           LD        GR1,GR7
-          LD        GR2,SL1
-          CALL      C13
-          LAD       GR7,SB1
+          LD        GR2,SL001
+          CALL      C013
+          LAD       GR7,SB001
           ADDL      GR7,GR0
-          LD        GR6,I2
+          LD        GR6,I002
           LD        GR1,GR6
-          LD        GR2,SL1
-          LAD       GR3,SB1
-          CALL      C11
+          LD        GR2,SL001
+          LAD       GR3,SB001
+          CALL      C011
           LD        GR6,GR0
           ADDA      GR6,='a'
           SUBA      GR6,='A'
           ST        GR6,0,GR7
-          JUMP      J5
+          JUMP      J005
                                    ; ElseIf Not ((s(i) < "a"c) Or (s(i) > "z"c)) Then
-J6        NOP
-          LD        GR7,I2
+J006      NOP
+          LD        GR7,I002
           LD        GR1,GR7
-          LD        GR2,SL1
-          LAD       GR3,SB1
-          CALL      C11
+          LD        GR2,SL001
+          LAD       GR3,SB001
+          CALL      C011
           LD        GR7,GR0
           LD        GR6,='a'
           LAD       GR0,#FFFF
           CPA       GR7,GR6
-          JMI       J13
+          JMI       J013
           XOR       GR0,GR0
-J13       LD        GR7,GR0
-          LD        GR6,I2
+J013      LD        GR7,GR0
+          LD        GR6,I002
           LD        GR1,GR6
-          LD        GR2,SL1
-          LAD       GR3,SB1
-          CALL      C11
+          LD        GR2,SL001
+          LAD       GR3,SB001
+          CALL      C011
           LD        GR6,GR0
           LD        GR5,='z'
           LAD       GR0,#FFFF
           CPA       GR6,GR5
-          JPL       J14
+          JPL       J014
           XOR       GR0,GR0
-J14       LD        GR6,GR0
+J014      LD        GR6,GR0
           OR        GR7,GR6
           XOR       GR7,=#FFFF
           AND       GR7,GR7
-          JZE       J5
+          JZE       J005
                                    ; s( i ) = ((s(i) + "A"c) - "a"c)
-          LD        GR7,I2
+          LD        GR7,I002
           LD        GR1,GR7
-          LD        GR2,SL1
-          CALL      C13
-          LAD       GR7,SB1
+          LD        GR2,SL001
+          CALL      C013
+          LAD       GR7,SB001
           ADDL      GR7,GR0
-          LD        GR6,I2
+          LD        GR6,I002
           LD        GR1,GR6
-          LD        GR2,SL1
-          LAD       GR3,SB1
-          CALL      C11
+          LD        GR2,SL001
+          LAD       GR3,SB001
+          CALL      C011
           LD        GR6,GR0
           ADDA      GR6,='A'
           SUBA      GR6,='a'
           ST        GR6,0,GR7
                                    ; End If
-J5        NOP
+J005      NOP
                                    ; Next i
-J3        NOP
-          LAD       GR1,I2
+J003      NOP
+          LAD       GR1,I002
           LD        GR2,0,GR1
           LAD       GR2,1,GR2
           ST        GR2,0,GR1
-          JUMP      J2
-J4        NOP
+          JUMP      J002
+J004      NOP
                                    ; Print s
-          OUT       SB1,SL1
+          OUT       SB001,SL001
 EXIT      NOP
           RPOP
           RET
                                    ; Dim i As Integer
-I2        DS        1
+I002      DS        1
                                    ; Dim s As String
-SL1       DS        1
-SB1       DS        256
+SL001     DS        1
+SB001     DS        256
 EOF       DS        1
-T1        DS        1
-LL1       DC        17
-LB1       DC        'Swapcase Alphabet'
+T001      DS        1
+LL001     DC        17
+LB001     DC        'Swapcase Alphabet'
                                    ; UtilFill
-C10       PUSH      0,GR1
+C010      PUSH      0,GR1
           PUSH      0,GR2
           PUSH      0,GR3
           ADDL      GR3,GR1
-J15       CPL       GR1,GR3
-          JZE       J16
+J015      CPL       GR1,GR3
+          JZE       J016
           ST        GR2,0,GR1
           LAD       GR1,1,GR1
-          JUMP      J15
-J16       POP       GR3
+          JUMP      J015
+J016      POP       GR3
           POP       GR2
           POP       GR1
           RET
                                    ; UtilLoadElement
-C11       AND       GR2,GR2
-          JNZ       J7
+C011      AND       GR2,GR2
+          JNZ       J007
           XOR       GR0,GR0
           RET
-J7        CALL      C13
+J007      CALL      C013
           PUSH      0,GR3
           ADDL      GR3,GR0
           LD        GR0,0,GR3
           POP       GR3
           RET
                                    ; UtilSafeIndex
-C13       AND       GR2,GR2
-          JNZ       J8
+C013      AND       GR2,GR2
+          JNZ       J008
           XOR       GR0,GR0
           RET
-J8        LD        GR0,GR1
-          JPL       J9
+J008      LD        GR0,GR1
+          JPL       J009
           XOR       GR0,GR0
           RET
-J9        CPL       GR0,GR2
-          JMI       J10
+J009      CPL       GR0,GR2
+          JMI       J010
           LAD       GR0,-1
           ADDL      GR0,GR2
-J10       RET
+J010      RET
           END
