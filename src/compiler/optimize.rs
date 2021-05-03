@@ -325,7 +325,7 @@ pub fn collect_duplicates(mut statements: Vec<casl2::Statement>) -> Vec<casl2::S
 
         if let Some((_, len, mut dups)) = best {
             id += 1;
-            let name = format!("F{}", id);
+            let name = format!("F{:03}", id);
             let mut snippet = None;
             while let Some(pos) = dups.pop() {
                 let rest = statements.split_off(pos + len);

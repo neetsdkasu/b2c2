@@ -22,7 +22,7 @@ pub enum Id {
 
 impl Id {
     pub fn label(&self) -> String {
-        format!("C{}", *self as isize)
+        format!("C{:03}", *self as isize)
     }
 }
 

@@ -1089,7 +1089,7 @@ impl Compiler {
                     self.allocate_memory_relative_position += 1;
                     ValueLabel::MemBoolean(offset)
                 } else {
-                    ValueLabel::VarBoolean(format!("B{}", self.var_id))
+                    ValueLabel::VarBoolean(format!("B{:03}", self.var_id))
                 };
                 self.bool_var_labels.insert(var_name.into(), label);
                 self.var_total_size += 1;
@@ -1100,7 +1100,7 @@ impl Compiler {
                     self.allocate_memory_relative_position += 1;
                     ValueLabel::MemInteger(offset)
                 } else {
-                    ValueLabel::VarInteger(format!("I{}", self.var_id))
+                    ValueLabel::VarInteger(format!("I{:03}", self.var_id))
                 };
                 self.int_var_labels.insert(var_name.into(), label);
                 self.var_total_size += 1;
@@ -1115,8 +1115,8 @@ impl Compiler {
                         label_type: StrLabelType::MemVal(offset),
                     }
                 } else {
-                    let len_label = format!("SL{}", self.var_id);
-                    let pos_label = format!("SB{}", self.var_id);
+                    let len_label = format!("SL{:03}", self.var_id);
+                    let pos_label = format!("SB{:03}", self.var_id);
                     StrLabels {
                         len: len_label,
                         pos: pos_label,
@@ -1135,7 +1135,7 @@ impl Compiler {
                         size: *size,
                     }
                 } else {
-                    ArrayLabel::VarArrayOfBoolean(format!("BA{}", self.var_id), *size)
+                    ArrayLabel::VarArrayOfBoolean(format!("BA{:03}", self.var_id), *size)
                 };
                 self.bool_arr_labels.insert(var_name.into(), label);
                 self.var_total_size += size;
@@ -1149,7 +1149,7 @@ impl Compiler {
                         size: *size,
                     }
                 } else {
-                    ArrayLabel::VarArrayOfInteger(format!("IA{}", self.var_id), *size)
+                    ArrayLabel::VarArrayOfInteger(format!("IA{:03}", self.var_id), *size)
                 };
                 self.int_arr_labels.insert(var_name.into(), label);
                 self.var_total_size += size;

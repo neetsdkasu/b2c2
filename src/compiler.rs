@@ -3,7 +3,8 @@ pub use self::utils::is_valid_program_name;
 use crate::casl2;
 use crate::parser;
 use crate::tokenizer;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::fmt::Write;
 
@@ -307,11 +308,13 @@ struct Compiler {
     // IN/OUTで使用する文字列定数のラベル対応を保持 (文字列定数, (長さラベル, 内容位置ラベル)))
     lit_str_labels: HashMap<String, StrLabels>,
 
-    // 式展開時の一時変数(整数/真理値)のラベルを保持 (スタック的利用) (ラベル) (主にForループの終点とステップで使用)
-    temp_int_var_labels: Vec<String>,
+    // 式展開時の一時変数(整数/真理値)のラベルを保持 (ラベル) (主にForループの終点とステップで使用)
+    temp_int_var_labels: BinaryHeap<Reverse<String>>,
+    // 使用中の一時変数
+    engaged_temp_int_var_labels: HashSet<String>,
 
-    // 式展開時の一時変数(文字列)のラベルを保持 (スタック的利用) (長さラベル, 内容位置ラベル)
-    temp_str_var_labels: Vec<StrLabels>,
+    // 式展開時の一時変数(文字列)のラベルを保持 (長さラベル, 内容位置ラベル)
+    temp_str_var_labels: BinaryHeap<Reverse<StrLabels>>,
 
     // 組み込みサブルーチンのコードを保持 (サブルーチンの固有名, コード)
     subroutine_codes: HashMap<subroutine::Id, Vec<casl2::Statement>>,
@@ -406,8 +409,9 @@ impl Compiler {
             bool_arr_labels: HashMap::new(),
             int_arr_labels: HashMap::new(),
             lit_str_labels: HashMap::new(),
-            temp_int_var_labels: Vec::new(),
-            temp_str_var_labels: Vec::new(),
+            temp_int_var_labels: BinaryHeap::new(),
+            engaged_temp_int_var_labels: HashSet::new(),
+            temp_str_var_labels: BinaryHeap::new(),
             subroutine_codes: HashMap::new(),
             loop_labels: HashMap::new(),
             exit_labels: HashMap::new(),
@@ -517,13 +521,13 @@ impl Compiler {
     // 組み込みサブルーチンのローカル変数の新規ラベル生成
     fn get_new_local_var_label(&mut self) -> String {
         self.local_var_id += 1;
-        format!("V{}", self.local_var_id)
+        format!("V{:03}", self.local_var_id)
     }
 
     // ループや条件分岐に使うジャンプ先ラベル生成
     fn get_new_jump_label(&mut self) -> String {
         self.jump_id += 1;
-        format!("J{}", self.jump_id)
+        format!("J{:03}", self.jump_id)
     }
 
     // Continueなど繰り返しの先頭で使うラベルの取得、無い場合は新規登録
@@ -550,27 +554,31 @@ impl Compiler {
 
     // 式展開時の一時変数(整数/真理値)のラベル取得・生成
     fn get_temp_int_var_label(&mut self) -> String {
-        if let Some(label) = self.temp_int_var_labels.pop() {
+        if let Some(Reverse(label)) = self.temp_int_var_labels.pop() {
+            self.engaged_temp_int_var_labels.insert(label.clone());
             return label;
         }
         self.temp_int_var_id += 1;
-        format!("T{}", self.temp_int_var_id)
+        let label = format!("T{:03}", self.temp_int_var_id);
+        self.engaged_temp_int_var_labels.insert(label.clone());
+        label
     }
 
     // 式展開時の一時変数(整数/真理値)のラベルの返却
     fn return_temp_int_var_label(&mut self, label: String) {
-        self.temp_int_var_labels.push(label);
+        self.engaged_temp_int_var_labels.remove(&label);
+        self.temp_int_var_labels.push(Reverse(label));
     }
 
     // 式展開時の一時変数(文字列)のラベル取得・生成
     fn get_temp_str_var_label(&mut self) -> StrLabels {
-        if let Some(labels) = self.temp_str_var_labels.pop() {
+        if let Some(Reverse(labels)) = self.temp_str_var_labels.pop() {
             return labels;
         }
         self.temp_str_var_id += 1;
         StrLabels {
-            len: format!("TL{}", self.temp_str_var_id),
-            pos: format!("TB{}", self.temp_str_var_id),
+            len: format!("TL{:03}", self.temp_str_var_id),
+            pos: format!("TB{:03}", self.temp_str_var_id),
             label_type: StrLabelType::Temp,
         }
     }
@@ -578,14 +586,14 @@ impl Compiler {
     // 式展開時の一時変数(文字列)のラベルの返却
     fn return_temp_str_var_label(&mut self, labels: StrLabels) {
         if matches!(labels.label_type, StrLabelType::Temp) {
-            self.temp_str_var_labels.push(labels);
+            self.temp_str_var_labels.push(Reverse(labels));
         }
     }
 
     // 式展開時の一時変数(配列)のラベルの返却
     fn return_if_temp_arr_label(&mut self, label: ArrayLabel) {
         if let Some(str_labels) = label.release() {
-            self.temp_str_var_labels.push(str_labels);
+            self.temp_str_var_labels.push(Reverse(str_labels));
         }
     }
 
@@ -596,8 +604,8 @@ impl Compiler {
         }
         self.lit_id += 1;
         let labels = StrLabels {
-            len: format!("LL{}", self.lit_id),
-            pos: format!("LB{}", self.lit_id),
+            len: format!("LL{:03}", self.lit_id),
+            pos: format!("LB{:03}", self.lit_id),
             label_type: StrLabelType::Const(literal.to_string()),
         };
         self.lit_str_labels.insert(literal.into(), labels.clone());
@@ -1355,12 +1363,14 @@ impl Compiler {
         let mut statements = temp_statements;
 
         // 式展開等で使う一時変数(整数/真理値で共有) T**
-        for label in temp_int_var_labels.into_iter().collect::<BTreeSet<_>>() {
+        let mut temp_int_var_labels = temp_int_var_labels;
+        while let Some(Reverse(label)) = temp_int_var_labels.pop() {
             statements.labeled(label, casl2::Command::Ds { size: 1 });
         }
 
         // 式展開等で使う一時変数(文字列) TL** TB**
-        for labels in temp_str_var_labels.into_iter().collect::<BTreeSet<_>>() {
+        let mut temp_str_var_labels = temp_str_var_labels;
+        while let Some(Reverse(labels)) = temp_str_var_labels.pop() {
             let StrLabels { pos, len, .. } = labels;
             statements.labeled(len, casl2::Command::Ds { size: 1 });
             statements.labeled(pos, casl2::Command::Ds { size: 256 });
