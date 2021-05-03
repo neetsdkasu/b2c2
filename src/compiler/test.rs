@@ -441,48 +441,48 @@ fn compiler_get_lit_str_labels_works() {
     assert_eq!(
         compiler.get_lit_str_labels("-123"),
         StrLabels {
-            len: "LL1".into(),
-            pos: "LB1".into(),
+            len: "LL001".into(),
+            pos: "LB001".into(),
             label_type: StrLabelType::Const("-123".into())
         }
     );
     assert_eq!(
         compiler.get_lit_str_labels("A b c"),
         StrLabels {
-            len: "LL2".into(),
-            pos: "LB2".into(),
+            len: "LL002".into(),
+            pos: "LB002".into(),
             label_type: StrLabelType::Const("A b c".into())
         }
     );
     assert_eq!(
         compiler.get_lit_str_labels("XYZ"),
         StrLabels {
-            len: "LL3".into(),
-            pos: "LB3".into(),
+            len: "LL003".into(),
+            pos: "LB003".into(),
             label_type: StrLabelType::Const("XYZ".into())
         }
     );
     assert_eq!(
         compiler.get_lit_str_labels("Test@1234"),
         StrLabels {
-            len: "LL4".into(),
-            pos: "LB4".into(),
+            len: "LL004".into(),
+            pos: "LB004".into(),
             label_type: StrLabelType::Const("Test@1234".into())
         }
     );
     assert_eq!(
         compiler.get_lit_str_labels("A b c"),
         StrLabels {
-            len: "LL2".into(),
-            pos: "LB2".into(),
+            len: "LL002".into(),
+            pos: "LB002".into(),
             label_type: StrLabelType::Const("A b c".into())
         }
     );
     assert_eq!(
         compiler.get_lit_str_labels("XYZ"),
         StrLabels {
-            len: "LL3".into(),
-            pos: "LB3".into(),
+            len: "LL003".into(),
+            pos: "LB003".into(),
             label_type: StrLabelType::Const("XYZ".into())
         }
     );
@@ -491,20 +491,20 @@ fn compiler_get_lit_str_labels_works() {
         compiler.finish(),
         casl2::parse(
             r#"
-TEST   START
-       RPUSH
-EXIT   NOP
-       RPOP
-       RET
-LL1    DC     4
-LB1    DC     '-123'
-LL2    DC     5
-LB2    DC     'A b c'
-LL3    DC     3
-LB3    DC     'XYZ'
-LL4    DC     9
-LB4    DC     'Test@1234'
-       END
+TEST     START
+         RPUSH
+EXIT     NOP
+         RPOP
+         RET
+LL001    DC     4
+LB001    DC     '-123'
+LL002    DC     5
+LB002    DC     'A b c'
+LL003    DC     3
+LB003    DC     'XYZ'
+LL004    DC     9
+LB004    DC     'Test@1234'
+         END
 "#
         )
         .unwrap()
@@ -528,41 +528,41 @@ fn compiler_compile_dim_works() {
 
     let mut statements = casl2::parse(&format!(
         r#"
-TEST   START
-       RPUSH
+TEST     START
+         RPUSH
                                    ; Init Variables
-       LAD    GR1,B2
-       XOR    GR2,GR2
-       LAD    GR3,705
-       CALL   {fill}
-EXIT   NOP
-       RPOP
-       RET
+         LAD    GR1,B002
+         XOR    GR2,GR2
+         LAD    GR3,705
+         CALL   {fill}
+EXIT     NOP
+         RPOP
+         RET
                                    ; Dim boolVar1 As Boolean
-B2     DS     1
+B002     DS     1
                                    ; Dim boolVar2 As Boolean
-B5     DS     1
+B005     DS     1
                                    ; Dim intVar2 As Integer
-I3     DS     1
+I003     DS     1
                                    ; Dim intVar1 As Integer
-I8     DS     1
+I008     DS     1
                                    ; Dim strVar1 As String
-SL1    DS     1
-SB1    DS     256
+SL001    DS     1
+SB001    DS     256
                                    ; Dim strVar2 As String
-SL6    DS     1
-SB6    DS     256
+SL006    DS     1
+SB006    DS     256
                                    ; Dim boolArr1(31) As Boolean
-BA4    DS     32
+BA004    DS     32
                                    ; Dim intArr1(154) As Integer
-IA7    DS     155
+IA007    DS     155
             "#,
         fill = fill.label()
     ))
     .unwrap();
 
     let mut gen = Gen {
-        jump: vec!["J2", "J1"],
+        jump: vec!["J002", "J001"],
         var: vec![],
     };
 
@@ -585,24 +585,24 @@ fn compiler_compile_print_lit_boolean_works() {
         compiler.finish(),
         casl2::parse(
             r#"
-TEST   START
-       RPUSH
+TEST     START
+         RPUSH
                                    ; Print True
-       OUT    LB1,LL1
+         OUT    LB001,LL001
                                    ; Print False
-       OUT    LB2,LL2
+         OUT    LB002,LL002
                                    ; Print False
-       OUT    LB2,LL2
+         OUT    LB002,LL002
                                    ; Print True
-       OUT    LB1,LL1
-EXIT   NOP
-       RPOP
-       RET
-LL1    DC     4
-LB1    DC     'True'
-LL2    DC     5
-LB2    DC     'False'
-       END
+         OUT    LB001,LL001
+EXIT     NOP
+         RPOP
+         RET
+LL001    DC     4
+LB001    DC     'True'
+LL002    DC     5
+LB002    DC     'False'
+         END
 "#
         )
         .unwrap()
@@ -622,25 +622,25 @@ fn compiler_compile_print_lit_integer_works() {
         compiler.finish(),
         casl2::parse(
             r#"
-TEST   START
-       RPUSH
+TEST     START
+         RPUSH
                                    ; Print 1234
-       OUT    LB1,LL1
+         OUT    LB001,LL001
                                    ; Print 999
-       OUT    LB2,LL2
+         OUT    LB002,LL002
                                    ; Print -100
-       OUT    LB3,LL3
+         OUT    LB003,LL003
                                    ; Print 1234
-       OUT    LB1,LL1
-EXIT   NOP
-       RPOP
-       RET
-LL1    DC     4
-LB1    DC     '1234'
-LL2    DC     3
-LB2    DC     '999'
-LL3    DC     4
-LB3    DC     '-100'
+         OUT    LB001,LL001
+EXIT     NOP
+         RPOP
+         RET
+LL001    DC     4
+LB001    DC     '1234'
+LL002    DC     3
+LB002    DC     '999'
+LL003    DC     4
+LB003    DC     '-100'
        END
 "#
         )
@@ -664,22 +664,22 @@ fn compiler_compile_print_lit_string_works() {
 TEST   START
        RPUSH
                                    ; Print "ABCD"
-       OUT    LB1,LL1
+       OUT    LB001,LL001
                                    ; Print "hey you!"
-       OUT    LB2,LL2
+       OUT    LB002,LL002
                                    ; Print ""
-       OUT    LB3,LL3
+       OUT    LB003,LL003
                                    ; Print "ABCD"
-       OUT    LB1,LL1
+       OUT    LB001,LL001
 EXIT   NOP
        RPOP
        RET
-LL1    DC     4
-LB1    DC     'ABCD'
-LL2    DC     8
-LB2    DC     'hey you!'
-LL3    DC     0
-LB3    DS     0
+LL001  DC     4
+LB001  DC     'ABCD'
+LL002  DC     8
+LB002  DC     'hey you!'
+LL003  DC     0
+LB003  DS     0
        END
 "#
         )
@@ -705,35 +705,35 @@ fn compiler_compile_print_var_string_works() {
 TEST   START
        RPUSH
                                    ; Init Variables
-       LAD    GR1,SL1
+       LAD    GR1,SL001
        XOR    GR2,GR2
        LAD    GR3,771
        CALL   {fill}
                                    ; Print strVar3
-       OUT    SB3,SL3
+       OUT    SB003,SL003
                                    ; Print strVar2
-       OUT    SB2,SL2
+       OUT    SB002,SL002
                                    ; Print strVar1
-       OUT    SB1,SL1
+       OUT    SB001,SL001
 EXIT   NOP
        RPOP
        RET
                                    ; Dim strVar1 As String
-SL1    DS     1
-SB1    DS     256
+SL001  DS     1
+SB001  DS     256
                                    ; Dim strVar2 As String
-SL2    DS     1
-SB2    DS     256
+SL002  DS     1
+SB002  DS     256
                                    ; Dim strVar3 As String
-SL3    DS     1
-SB3    DS     256
+SL003  DS     1
+SB003  DS     256
 "#,
         fill = fill.label()
     ))
     .unwrap();
 
     let mut gen = Gen {
-        jump: vec!["J2", "J1"],
+        jump: vec!["J002", "J001"],
         var: vec![],
     };
 
@@ -761,55 +761,55 @@ fn compiler_compile_input_string_works() {
 TEST   START
        RPUSH
                                    ; Init Variables
-       LAD    GR1,SL1
+       LAD    GR1,SL001
        XOR    GR2,GR2
        LAD    GR3,771
        CALL   {fill}
                                    ; Input strVar3
-       IN     SB3,SL3
+       IN     SB003,SL003
        XOR    GR0,GR0
        ST     GR0,EOF
-       LD     GR0,SL3
-       JPL    J1
-       JZE    J1
+       LD     GR0,SL003
+       JPL    J001
+       JZE    J001
        ST     GR0,EOF
        XOR    GR0,GR0
-       ST     GR0,SL3
-J1     NOP
+       ST     GR0,SL003
+J001   NOP
                                    ; Input strVar2
-       IN     SB2,SL2
+       IN     SB002,SL002
        XOR    GR0,GR0
        ST     GR0,EOF
-       LD     GR0,SL2
-       JPL    J2
-       JZE    J2
+       LD     GR0,SL002
+       JPL    J002
+       JZE    J002
        ST     GR0,EOF
        XOR    GR0,GR0
-       ST     GR0,SL2
-J2     NOP
+       ST     GR0,SL002
+J002   NOP
                                    ; Input strVar1
-       IN     SB1,SL1
+       IN     SB001,SL001
        XOR    GR0,GR0
        ST     GR0,EOF
-       LD     GR0,SL1
-       JPL    J3
-       JZE    J3
+       LD     GR0,SL001
+       JPL    J003
+       JZE    J003
        ST     GR0,EOF
        XOR    GR0,GR0
-       ST     GR0,SL1
-J3     NOP
+       ST     GR0,SL001
+J003   NOP
 EXIT   NOP
        RPOP
        RET
                                    ; Dim strVar1 As String
-SL1    DS     1
-SB1    DS     256
+SL001  DS     1
+SB001  DS     256
                                    ; Dim strVar2 As String
-SL2    DS     1
-SB2    DS     256
+SL002  DS     1
+SB002  DS     256
                                    ; Dim strVar3 As String
-SL3    DS     1
-SB3    DS     256
+SL003  DS     1
+SB003  DS     256
 EOF    DS     1
 "#,
         fill = fill.label()
@@ -817,7 +817,7 @@ EOF    DS     1
     .unwrap();
 
     let mut gen = Gen {
-        jump: vec!["J5", "J4"],
+        jump: vec!["J005", "J004"],
         var: vec![],
     };
 
@@ -846,34 +846,34 @@ TEST   START
        RPUSH
                                    ; Init Variable
        XOR    GR0,GR0
-       ST     GR0,I1
+       ST     GR0,I001
                                    ; Input intVar1
-       IN     TB1,TL1
+       IN     TB001,TL001
        XOR    GR0,GR0
        ST     GR0,EOF
-       LAD    GR1,TB1
-       LD     GR2,TL1
-       JPL    J4
-       JZE    J4
+       LAD    GR1,TB001
+       LD     GR2,TL001
+       JPL    J004
+       JZE    J004
        ST     GR2,EOF
        XOR    GR2,GR2
-J4     CALL   {cint}
-       ST     GR0,I1
+J004   CALL   {cint}
+       ST     GR0,I001
 EXIT   NOP
        RPOP
        RET
                                    ; Dim intVar1 As Integer
-I1     DS     1
+I001   DS     1
 EOF    DS     1
-TL1    DS     1
-TB1    DS     256
+TL001  DS     1
+TB001  DS     256
 "#,
         cint = cint.label()
     ))
     .unwrap();
 
     let mut gen = Gen {
-        jump: vec!["J6", "J5", "J3", "J2", "J1"],
+        jump: vec!["J006", "J005", "J003", "J002", "J001"],
         var: vec![],
     };
 
@@ -907,27 +907,27 @@ fn for_statement_without_step_works() {
                      RPUSH
                                    ; Init Variable
                      XOR    GR0,GR0
-                     ST     GR0,I1
+                     ST     GR0,I001
                                    ; For i = 1 To 10 Step 1
                      LAD    GR7,1
-                     ST     GR7,I1
-J1                   NOP
-                     LD     GR1,I1
+                     ST     GR7,I001
+J001                 NOP
+                     LD     GR1,I001
                      CPA    GR1,=10
-                     JPL    J3
+                     JPL    J003
                                    ; Next i
-J2                   NOP
-                     LAD    GR1,I1
+J002                 NOP
+                     LAD    GR1,I001
                      LD     GR2,0,GR1
                      LAD    GR2,1,GR2
                      ST     GR2,0,GR1
-                     JUMP   J1
-J3                   NOP
+                     JUMP   J001
+J003                 NOP
 EXIT                 NOP
                      RPOP
                      RET
                                    ; Dim i As Integer
-I1                   DS 1
+I001                 DS 1
                      END
 "#
         )
@@ -956,27 +956,27 @@ fn for_statement_positive_step_works() {
                      RPUSH
                                    ; Init Variable
                      XOR    GR0,GR0
-                     ST     GR0,I1
+                     ST     GR0,I001
                                    ; For i = 1 To 10 Step 1
                      LAD    GR7,1
-                     ST     GR7,I1
-J1                   NOP
-                     LD     GR1,I1
+                     ST     GR7,I001
+J001                 NOP
+                     LD     GR1,I001
                      CPA    GR1,=10
-                     JPL    J3
+                     JPL    J003
                                    ; Next i
-J2                   NOP
-                     LAD    GR1,I1
+J002                 NOP
+                     LAD    GR1,I001
                      LD     GR2,0,GR1
                      LAD    GR2,1,GR2
                      ST     GR2,0,GR1
-                     JUMP   J1
-J3                   NOP
+                     JUMP   J001
+J003                 NOP
 EXIT                 NOP
                      RPOP
                      RET
                                    ; Dim i As Integer
-I1                   DS 1
+I001                 DS 1
                      END
 "#
         )
@@ -1005,27 +1005,27 @@ fn for_statement_negative_step_works() {
                      RPUSH
                                    ; Init Variable
                      XOR    GR0,GR0
-                     ST     GR0,I1
+                     ST     GR0,I001
                                    ; For i = 24 To 8 Step -2
                      LAD    GR7,24
-                     ST     GR7,I1
-J1                   NOP
-                     LD     GR1,I1
+                     ST     GR7,I001
+J001                 NOP
+                     LD     GR1,I001
                      CPA    GR1,=8
-                     JMI    J3
+                     JMI    J003
                                    ; Next i
-J2                   NOP
-                     LAD    GR1,I1
+J002                 NOP
+                     LAD    GR1,I001
                      LD     GR2,0,GR1
                      LAD    GR2,-2,GR2
                      ST     GR2,0,GR1
-                     JUMP   J1
-J3                   NOP
+                     JUMP   J001
+J003                 NOP
 EXIT                 NOP
                      RPOP
                      RET
                                    ; Dim i As Integer
-I1                   DS 1
+I001                 DS 1
                      END
 "#
         )
@@ -1054,49 +1054,49 @@ fn for_statement_expr_step_works() {
         r#"TEST      START
                      RPUSH
                                    ; Init Variables
-                     LAD    GR1,I1
+                     LAD    GR1,I001
                      XOR    GR2,GR2
                      LAD    GR3,2
                      CALL   {fill}
                                    ; For I = 1 To 10 Step S
-                     LD     GR7,I1
-                     ST     GR7,T1
+                     LD     GR7,I001
+                     ST     GR7,T001
                      LAD    GR7,1
-                     ST     GR7,I2
-J1                   NOP
-                     LD     GR1,T1
-                     JMI    J2
-                     LD     GR1,I2
+                     ST     GR7,I002
+J001                 NOP
+                     LD     GR1,T001
+                     JMI    J002
+                     LD     GR1,I002
                      CPA    GR1,=10
-                     JUMP   J3
-J2                   LAD    GR0,10
-                     LAD    GR1,I2
+                     JUMP   J003
+J002                 LAD    GR0,10
+                     LAD    GR1,I002
                      CPA    GR0,0,GR1
-J3                   NOP
-                     JPL    J5
+J003                 NOP
+                     JPL    J005
                                    ; Next I
-J4                   NOP
-                     LAD    GR1,I2
+J004                 NOP
+                     LAD    GR1,I002
                      LD     GR0,0,GR1
-                     ADDA   GR0,T1
+                     ADDA   GR0,T001
                      ST     GR0,0,GR1
-                     JUMP   J1
-J5                   NOP
+                     JUMP   J001
+J005                 NOP
 EXIT                 NOP
                      RPOP
                      RET
                                    ; Dim S As Integer
-I1                   DS 1
+I001                 DS 1
                                    ; Dim I As Integer
-I2                   DS 1
-T1                   DS 1
+I002                 DS 1
+T001                 DS 1
 "#,
         fill = fill.label()
     ))
     .unwrap();
 
     let mut gen = Gen {
-        jump: vec!["J7", "J6"],
+        jump: vec!["J007", "J006"],
         var: vec![],
     };
 
@@ -1126,16 +1126,16 @@ fn expr_add_literal_int_rhs_works() {
                      RPUSH
                                    ; Init Variable
                      XOR    GR0,GR0
-                     ST     GR0,I1
+                     ST     GR0,I001
                                    ; x = (11 + 22)
                      LAD    GR7,11
                      LAD    GR7,22,GR7
-                     ST     GR7,I1
+                     ST     GR7,I001
 EXIT                 NOP
                      RPOP
                      RET
                                    ; Dim x As Integer
-I1                   DS 1
+I001                 DS 1
                      END
 "#
         )
@@ -1163,29 +1163,29 @@ fn expr_add_variable_rhs_works() {
         r#"TEST      START
                      RPUSH
                                    ; Init Variables
-                     LAD    GR1,I1
+                     LAD    GR1,I001
                      XOR    GR2,GR2
                      LAD    GR3,2
                      CALL   {fill}
                                    ; x = (11 + y)
                      LAD    GR7,11
-                     LD     GR6,I2
+                     LD     GR6,I002
                      ADDA   GR7,GR6
-                     ST     GR7,I1
+                     ST     GR7,I001
 EXIT                 NOP
                      RPOP
                      RET
                                    ; Dim x As Integer
-I1                   DS 1
+I001                 DS 1
                                    ; Dim y As Integer
-I2                   DS 1
+I002                 DS 1
 "#,
         fill = fill.label()
     ))
     .unwrap();
 
     let mut gen = Gen {
-        jump: vec!["J2", "J1"],
+        jump: vec!["J002", "J001"],
         var: vec![],
     };
 
