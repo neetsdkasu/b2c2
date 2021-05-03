@@ -47,38 +47,37 @@ const KANA_DAKUON_HALF_WIDE: &str = "ｶﾞｷﾞｸﾞｹﾞｺﾞｻﾞｼﾞ�
 // 一部の全角文字を半角文字に変換する (JIS X 201と関係ないコードだね…)
 pub fn convert_kana_wide_full_to_half(s: &str) -> String {
     let mut ret = String::new();
-    let hiragana: Vec<_> = HIRAGANA.chars().collect();
-    let katakana: Vec<_> = KATAKANA.chars().collect();
-    let kana_half_wide: Vec<_> = KANA_HALF_WIDE.chars().collect();
-    let ascii: Vec<_> = ASCII.chars().collect();
-    let kigou: Vec<_> = KIGOU.chars().collect();
-    let kigou_half_wide: Vec<_> = KIGOU_HALF_WIDE.chars().collect();
-    let hiragana_dakuon: Vec<_> = HIRAGANA_DAKUON.chars().collect();
-    let katakana_dakuon: Vec<_> = KATAKANA_DAKUON.chars().collect();
-    let kana_dakuon_half_wide: Vec<_> = KANA_DAKUON_HALF_WIDE.chars().collect();
-    assert_eq!(hiragana.len(), kana_half_wide.len());
-    assert_eq!(katakana.len(), kana_half_wide.len());
-    assert_eq!(ascii.len(), 0x7E - 0x20 + 1);
-    assert_eq!(kigou.len(), kigou_half_wide.len());
-    assert_eq!(hiragana_dakuon.len() * 2, kana_dakuon_half_wide.len());
-    assert_eq!(katakana_dakuon.len() * 2, kana_dakuon_half_wide.len());
     for ch in s.chars() {
         if ch.is_ascii() {
             ret.push(ch);
-        } else if let Some(index) = hiragana.iter().position(|&x| x == ch) {
-            ret.push(*kana_half_wide.get(index).unwrap_or(&ch));
-        } else if let Some(index) = katakana.iter().position(|&x| x == ch) {
-            ret.push(*kana_half_wide.get(index).unwrap_or(&ch));
-        } else if let Some(index) = hiragana_dakuon.iter().position(|&x| x == ch) {
-            ret.push(*kana_dakuon_half_wide.get(index * 2).unwrap_or(&ch));
-            ret.push(*kana_dakuon_half_wide.get(index * 2 + 1).unwrap_or(&ch));
-        } else if let Some(index) = katakana_dakuon.iter().position(|&x| x == ch) {
-            ret.push(*kana_dakuon_half_wide.get(index * 2).unwrap_or(&ch));
-            ret.push(*kana_dakuon_half_wide.get(index * 2 + 1).unwrap_or(&ch));
-        } else if let Some(index) = ascii.iter().position(|&x| x == ch) {
+        } else if let Some(index) = HIRAGANA.chars().position(|x| x == ch) {
+            ret.push(KANA_HALF_WIDE.chars().nth(index).unwrap_or(ch));
+        } else if let Some(index) = KATAKANA.chars().position(|x| x == ch) {
+            ret.push(KANA_HALF_WIDE.chars().nth(index).unwrap_or(ch));
+        } else if let Some(index) = HIRAGANA_DAKUON.chars().position(|x| x == ch) {
+            let mut iter = KANA_DAKUON_HALF_WIDE.chars().skip(index * 2);
+            let ch1 = iter.next();
+            let ch2 = iter.next();
+            if let (Some(ch1), Some(ch2)) = (ch1, ch2) {
+                ret.push(ch1);
+                ret.push(ch2);
+            } else {
+                ret.push(ch);
+            }
+        } else if let Some(index) = KATAKANA_DAKUON.chars().position(|x| x == ch) {
+            let mut iter = KANA_DAKUON_HALF_WIDE.chars().skip(index * 2);
+            let ch1 = iter.next();
+            let ch2 = iter.next();
+            if let (Some(ch1), Some(ch2)) = (ch1, ch2) {
+                ret.push(ch1);
+                ret.push(ch2);
+            } else {
+                ret.push(ch);
+            }
+        } else if let Some(index) = ASCII.chars().position(|x| x == ch) {
             ret.push((b' ' + index as u8) as char);
-        } else if let Some(index) = kigou.iter().position(|&x| x == ch) {
-            ret.push(*kigou_half_wide.get(index).unwrap_or(&ch));
+        } else if let Some(index) = KIGOU.chars().position(|x| x == ch) {
+            ret.push(KIGOU_HALF_WIDE.chars().nth(index).unwrap_or(ch));
         } else if ch == 'ヴ' {
             ret.push_str("ｳﾞ")
         } else if ch == 'ヺ' {
