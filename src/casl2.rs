@@ -47,7 +47,6 @@ impl Statement {
         }
     }
 
-    #[cfg(test)]
     pub fn code_with_comment(command: Command, comment: &str) -> Self {
         Self::Code {
             label: None,

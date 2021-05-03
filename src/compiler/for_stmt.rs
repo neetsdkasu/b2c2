@@ -22,6 +22,15 @@ impl Compiler {
             unreachable!("BUG");
         };
 
+        self.add_debugger_hint(|| {
+            format!(
+                "For {counter} = {init} To {end} Step {step}",
+                counter = counter,
+                init = init,
+                end = end,
+                step = step
+            )
+        });
         self.comment(format!(
             "For {counter} = {init} To {end} Step {step}",
             counter = counter,
@@ -109,6 +118,7 @@ impl Compiler {
 
         // ループ末尾 (カウンタの更新など)
 
+        self.add_debugger_hint(|| format!("Next {counter}", counter = counter));
         self.comment(format!("Next {counter}", counter = counter));
 
         self.code(format!("{next} NOP", next = loop_label));
@@ -151,6 +161,15 @@ impl Compiler {
             unreachable!("BUG");
         };
 
+        self.add_debugger_hint(|| {
+            format!(
+                "For {counter} = {init} To {end} Step {step}",
+                counter = counter,
+                init = init,
+                end = end,
+                step = step
+            )
+        });
         self.comment(format!(
             "For {counter} = {init} To {end} Step {step}",
             counter = counter,
@@ -269,13 +288,14 @@ impl Compiler {
 
         // ループ末尾 (カウンタの更新など)
 
+        self.add_debugger_hint(|| format!("Next {counter}", counter = counter));
+        self.comment(format!("Next {counter}", counter = counter));
+
         // 想定では、
         //  全てのレジスタ未使用
         //  になっているはず…
         let (saves, recovers) =
             self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
-
-        self.comment(format!("Next {counter}", counter = counter));
         self.code(format!("{next} NOP", next = loop_label));
         self.code(saves);
         self.code(format!(

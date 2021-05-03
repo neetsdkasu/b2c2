@@ -59,7 +59,14 @@ pub struct Flags {
     pub compiler: compiler::Flag,
     pub statistics: bool,
     pub dst_dir: Option<String>,
-    run_debugger: bool,
+    run_debugger: Option<DebugTarget>,
+}
+
+#[derive(Clone, Copy)]
+enum DebugTarget {
+    Casl2,
+    Basic,
+    NonStep,
 }
 
 // コマンドライン引数を解釈して指定の処理を実行する
@@ -78,8 +85,11 @@ fn run_app() -> io::Result<i32> {
         }
     };
 
-    if flags.run_debugger {
-        return debugger::run(src_file, flags);
+    match flags.run_debugger {
+        Some(DebugTarget::Casl2) => return debugger::run_casl2(src_file, flags),
+        Some(DebugTarget::Basic) => return debugger::run_basic(src_file, flags),
+        Some(DebugTarget::NonStep) => return debugger::run_nonstep(src_file, flags),
+        _ => {}
     }
 
     if src_file.to_ascii_lowercase().ends_with(".cas") {
@@ -291,8 +301,12 @@ OPTIONS:
     {flag_statistics}
                         生成されるCASL2ソースコードの統計情報ぽいものを出力する
 
-    {flag_run_debugger}
-                        生成されるCASL2プログラムをステップ実行する
+    {flag_run_debugger} <TARGET>
+                        生成されるCASL2プログラムをテスト実行する
+                        TARGETにはCASL2/BASIC/NONSTEPのいずれかを指定する
+                          CASL2   .. CASL2のコード単位でステップ実行する
+                          BASIC   .. BASICのコード単位でステップ実行する (生成されるCASL2ソースコードにステップ実行用のコードが挿入されます)
+                          NONSTEP .. プログラムの実行だけをします (ステップ数の制限がありません、無限ループのバグがある場合は止まりません)
 ",
         flag_src = FLAG_SOURCE_FILE,
         flag_destination_directory = FLAG_DESTINATION_DIRECTORY,
@@ -401,11 +415,26 @@ impl Flags {
                     self.statistics = true;
                 }
                 FLAG_RUN_DEBUGGER => {
-                    if self.run_debugger {
+                    if self.run_debugger.is_some() {
                         eprintln!("ERROR: {}が重複してます", arg);
                         return show_usage();
                     }
-                    self.run_debugger = true;
+                    if let Some(target) = iter.next() {
+                        if "CASL2".eq_ignore_ascii_case(&target) {
+                            self.run_debugger = Some(DebugTarget::Casl2);
+                        } else if "BASIC".eq_ignore_ascii_case(&target) {
+                            self.compiler.for_debug_basic = true;
+                            self.run_debugger = Some(DebugTarget::Basic);
+                        } else if "NonStep".eq_ignore_ascii_case(&target) {
+                            self.run_debugger = Some(DebugTarget::NonStep);
+                        } else {
+                            eprintln!("ERROR: ターゲットが不正です");
+                            return show_usage();
+                        }
+                    } else {
+                        eprintln!("ERROR: ターゲットが指定されてません");
+                        return show_usage();
+                    }
                 }
                 _ => {
                     eprintln!("ERROR: 不正なコマンドライン引数です ( {} )", arg);

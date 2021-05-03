@@ -12,6 +12,14 @@ impl Compiler {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| {
+            format!(
+                "{var}( {index} ) -= {value}",
+                var = var_name,
+                index = index,
+                value = value
+            )
+        });
         self.comment(format!(
             "{var}( {index} ) -= {value}",
             var = var_name,
@@ -125,6 +133,14 @@ impl Compiler {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| {
+            format!(
+                "{var}( {index} ) -= {value}",
+                var = var_name,
+                index = index,
+                value = value
+            )
+        });
         self.comment(format!(
             "{var}( {index} ) -= {value}",
             var = var_name,
@@ -226,6 +242,14 @@ impl Compiler {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| {
+            format!(
+                "{var}( {index} ) += {value}",
+                var = var_name,
+                index = index,
+                value = value
+            )
+        });
         self.comment(format!(
             "{var}( {index} ) += {value}",
             var = var_name,
@@ -315,6 +339,14 @@ impl Compiler {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| {
+            format!(
+                "{var}( {index} ) += {value}",
+                var = var_name,
+                index = index,
+                value = value
+            )
+        });
         self.comment(format!(
             "{var}( {index} ) += {value}",
             var = var_name,
@@ -404,6 +436,14 @@ impl Compiler {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
         assert!(matches!(value.return_type(), parser::ExprType::Boolean));
 
+        self.add_debugger_hint(|| {
+            format!(
+                "{var}( {index} ) = {value}",
+                var = var_name,
+                index = index,
+                value = value
+            )
+        });
         self.comment(format!(
             "{var}( {index} ) = {value}",
             var = var_name,
@@ -492,6 +532,14 @@ impl Compiler {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
         assert!(matches!(value.return_type(), parser::ExprType::Boolean));
 
+        self.add_debugger_hint(|| {
+            format!(
+                "{var}( {index} ) = {value}",
+                var = var_name,
+                index = index,
+                value = value
+            )
+        });
         self.comment(format!(
             "{var}( {index} ) = {value}",
             var = var_name,
@@ -580,6 +628,14 @@ impl Compiler {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| {
+            format!(
+                "{var}( {index} ) = {value}",
+                var = var_name,
+                index = index,
+                value = value
+            )
+        });
         self.comment(format!(
             "{var}( {index} ) = {value}",
             var = var_name,
@@ -668,6 +724,14 @@ impl Compiler {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| {
+            format!(
+                "{var}( {index} ) = {value}",
+                var = var_name,
+                index = index,
+                value = value
+            )
+        });
         self.comment(format!(
             "{var}( {index} ) = {value}",
             var = var_name,
@@ -756,6 +820,14 @@ impl Compiler {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| {
+            format!(
+                "{var}( {index} ) = {value}",
+                var = var_name,
+                index = index,
+                value = value
+            )
+        });
         self.comment(format!(
             "{var}( {index} ) = {value}",
             var = var_name,
@@ -825,6 +897,14 @@ impl Compiler {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| {
+            format!(
+                "{var}( {index} ) = {value}",
+                var = var_name,
+                index = index,
+                value = value
+            )
+        });
         self.comment(format!(
             "{var}( {index} ) = {value}",
             var = var_name,

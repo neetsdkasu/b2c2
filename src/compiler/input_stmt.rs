@@ -6,6 +6,7 @@ impl Compiler {
     pub(super) fn compile_input_element_integer(&mut self, var_name: &str, index: &parser::Expr) {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| format!("Input {arr}( {index} )", arr = var_name, index = index));
         self.comment(format!(
             "Input {arr}( {index} )",
             arr = var_name,
@@ -168,6 +169,9 @@ impl Compiler {
 
         self.has_eof = true;
 
+        self.add_debugger_hint(|| format!("Input {}", var_name));
+        self.comment(format!("Input {}", var_name));
+
         // 想定では、
         //  全てのレジスタ未使用
         //  になっているはず…
@@ -176,7 +180,6 @@ impl Compiler {
             self.get_save_registers_src(&[Gr1, Gr2])
         };
 
-        self.comment(format!("Input {}", var_name));
         self.code(saves);
         if self.option_external_eof {
             self.code(format!(
@@ -229,6 +232,7 @@ impl Compiler {
         let str_labels = self.get_str_var_labels(var_name);
         let label = self.get_new_jump_label();
         self.has_eof = true;
+        self.add_debugger_hint(|| format!("Input {}", var_name));
         self.comment(format!("Input {}", var_name));
 
         if self.option_use_allocator {
@@ -338,6 +342,7 @@ impl Compiler {
     ) {
         assert!(matches!(index.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| format!("Input {arr}( {index} )", arr = var_name, index = index));
         self.comment(format!(
             "Input {arr}( {index} )",
             arr = var_name,
@@ -500,6 +505,9 @@ impl Compiler {
 
         self.has_eof = true;
 
+        self.add_debugger_hint(|| format!("Input {}", var_name));
+        self.comment(format!("Input {}", var_name));
+
         // 想定では、
         //  全てのレジスタ未使用
         //  になっているはず…
@@ -508,7 +516,6 @@ impl Compiler {
             self.get_save_registers_src(&[Gr1, Gr2])
         };
 
-        self.comment(format!("Input {}", var_name));
         self.code(saves);
         if self.option_external_eof {
             self.code(format!(
@@ -568,6 +575,7 @@ impl Compiler {
 
         self.has_eof = true;
 
+        self.add_debugger_hint(|| format!("Input {}", var_name));
         self.comment(format!("Input {}", var_name));
 
         let (saves, recovers) = {

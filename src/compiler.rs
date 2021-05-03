@@ -83,6 +83,8 @@ pub struct Flag {
     pub program_name: Option<String>,
     // 重複コードのスニペット化を試みる
     pub try_make_snippets: bool,
+    // debugger用コンパイルモード
+    pub for_debug_basic: bool,
 }
 
 type CodeWithName = Vec<(String, Vec<casl2::Statement>)>;
@@ -138,11 +140,17 @@ pub struct LabelSet {
     pub int_arr_labels: HashMap<String, ArrayLabel>,
 }
 
+#[derive(Clone)]
+pub struct DebugInfo {
+    pub label_set: LabelSet,
+    pub status_hint: Vec<String>,
+}
+
 // デバッグ用コンパイル
 pub fn compile_for_debugger(
     src: &[parser::Statement],
     flag: &Flag,
-) -> Result<(LabelSet, CodeWithName), CompileError> {
+) -> Result<(DebugInfo, CodeWithName), CompileError> {
     if let Some(program_name) = &flag.program_name {
         for sub_name in src.iter().filter_map(|stmt| {
             if let parser::Statement::ExternSub { name, .. } = stmt {
@@ -162,11 +170,14 @@ pub fn compile_for_debugger(
 
     let mut compiler = Compiler::new(flag.program_name.clone())?;
 
+    compiler.for_debug_basic = flag.for_debug_basic;
+    compiler.add_debugger_hint(|| "Initialized".to_string());
+
     for stmt in src.iter() {
         compiler.compile(stmt);
     }
 
-    let labels = LabelSet {
+    let label_set = LabelSet {
         argument_labels: compiler.argument_labels.clone(),
         arr_argument_labels: compiler.arr_argument_labels.clone(),
         str_argument_labels: compiler.str_argument_labels.clone(),
@@ -177,9 +188,14 @@ pub fn compile_for_debugger(
         int_arr_labels: compiler.int_arr_labels.clone(),
     };
 
+    let debug_info = DebugInfo {
+        label_set,
+        status_hint: compiler.debugger_hint.clone(),
+    };
+
     let statements = compiler.finish();
 
-    Ok((labels, flag.apply(statements)))
+    Ok((debug_info, flag.apply(statements)))
 }
 
 // 文字列ラベルのタイプ判定に使う
@@ -232,6 +248,12 @@ pub enum ValueLabel {
 }
 
 struct Compiler {
+    // debugger用コンパイルモードか
+    for_debug_basic: bool,
+
+    // debuggerで利用するためのヒント
+    debugger_hint: Vec<String>,
+
     // プログラム名
     program_name: Option<String>,
     original_program_name: Option<String>,
@@ -363,6 +385,8 @@ impl Compiler {
         }
 
         Ok(Self {
+            for_debug_basic: false,
+            debugger_hint: Vec::new(),
             program_name,
             original_program_name: None,
             arguments: Vec::new(),
@@ -405,6 +429,75 @@ impl Compiler {
             allocate_arguments_size: 0,
             maximum_allocate_temporary_area_size: 0,
         })
+    }
+}
+
+// デバッガ関連
+impl Compiler {
+    // 現在のデバッグ情報の表示コマンドを取得
+    fn get_current_debugger_hint(&self) -> Option<casl2::Command> {
+        if !self.for_debug_basic {
+            return None;
+        }
+        let len = self.debugger_hint.len();
+        if len > 0 {
+            Some(casl2::Command::P {
+                code: casl2::P::Svc,
+                adr: casl2::Adr::Hex(0x1000 + len as u16),
+                x: None,
+            })
+        } else {
+            None
+        }
+    }
+
+    // debugger用のヒント表示のみを追加する
+    fn show_debugger_hint(&mut self) {
+        if let Some(cmd) = self.get_current_debugger_hint() {
+            self.code(casl2::Statement::code_with_comment(cmd, "DEBUG HINT"));
+        }
+    }
+
+    // 次のヒント情報のみを追加する
+    fn add_debugger_hint_message<F>(&mut self, hint: F)
+    where
+        F: FnOnce() -> String,
+    {
+        if !self.for_debug_basic {
+            return;
+        }
+        self.debugger_hint.push(hint());
+    }
+
+    // debugger用のヒントを追加する
+    fn add_debugger_hint<F>(&mut self, hint: F)
+    where
+        F: FnOnce() -> String,
+    {
+        if !self.for_debug_basic {
+            return;
+        }
+        if let Some(cmd) = self.get_current_debugger_hint() {
+            self.code(casl2::Statement::code_with_comment(cmd, "DEBUG HINT"));
+        }
+        self.debugger_hint.push(hint());
+    }
+
+    // debugger用のヒントを追加する
+    fn add_debugger_hint_command(&mut self, cmd: casl2::Command, hint: String) {
+        if !self.for_debug_basic {
+            return;
+        }
+        assert!(matches!(
+            cmd,
+            casl2::Command::P {
+                code: casl2::P::Svc,
+                adr: casl2::Adr::Hex(h),
+                x: None,
+            } if (0x1001..=0x1000 + self.debugger_hint.len() as u16).contains(&h)
+        ));
+        self.code(casl2::Statement::code_with_comment(cmd, "DEBUG HINT"));
+        self.debugger_hint.push(hint);
     }
 }
 
@@ -752,6 +845,7 @@ impl Compiler {
         } else {
             None
         };
+        self.show_debugger_hint();
         let Self {
             program_name,
             arguments,
@@ -1831,7 +1925,7 @@ impl StrLabels {
 }
 
 impl ValueLabel {
-    fn label(&self) -> String {
+    pub fn label(&self) -> String {
         match self {
             Self::VarBoolean(label)
             | Self::VarInteger(label)

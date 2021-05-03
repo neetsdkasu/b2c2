@@ -53,6 +53,18 @@ impl Compiler {
 
         let mut alloc_pos = self.allocate_memory_relative_position;
 
+        self.add_debugger_hint(|| {
+            format!(
+                "Call {}({})",
+                name,
+                arguments
+                    .iter()
+                    .map(|(arg_name, value)| format!("{} = {}", arg_name, value))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        });
+
         self.comment(format!("Call {}", name));
 
         for (arg_name, value) in arguments.iter() {
@@ -801,6 +813,7 @@ impl Compiler {
 
     // Exit Program ステートメント
     pub(super) fn compile_exit_program(&mut self) {
+        self.show_debugger_hint();
         self.comment("Exit Program");
         self.code(casl2::Command::P {
             code: casl2::P::Jump,
@@ -833,6 +846,15 @@ impl Compiler {
 
         if let Some(length) = length {
             assert!(matches!(length.return_type(), parser::ExprType::Integer));
+            self.add_debugger_hint(|| {
+                format!(
+                    "Mid( {name}, {offset}, {length} ) = {value}",
+                    name = var_name,
+                    offset = offset,
+                    length = length,
+                    value = value
+                )
+            });
             self.comment(format!(
                 "Mid( {name}, {offset}, {length} ) = {value}",
                 name = var_name,
@@ -895,6 +917,14 @@ impl Compiler {
             self.set_register_idle(offset_reg);
             self.return_temp_str_var_label(value_labels);
         } else {
+            self.add_debugger_hint(|| {
+                format!(
+                    "Mid( {name}, {offset} ) = {value}",
+                    name = var_name,
+                    offset = offset,
+                    value = value
+                )
+            });
             self.comment(format!(
                 "Mid( {name}, {offset} ) = {value}",
                 name = var_name,
@@ -944,6 +974,7 @@ impl Compiler {
         block: &[parser::Statement],
         else_blocks: &[parser::Statement],
     ) {
+        self.add_debugger_hint(|| format!("If {} Then", condition));
         self.comment(format!("If {} Then", condition));
 
         let end_label = self.get_new_jump_label();
@@ -967,6 +998,7 @@ impl Compiler {
         for stmt in block.iter() {
             self.compile(stmt);
         }
+        self.show_debugger_hint();
 
         let label_iter = labels.iter().zip(labels.iter().skip(1));
 
@@ -979,6 +1011,7 @@ impl Compiler {
 
             match else_stmt {
                 parser::Statement::ElseIf { condition, block } => {
+                    self.add_debugger_hint_message(|| format!("ElseIf {} Then", condition));
                     self.comment(format!("ElseIf {} Then", condition));
                     self.labeled(head, casl2::Command::Nop);
 
@@ -996,14 +1029,17 @@ impl Compiler {
                     for stmt in block.iter() {
                         self.compile(stmt);
                     }
+                    self.show_debugger_hint();
                 }
                 parser::Statement::Else { block } => {
+                    self.add_debugger_hint_message(|| "Else".to_string());
                     self.comment("Else");
                     self.labeled(head, casl2::Command::Nop);
 
                     for stmt in block.iter() {
                         self.compile(stmt);
                     }
+                    self.show_debugger_hint();
                 }
                 _ => unreachable!("BUG"),
             }
@@ -1011,12 +1047,14 @@ impl Compiler {
 
         self.comment("End If");
         self.labeled(end_label, casl2::Command::Nop);
+        self.add_debugger_hint_message(|| "End If".to_string());
     }
 
     // Continue {Do/For}
     pub(super) fn compile_continue_loop(&mut self, exit_id: usize, keyword: &str) {
         assert!(matches!(keyword, "Do" | "For"));
         let loop_label = self.get_loop_label(exit_id);
+        self.show_debugger_hint();
         self.comment(format!("Continue {}", keyword));
         // JUMP {loop}
         self.code(casl2::Command::P {
@@ -1030,6 +1068,7 @@ impl Compiler {
     pub(super) fn compile_exit_block(&mut self, exit_id: usize, keyword: &str) {
         assert!(matches!(keyword, "Do" | "For" | "Select"));
         let exit_label = self.get_exit_label(exit_id);
+        self.show_debugger_hint();
         self.comment(format!("Exit {}", keyword));
         // JUMP {exit}
         self.code(casl2::Command::P {

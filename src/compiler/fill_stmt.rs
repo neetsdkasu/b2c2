@@ -5,6 +5,7 @@ impl Compiler {
     pub(super) fn compile_fill_ref_string(&mut self, var_name: &str, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| format!("Fill {var}, {value}", var = var_name, value = value));
         self.comment(format!(
             "Fill {var}, {value}",
             var = var_name,
@@ -42,6 +43,7 @@ impl Compiler {
     pub(super) fn compile_fill_string(&mut self, var_name: &str, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| format!("Fill {var}, {value}", var = var_name, value = value));
         self.comment(format!(
             "Fill {var}, {value}",
             var = var_name,
@@ -79,6 +81,7 @@ impl Compiler {
     pub(super) fn compile_fill_ref_integer_array(&mut self, var_name: &str, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| format!("Fill {var}, {value}", var = var_name, value = value));
         self.comment(format!(
             "Fill {var}, {value}",
             var = var_name,
@@ -114,6 +117,7 @@ impl Compiler {
     pub(super) fn compile_fill_integer_array(&mut self, var_name: &str, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| format!("Fill {var}, {value}", var = var_name, value = value));
         self.comment(format!(
             "Fill {var}, {value}",
             var = var_name,
@@ -149,6 +153,7 @@ impl Compiler {
     pub(super) fn compile_fill_ref_boolean_array(&mut self, var_name: &str, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Boolean));
 
+        self.add_debugger_hint(|| format!("Fill {var}, {value}", var = var_name, value = value));
         self.comment(format!(
             "Fill {var}, {value}",
             var = var_name,
@@ -184,6 +189,7 @@ impl Compiler {
     pub(super) fn compile_fill_boolean_array(&mut self, var_name: &str, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Boolean));
 
+        self.add_debugger_hint(|| format!("Fill {var}, {value}", var = var_name, value = value));
         self.comment(format!(
             "Fill {var}, {value}",
             var = var_name,

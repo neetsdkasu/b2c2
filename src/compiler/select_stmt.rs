@@ -10,7 +10,10 @@ impl Compiler {
     ) {
         assert!(matches!(value.return_type(), parser::ExprType::String));
 
+        self.add_debugger_hint(|| format!("Select Case {value}", value = value));
         self.comment(format!("Select Case {value}", value = value));
+
+        let head_debugger_hint = self.get_current_debugger_hint();
 
         let exit_label = self.get_exit_label(exit_id);
 
@@ -81,16 +84,34 @@ impl Compiler {
                     ));
                     self.labeled(label, casl2::Command::Nop);
                     self.code(&recovers);
+                    if let Some(cmd) = head_debugger_hint.clone() {
+                        self.add_debugger_hint_command(
+                            cmd,
+                            format!(
+                                "Case {}",
+                                values
+                                    .iter()
+                                    .map(|s| format!("'{}'", s.replace('\'', "''")))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ),
+                        );
+                    }
                     for stmt in block.iter() {
                         self.compile(stmt);
                     }
+                    self.show_debugger_hint();
                 }
                 parser::Statement::CaseElse { block } => {
                     self.comment("Case Else");
                     self.labeled(label, casl2::Command::Nop);
+                    if let Some(cmd) = head_debugger_hint.clone() {
+                        self.add_debugger_hint_command(cmd, "Case Else".to_string());
+                    }
                     for stmt in block.iter() {
                         self.compile(stmt);
                     }
+                    self.show_debugger_hint();
                 }
                 _ => unreachable!("BUG"),
             }
@@ -108,6 +129,7 @@ impl Compiler {
 
         self.comment("End Select");
         self.labeled(exit_label, casl2::Command::Nop);
+        self.add_debugger_hint_message(|| "End Select".to_string());
     }
 
     // Select Case <integer> ステートメント
@@ -133,7 +155,10 @@ impl Compiler {
             .map(|case_stmt| (case_stmt, self.get_new_jump_label()))
             .collect();
 
+        self.add_debugger_hint(|| format!("Select Case {}", value));
         self.comment(format!("Select Case {}", value));
+
+        let head_debugger_hint = self.get_current_debugger_hint();
 
         // 想定では GR7
         let value_reg = self.compile_int_expr(value);
@@ -195,16 +220,34 @@ impl Compiler {
                             .join(", ")
                     ));
                     self.labeled(label, casl2::Command::Nop);
+                    if let Some(cmd) = head_debugger_hint.clone() {
+                        self.add_debugger_hint_command(
+                            cmd,
+                            format!(
+                                "Case {}",
+                                values
+                                    .iter()
+                                    .map(|v| v.to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ),
+                        );
+                    }
                     for stmt in block.iter() {
                         self.compile(stmt);
                     }
+                    self.show_debugger_hint();
                 }
                 parser::Statement::CaseElse { block } => {
                     self.comment("Case Else");
                     self.labeled(label, casl2::Command::Nop);
+                    if let Some(cmd) = head_debugger_hint.clone() {
+                        self.add_debugger_hint_command(cmd, "Case Else".to_string());
+                    }
                     for stmt in block.iter() {
                         self.compile(stmt);
                     }
+                    self.show_debugger_hint();
                 }
                 _ => unreachable!("BUG"),
             }
@@ -225,5 +268,6 @@ impl Compiler {
         );
         self.comment("End Select");
         self.labeled(exit_label, casl2::Command::Nop);
+        self.add_debugger_hint_message(|| "End Select".to_string());
     }
 }

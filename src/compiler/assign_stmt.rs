@@ -6,6 +6,7 @@ impl Compiler {
     pub(super) fn compile_assign_integer_array(&mut self, var_name: &str, value: &parser::Expr) {
         let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
 
+        self.add_debugger_hint(|| format!("{} = {}", var_name, value));
         self.comment(format!("{} = {}", var_name, value));
 
         let dst_arr_label = self.get_int_arr_label(var_name);
@@ -53,6 +54,7 @@ impl Compiler {
     ) {
         let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
 
+        self.add_debugger_hint(|| format!("{} = {}", var_name, value));
         self.comment(format!("{} = {}", var_name, value));
 
         let dst_arr_label = self.get_ref_int_arr_label(var_name);
@@ -96,6 +98,7 @@ impl Compiler {
     pub(super) fn compile_assign_boolean_array(&mut self, var_name: &str, value: &parser::Expr) {
         let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
 
+        self.add_debugger_hint(|| format!("{} = {}", var_name, value));
         self.comment(format!("{} = {}", var_name, value));
 
         let dst_arr_label = self.get_bool_arr_label(var_name);
@@ -143,6 +146,7 @@ impl Compiler {
     ) {
         let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
 
+        self.add_debugger_hint(|| format!("{} = {}", var_name, value));
         self.comment(format!("{} = {}", var_name, value));
 
         let dst_arr_label = self.get_ref_bool_arr_label(var_name);
@@ -186,6 +190,7 @@ impl Compiler {
     pub(super) fn compile_assign_sub_into(&mut self, var_name: &str, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| format!("{var} -= {value}", var = var_name, value = value));
         self.comment(format!("{var} -= {value}", var = var_name, value = value));
 
         let var_label = self.get_int_var_label(var_name);
@@ -213,6 +218,7 @@ impl Compiler {
     pub(super) fn compile_assign_ref_sub_into(&mut self, var_name: &str, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| format!("{var} -= {value}", var = var_name, value = value));
         self.comment(format!("{var} -= {value}", var = var_name, value = value));
 
         let var_label = self.get_ref_int_var_label(var_name);
@@ -241,6 +247,7 @@ impl Compiler {
     pub(super) fn compile_assign_add_into(&mut self, var_name: &str, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| format!("{var} += {value}", var = var_name, value = value));
         self.comment(format!("{var} += {value}", var = var_name, value = value));
 
         let value_reg = self.compile_int_expr(value);
@@ -266,6 +273,7 @@ impl Compiler {
     pub(super) fn compile_assign_ref_add_into(&mut self, var_name: &str, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Integer));
 
+        self.add_debugger_hint(|| format!("{var} += {value}", var = var_name, value = value));
         self.comment(format!("{var} += {value}", var = var_name, value = value));
 
         let value_reg = self.compile_int_expr(value);
@@ -292,6 +300,7 @@ impl Compiler {
     pub(super) fn compile_assign_boolean(&mut self, var_name: &str, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Boolean));
 
+        self.add_debugger_hint(|| format!("{var} = {value}", var = var_name, value = value));
         self.comment(format!("{var} = {value}", var = var_name, value = value));
 
         let value_reg = self.compile_int_expr(value);
@@ -311,6 +320,7 @@ impl Compiler {
     pub(super) fn compile_assign_ref_boolean(&mut self, var_name: &str, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Boolean));
 
+        self.add_debugger_hint(|| format!("{var} = {value}", var = var_name, value = value));
         self.comment(format!("{var} = {value}", var = var_name, value = value));
 
         let value_reg = self.compile_int_expr(value);
@@ -327,6 +337,7 @@ impl Compiler {
     // Assign String ステートメント
     // str_var = str_expr
     pub(super) fn compile_assign_string(&mut self, var_name: &str, value: &parser::Expr) {
+        self.add_debugger_hint(|| format!("{var} = {value}", var = var_name, value = value));
         self.comment(format!("{var} = {value}", var = var_name, value = value));
 
         let value_label = self.compile_str_expr(value);
@@ -363,6 +374,7 @@ impl Compiler {
     // Assign Ref String ステートメント
     // ref_str_var = str_expr
     pub(super) fn compile_assign_ref_string(&mut self, var_name: &str, value: &parser::Expr) {
+        self.add_debugger_hint(|| format!("{var} = {value}", var = var_name, value = value));
         self.comment(format!("{var} = {value}", var = var_name, value = value));
 
         let value_label = self.compile_str_expr(value);
@@ -399,6 +411,7 @@ impl Compiler {
     // Assign Ref Integer ステートメント
     // ref_int_var = int_expr
     pub(super) fn compile_assign_ref_integer(&mut self, var_name: &str, value: &parser::Expr) {
+        self.add_debugger_hint(|| format!("{var} = {value}", var = var_name, value = value));
         self.comment(format!("{var} = {value}", var = var_name, value = value));
 
         let value_reg = self.compile_int_expr(value);
@@ -415,6 +428,7 @@ impl Compiler {
     // Assign Integer ステートメント
     // int_var = int_expr
     pub(super) fn compile_assign_integer(&mut self, var_name: &str, value: &parser::Expr) {
+        self.add_debugger_hint(|| format!("{var} = {value}", var = var_name, value = value));
         self.comment(format!("{var} = {value}", var = var_name, value = value));
 
         let value_reg = self.compile_int_expr(value);

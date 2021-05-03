@@ -6,6 +6,7 @@ impl Compiler {
     pub(super) fn compile_print_lit_boolean(&mut self, value: bool) {
         let s = if value { "True" } else { "False" };
         let StrLabels { len, pos, .. } = self.get_lit_str_labels(s);
+        self.add_debugger_hint(|| format!("Print {}", s));
         self.comment(format!("Print {}", s));
         // OUT {lit_pos},{lit_len}
         self.code(casl2::Command::Out {
@@ -19,6 +20,7 @@ impl Compiler {
     pub(super) fn compile_print_lit_integer(&mut self, value: i32) {
         let value = value as i16;
         let StrLabels { len, pos, .. } = self.get_lit_str_labels(&value.to_string());
+        self.add_debugger_hint(|| format!("Print {}", value));
         self.comment(format!("Print {}", value));
         self.code(casl2::Command::Out {
             pos: pos.into(),
@@ -30,6 +32,7 @@ impl Compiler {
     // 文字列リテラルの画面出力
     pub(super) fn compile_print_lit_string(&mut self, value: &str) {
         let StrLabels { len, pos, .. } = self.get_lit_str_labels(value);
+        self.add_debugger_hint(|| format!(r#"Print "{}""#, value.replace('"', r#""""#)));
         self.comment(format!(r#"Print "{}""#, value.replace('"', r#""""#)));
         self.code(casl2::Command::Out {
             pos: pos.into(),
@@ -41,6 +44,7 @@ impl Compiler {
     // 文字列変数の画面出力
     pub(super) fn compile_print_var_string(&mut self, var_name: &str) {
         let labels = self.get_str_var_labels(var_name);
+        self.add_debugger_hint(|| format!("Print {}", var_name));
         self.comment(format!("Print {}", var_name));
         if self.option_use_allocator {
             let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
@@ -79,6 +83,7 @@ impl Compiler {
     pub(super) fn compile_print_expr_boolean(&mut self, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::Boolean));
 
+        self.add_debugger_hint(|| format!("Print {}", value));
         self.comment(format!("Print {}", value));
 
         // 想定では GR7
@@ -118,6 +123,7 @@ impl Compiler {
     pub(super) fn compile_print_expr_string(&mut self, value: &parser::Expr) {
         assert!(matches!(value.return_type(), parser::ExprType::String));
 
+        self.add_debugger_hint(|| format!("Print {}", value));
         self.comment(format!("Print {}", value));
 
         let labels = self.compile_str_expr(value);
@@ -163,6 +169,7 @@ impl Compiler {
     // Print <int_expr>ステートメント
     // 整数の計算結果の画面出力
     pub(super) fn compile_print_expr_integer(&mut self, value: &parser::Expr) {
+        self.add_debugger_hint(|| format!("Print {}", value));
         self.comment(format!("Print {}", value));
 
         // 想定では GR7

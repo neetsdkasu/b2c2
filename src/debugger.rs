@@ -9,8 +9,21 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-pub fn run(src_file: String, mut flags: Flags) -> io::Result<i32> {
+pub fn run_nonstep(src_file: String, flags: Flags) -> io::Result<i32> {
+    let _ = (src_file, flags);
+    todo!()
+}
+
+pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
+    let _ = (src_file, flags);
+    todo!()
+}
+
+pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
     let mut emu = Emulator::new();
+
+    // TEST
+    flags.compiler.for_debug_basic = true;
 
     if src_file.to_ascii_lowercase().ends_with(".cas") {
         match emu.compile_casl2(&src_file, &flags, true) {
@@ -35,6 +48,43 @@ pub fn run(src_file: String, mut flags: Flags) -> io::Result<i32> {
         // 未解決ラベルを解決する処理を入れる
         todo!();
     }
+
+    emu.init_to_start();
+
+    for _ in 0..1000000 {
+        let last_run = emu.last_run();
+        if last_run.contains("SVC") {
+            let adr = emu.mem[emu.last_run_position + 1];
+            if adr > 0x1000 {
+                if let Some((plabel, debug_info)) = emu.basic_info.get(&src_file) {
+                    let pos = adr as usize - 0x1001;
+                    if let Some(msg) = debug_info.status_hint.get(pos) {
+                        println!("[INFO] {}", msg);
+                        if let Some(loc) = emu.local_labels.get(plabel) {
+                            for (vname, vlabel) in debug_info.label_set.int_var_labels.iter() {
+                                if let Some(adr) = loc.get(&vlabel.label()) {
+                                    println!("[INFO] {} = {}", vname, emu.mem[*adr as usize]);
+                                }
+                            }
+                        }
+                        let mut s = String::new();
+                        io::stdin().read_line(&mut s)?;
+                    }
+                }
+            }
+        }
+        // println!("{}", last_run);
+        match emu.step_through_code() {
+            Ok(_) => {}
+            Err(RuntimeError::IoError(error)) => return Err(error),
+            Err(error) => {
+                // println!("{}", emu.last_run());
+                println!("{:?}", error);
+                break;
+            }
+        }
+    }
+    println!("TOTAL STEPS: {}", emu.steps);
 
     Ok(0)
 }
@@ -93,6 +143,12 @@ struct Emulator {
     sign_flag: bool,
     zero_flag: bool,
 
+    // 最後に実行したコードの位置(PRの値)
+    last_run_position: usize,
+
+    // ステップ実行回数(step_through_code呼び出し回数)
+    steps: usize,
+
     // プログラムの開始点のエントリラベル
     // (START命令に引数があるとBEGIN_OF_PROGRAMにはならないこともあるため)
     start_point: Option<String>,
@@ -100,8 +156,8 @@ struct Emulator {
     // 挿入するプログラムの埋め込み開始位置
     compile_pos: usize,
 
-    // 変数名とラベルの対応 (ソースファイル名, (プログラムエントリラベル, 変数ラベルマップ))
-    variables: HashMap<String, (String, compiler::LabelSet)>,
+    // BASICコードの情報 (ソースファイル名, (プログラムエントリラベル, デバッグ用情報))
+    basic_info: HashMap<String, (String, compiler::DebugInfo)>,
 
     // プログラムごとのラベルとメモリ位置の対応 (プログラムエントリラベル, (ラベル, メモリ位置))
     local_labels: HashMap<String, HashMap<String, usize>>,
@@ -127,14 +183,51 @@ impl Emulator {
             sign_flag: false,
             zero_flag: false,
 
+            last_run_position: INITIAL_PROGRAM_REGISTER - 2,
+            steps: 0,
+
             start_point: None,
-            variables: HashMap::new(),
+            basic_info: HashMap::new(),
             compile_pos: BEGIN_OF_PROGRAM,
             local_labels: HashMap::new(),
             program_labels: HashMap::new(),
             program_list: Vec::new(),
             unknown_labels: HashMap::new(),
         }
+    }
+
+    fn last_run(&self) -> String {
+        let pos = self.last_run_position;
+        let op_code = self.mem[pos];
+        let adr = self.mem[pos + 1];
+        format!("[#{:04X}] {}", pos, get_op_code_form(op_code, adr))
+    }
+
+    fn init_to_start(&mut self) {
+        let position = self
+            .start_point
+            .as_ref()
+            .and_then(|label| self.program_labels.get(label))
+            .copied()
+            .expect("BUG");
+
+        let call = casl2::Command::P {
+            code: casl2::P::Call,
+            adr: casl2::Adr::Hex(position as u16),
+            x: None,
+        };
+
+        let stack_pointer = CALLSTACK_START_POSITION - 1;
+
+        self.mem[INITIAL_PROGRAM_REGISTER - 2] = call.first_word();
+        self.mem[INITIAL_PROGRAM_REGISTER - 1] = position as u16;
+        self.last_run_position = INITIAL_PROGRAM_REGISTER - 2;
+        self.mem[stack_pointer] = INITIAL_PROGRAM_REGISTER as u16;
+        self.stack_pointer = stack_pointer;
+        self.program_register = position;
+        self.steps = 0;
+
+        // GRとFRは不定
     }
 
     fn enough_remain(&self, len: usize) -> bool {
@@ -179,12 +272,20 @@ enum RuntimeError {
     IoError(io::Error),
 }
 
+impl From<io::Error> for RuntimeError {
+    fn from(error: io::Error) -> Self {
+        Self::IoError(error)
+    }
+}
+
 impl Emulator {
     fn step_through_code(&mut self) -> Result<(), RuntimeError> {
         let pr = self.program_register;
         if !self.has_asccess_permission(pr) {
             return Err(RuntimeError::ExecutePermissionDenied { position: pr });
         }
+        self.steps += 1;
+        self.last_run_position = pr;
         self.program_register += 1;
         let op_code = self.mem[pr];
         let r1 = ((op_code >> 4) & 0xF) as usize;
@@ -503,11 +604,13 @@ impl Emulator {
                             address: len,
                         });
                     }
+                    write!(&mut io::stdout(), "? ")?;
+                    io::stdout().flush()?;
                     let mut line = String::new();
-                    match io::stdin().read_line(&mut line) {
-                        Err(error) => return Err(RuntimeError::IoError(error)),
-                        Ok(0) => self.mem[len] = (-1_i16) as u16,
-                        Ok(_) => {
+                    match io::stdin().read_line(&mut line)? {
+                        0 => self.mem[len] = (-1_i16) as u16,
+                        _ => {
+                            // 改行文字のtrim忘れ
                             let line = jis_x_201::convert_kana_wide_full_to_half(&line);
                             self.mem[len] = line.chars().count().min(256) as u16;
                             for (i, ch) in line.chars().enumerate().take(256) {
@@ -547,9 +650,8 @@ impl Emulator {
                         let ch = (self.mem[pos + i] & 0xFF) as u8;
                         line.push(jis_x_201::convert_to_char(ch, true));
                     }
-                    if let Err(error) = writeln!(&mut io::stdout(), "{}", line) {
-                        return Err(RuntimeError::IoError(error));
-                    }
+                    writeln!(&mut io::stdout(), "{}", line)?;
+                    io::stdout().flush()?;
                 }
                 return Ok(());
             }
@@ -770,13 +872,13 @@ impl Emulator {
                 eprintln!("CompileError {{ {} }}", error);
                 return Ok(5);
             }
-            Ok((labels, list)) => {
+            Ok((debug_info, list)) => {
                 if let Some((name, _)) = list.last() {
                     if self.start_point.is_none() {
                         self.start_point = Some(name.clone());
                     }
-                    self.variables
-                        .insert(src_file.into(), (name.clone(), labels));
+                    self.basic_info
+                        .insert(src_file.into(), (name.clone(), debug_info));
                 } else {
                     unreachable!("BUG");
                 };
@@ -1100,8 +1202,19 @@ impl Emulator {
                 let mut pos = pos;
                 for stmt in src.iter() {
                     if let casl2::Statement::Code { command, .. } = stmt {
-                        self.mem[pos] = command.first_byte();
-                        pos += command.len();
+                        let len = command.len();
+                        self.mem[pos] = command.first_word();
+                        match command {
+                            casl2::Command::P { adr, .. } | casl2::Command::A { adr, .. } => {
+                                match adr {
+                                    casl2::Adr::Dec(d) => self.mem[pos + 1] = *d as u16,
+                                    casl2::Adr::Hex(h) => self.mem[pos + 1] = *h,
+                                    _ => {}
+                                }
+                            }
+                            _ => {}
+                        }
+                        pos += len;
                     }
                 }
             }
@@ -1120,8 +1233,19 @@ impl Emulator {
                 let mut pos = pos;
                 for stmt in src.iter() {
                     if let casl2::Statement::Code { command, .. } = stmt {
-                        self.mem[pos] = command.first_byte();
-                        pos += command.len();
+                        let len = command.len();
+                        self.mem[pos] = command.first_word();
+                        match command {
+                            casl2::Command::P { adr, .. } | casl2::Command::A { adr, .. } => {
+                                match adr {
+                                    casl2::Adr::Dec(d) => self.mem[pos + 1] = *d as u16,
+                                    casl2::Adr::Hex(h) => self.mem[pos + 1] = *h,
+                                    _ => {}
+                                }
+                            }
+                            _ => {}
+                        }
+                        pos += len;
                     }
                 }
             }
@@ -1134,7 +1258,7 @@ impl Emulator {
                         adr: casl2::Adr::Dec(0),
                         x: Some(x),
                     };
-                    self.mem[pos] = cmd.first_byte();
+                    self.mem[pos] = cmd.first_word();
                     self.mem[pos + 1] = 0;
                     pos += 2;
                 }
@@ -1144,7 +1268,7 @@ impl Emulator {
                 let mut pos = pos;
                 for &r in &[Gr7, Gr6, Gr5, Gr4, Gr3, Gr2, Gr1] {
                     let cmd = casl2::Command::Pop { r };
-                    self.mem[pos] = cmd.first_byte();
+                    self.mem[pos] = cmd.first_word();
                     pos += 1;
                 }
             }
@@ -1152,10 +1276,10 @@ impl Emulator {
             | casl2::Command::Pop { .. }
             | casl2::Command::Ret
             | casl2::Command::Nop => {
-                self.mem[pos] = command.first_byte();
+                self.mem[pos] = command.first_word();
             }
             casl2::Command::A { .. } | casl2::Command::P { .. } => {
-                self.mem[pos] = command.first_byte();
+                self.mem[pos] = command.first_word();
             }
         }
     }
@@ -1165,44 +1289,72 @@ fn get_op_code_form(op_code: u16, adr: u16) -> String {
     let r1 = (op_code >> 4) & 0xF;
     let r2 = op_code & 0xF;
     match (op_code >> 8) & 0xFF {
-        0x14 => format!("#{:04X}: LD GR{},GR{}", op_code, r1, r2),
-        0x24 => format!("#{:04X}: ADDA GR{},GR{}", op_code, r1, r2),
-        0x26 => format!("#{:04X}: ADDL GR{},GR{}", op_code, r1, r2),
-        0x25 => format!("#{:04X}: SUBA GR{},GR{}", op_code, r1, r2),
-        0x27 => format!("#{:04X}: SUBL GR{},GR{}", op_code, r1, r2),
-        0x34 => format!("#{:04X}: AND GR{},GR{}", op_code, r1, r2),
-        0x35 => format!("#{:04X}: OR GR{},GR{}", op_code, r1, r2),
-        0x36 => format!("#{:04X}: XOR GR{},GR{}", op_code, r1, r2),
-        0x44 => format!("#{:04X}: CPA GR{},GR{}", op_code, r1, r2),
-        0x45 => format!("#{:04X}: CPL GR{},GR{}", op_code, r1, r2),
-        0x12 => format!("#{:04X}: LAD GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x70 => format!("#{:04X}: PUSH #{:04X},GR{}", op_code, adr, r2),
-        0xF0 => format!("#{:04X}: SVC #{:04X},GR{}", op_code, adr, r2),
-        0x71 => format!("#{:04X}: POP GR{}", op_code, r1),
+        0x14 => format!("#{:04X}: LD    GR{},GR{}", op_code, r1, r2),
+        0x24 => format!("#{:04X}: ADDA  GR{},GR{}", op_code, r1, r2),
+        0x26 => format!("#{:04X}: ADDL  GR{},GR{}", op_code, r1, r2),
+        0x25 => format!("#{:04X}: SUBA  GR{},GR{}", op_code, r1, r2),
+        0x27 => format!("#{:04X}: SUBL  GR{},GR{}", op_code, r1, r2),
+        0x34 => format!("#{:04X}: AND   GR{},GR{}", op_code, r1, r2),
+        0x35 => format!("#{:04X}: OR    GR{},GR{}", op_code, r1, r2),
+        0x36 => format!("#{:04X}: XOR   GR{},GR{}", op_code, r1, r2),
+        0x44 => format!("#{:04X}: CPA   GR{},GR{}", op_code, r1, r2),
+        0x45 => format!("#{:04X}: CPL   GR{},GR{}", op_code, r1, r2),
         0x81 => format!("#{:04X}: RET", op_code),
         0x00 => format!("#{:04X}: NOP", op_code),
-        0x10 => format!("#{:04X}: LD GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x11 => format!("#{:04X}: ST GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x20 => format!("#{:04X}: ADDA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x22 => format!("#{:04X}: ADDL GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x21 => format!("#{:04X}: SUBA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x23 => format!("#{:04X}: SUBL GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x30 => format!("#{:04X}: AND GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x31 => format!("#{:04X}: OR GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x32 => format!("#{:04X}: XOR GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x40 => format!("#{:04X}: CPA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x41 => format!("#{:04X}: CPL GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x50 => format!("#{:04X}: SLA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x51 => format!("#{:04X}: SRA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x52 => format!("#{:04X}: SLL GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x53 => format!("#{:04X}: SRL GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x65 => format!("#{:04X}: JPL #{:04X},GR{}", op_code, adr, r2),
-        0x61 => format!("#{:04X}: JMI #{:04X},GR{}", op_code, adr, r2),
-        0x62 => format!("#{:04X}: JNZ #{:04X},GR{}", op_code, adr, r2),
-        0x63 => format!("#{:04X}: JZE #{:04X},GR{}", op_code, adr, r2),
-        0x66 => format!("#{:04X}: JOV #{:04X},GR{}", op_code, adr, r2),
-        0x64 => format!("#{:04X}: JUMP #{:04X},GR{}", op_code, adr, r2),
-        0x80 => format!("#{:04X}: CALL #{:04X},GR{}", op_code, adr, r2),
+        0x71 => format!("#{:04X}: POP   GR{}", op_code, r1),
+        code if r2 == 0 => match code {
+            0x12 => format!("#{:04X}: LAD   GR{},#{:04X}", op_code, r1, adr),
+            0x70 => format!("#{:04X}: PUSH  #{:04X}", op_code, adr),
+            0xF0 => format!("#{:04X}: SVC   #{:04X}", op_code, adr),
+            0x10 => format!("#{:04X}: LD    GR{},#{:04X}", op_code, r1, adr),
+            0x11 => format!("#{:04X}: ST    GR{},#{:04X}", op_code, r1, adr),
+            0x20 => format!("#{:04X}: ADDA  GR{},#{:04X}", op_code, r1, adr),
+            0x22 => format!("#{:04X}: ADDL  GR{},#{:04X}", op_code, r1, adr),
+            0x21 => format!("#{:04X}: SUBA  GR{},#{:04X}", op_code, r1, adr),
+            0x23 => format!("#{:04X}: SUBL  GR{},#{:04X}", op_code, r1, adr),
+            0x30 => format!("#{:04X}: AND   GR{},#{:04X}", op_code, r1, adr),
+            0x31 => format!("#{:04X}: OR    GR{},#{:04X}", op_code, r1, adr),
+            0x32 => format!("#{:04X}: XOR   GR{},#{:04X}", op_code, r1, adr),
+            0x40 => format!("#{:04X}: CPA   GR{},#{:04X}", op_code, r1, adr),
+            0x41 => format!("#{:04X}: CPL   GR{},#{:04X}", op_code, r1, adr),
+            0x50 => format!("#{:04X}: SLA   GR{},#{:04X}", op_code, r1, adr),
+            0x51 => format!("#{:04X}: SRA   GR{},#{:04X}", op_code, r1, adr),
+            0x52 => format!("#{:04X}: SLL   GR{},#{:04X}", op_code, r1, adr),
+            0x53 => format!("#{:04X}: SRL   GR{},#{:04X}", op_code, r1, adr),
+            0x65 => format!("#{:04X}: JPL   #{:04X}", op_code, adr),
+            0x61 => format!("#{:04X}: JMI   #{:04X}", op_code, adr),
+            0x62 => format!("#{:04X}: JNZ   #{:04X}", op_code, adr),
+            0x63 => format!("#{:04X}: JZE   #{:04X}", op_code, adr),
+            0x66 => format!("#{:04X}: JOV   #{:04X}", op_code, adr),
+            0x64 => format!("#{:04X}: JUMP  #{:04X}", op_code, adr),
+            0x80 => format!("#{:04X}: CALL  #{:04X}", op_code, adr),
+            _ => format!("#{:04X}: UNKNOWN", op_code),
+        },
+        0x12 => format!("#{:04X}: LAD   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x70 => format!("#{:04X}: PUSH  #{:04X},GR{}", op_code, adr, r2),
+        0xF0 => format!("#{:04X}: SVC   #{:04X},GR{}", op_code, adr, r2),
+        0x10 => format!("#{:04X}: LD    GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x11 => format!("#{:04X}: ST    GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x20 => format!("#{:04X}: ADDA  GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x22 => format!("#{:04X}: ADDL  GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x21 => format!("#{:04X}: SUBA  GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x23 => format!("#{:04X}: SUBL  GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x30 => format!("#{:04X}: AND   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x31 => format!("#{:04X}: OR    GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x32 => format!("#{:04X}: XOR   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x40 => format!("#{:04X}: CPA   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x41 => format!("#{:04X}: CPL   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x50 => format!("#{:04X}: SLA   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x51 => format!("#{:04X}: SRA   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x52 => format!("#{:04X}: SLL   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x53 => format!("#{:04X}: SRL   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x65 => format!("#{:04X}: JPL   #{:04X},GR{}", op_code, adr, r2),
+        0x61 => format!("#{:04X}: JMI   #{:04X},GR{}", op_code, adr, r2),
+        0x62 => format!("#{:04X}: JNZ   #{:04X},GR{}", op_code, adr, r2),
+        0x63 => format!("#{:04X}: JZE   #{:04X},GR{}", op_code, adr, r2),
+        0x66 => format!("#{:04X}: JOV   #{:04X},GR{}", op_code, adr, r2),
+        0x64 => format!("#{:04X}: JUMP  #{:04X},GR{}", op_code, adr, r2),
+        0x80 => format!("#{:04X}: CALL  #{:04X},GR{}", op_code, adr, r2),
         _ => format!("#{:04X}: UNKNOWN", op_code),
     }
 }
@@ -1324,7 +1476,7 @@ impl casl2::Command {
         }
     }
 
-    fn first_byte(&self) -> u16 {
+    fn first_word(&self) -> u16 {
         match self {
             casl2::Command::Start { .. }
             | casl2::Command::End
