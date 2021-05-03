@@ -146,7 +146,7 @@ impl Emulator {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 enum RuntimeError {
     NormalTermination {
         position: usize,
@@ -172,6 +172,11 @@ enum RuntimeError {
         op_code: String,
         stack_pointer: usize,
     },
+    StackEmpty {
+        position: usize,
+        op_code: String,
+    },
+    IoError(io::Error),
 }
 
 impl Emulator {
@@ -295,10 +300,9 @@ impl Emulator {
                 0x71 if r2 == 0 => {
                     // POP r
                     if self.stack_pointer >= CALLSTACK_START_POSITION {
-                        return Err(RuntimeError::StackOverflow {
+                        return Err(RuntimeError::StackEmpty {
                             position: pr,
                             op_code: get_op_code_form(op_code, 0),
-                            stack_pointer: self.stack_pointer,
                         });
                     }
                     let value = self.mem[self.stack_pointer];
@@ -308,10 +312,9 @@ impl Emulator {
                 0x81 if r1 == 0 && r2 == 0 => {
                     // RET
                     if self.stack_pointer >= CALLSTACK_START_POSITION {
-                        return Err(RuntimeError::StackOverflow {
+                        return Err(RuntimeError::StackEmpty {
                             position: pr,
                             op_code: get_op_code_form(op_code, 0),
-                            stack_pointer: self.stack_pointer,
                         });
                     }
                     let adr = self.mem[self.stack_pointer] as usize;
@@ -371,6 +374,86 @@ impl Emulator {
                 self.general_registers[r1] = value;
                 return Ok(());
             }
+            0x50 => {
+                // SLA r,adr,x
+                let shift = adr.wrapping_add(if r2 == 0 {
+                    0
+                } else {
+                    self.general_registers[r2]
+                });
+                let r1_value = self.general_registers[r1];
+                let r1_value = if (0..16).contains(&shift) {
+                    self.overflow_flag = (((r1_value as u32) << shift) & 0x10000) != 0;
+                    (r1_value & 0x8000) | ((r1_value << shift) & 0x7FFF)
+                } else {
+                    self.overflow_flag = false;
+                    0
+                };
+                self.general_registers[r1] = r1_value;
+                self.sign_flag = (r1_value as i16) < 0;
+                self.zero_flag = r1_value == 0;
+                return Ok(());
+            }
+            0x51 => {
+                // SRA r,adr,x
+                let shift = adr.wrapping_add(if r2 == 0 {
+                    0
+                } else {
+                    self.general_registers[r2]
+                });
+                let r1_value = self.general_registers[r1] as i16;
+                let r1_value = if (0..16).contains(&shift) {
+                    self.overflow_flag = ((((r1_value as i32) << 1) >> shift) & 1) != 0;
+                    r1_value >> shift
+                } else {
+                    self.overflow_flag = r1_value < 0;
+                    (r1_value >> 15) >> 1
+                };
+                self.general_registers[r1] = r1_value as u16;
+                self.sign_flag = r1_value < 0;
+                self.zero_flag = r1_value == 0;
+                return Ok(());
+            }
+            0x52 => {
+                // SLL r,adr,x
+                let shift = adr.wrapping_add(if r2 == 0 {
+                    0
+                } else {
+                    self.general_registers[r2]
+                });
+                let r1_value = self.general_registers[r1] as u32;
+                let r1_value = if (0..=16).contains(&shift) {
+                    self.overflow_flag = ((r1_value << shift) & 0x10000) != 0;
+                    (r1_value << shift) as u16
+                } else {
+                    self.overflow_flag = false;
+                    0
+                };
+                self.general_registers[r1] = r1_value;
+                self.sign_flag = (r1_value as i16) < 0;
+                self.zero_flag = r1_value == 0;
+                return Ok(());
+            }
+            0x53 => {
+                // SRL r,adr,x
+                let shift = adr.wrapping_add(if r2 == 0 {
+                    0
+                } else {
+                    self.general_registers[r2]
+                });
+                let r1_value = self.general_registers[r1] as u32;
+                let r1_value = if (0..=16).contains(&shift) {
+                    self.overflow_flag = (((r1_value << 1) >> shift) & 1) != 0;
+                    (r1_value >> shift) as u16
+                } else {
+                    self.overflow_flag = false;
+                    0
+                };
+                self.general_registers[r1] = r1_value;
+                self.sign_flag = (r1_value as i16) < 0;
+                self.zero_flag = r1_value == 0;
+                return Ok(());
+            }
             0x70 => {
                 // PUSH adr,x
                 if r1 != 0 {
@@ -411,10 +494,62 @@ impl Emulator {
                 });
                 if value == 1 {
                     // IN
-                    todo!("IN");
+                    let pos = self.general_registers[1] as usize;
+                    let len = self.general_registers[2] as usize;
+                    if !self.has_asccess_permission(len) {
+                        return Err(RuntimeError::AccessPermissionDenied {
+                            position: pr,
+                            op_code: get_op_code_form(op_code, adr),
+                            address: len,
+                        });
+                    }
+                    let mut line = String::new();
+                    match io::stdin().read_line(&mut line) {
+                        Err(error) => return Err(RuntimeError::IoError(error)),
+                        Ok(0) => self.mem[len] = (-1_i16) as u16,
+                        Ok(_) => {
+                            let line = jis_x_201::convert_kana_wide_full_to_half(&line);
+                            self.mem[len] = line.chars().count().min(256) as u16;
+                            for (i, ch) in line.chars().enumerate().take(256) {
+                                let ch = jis_x_201::convert_from_char(ch) as u16;
+                                if !self.has_asccess_permission(pos + i) {
+                                    return Err(RuntimeError::AccessPermissionDenied {
+                                        position: pr,
+                                        op_code: get_op_code_form(op_code, adr),
+                                        address: pos + i,
+                                    });
+                                }
+                                self.mem[pos + i] = ch;
+                            }
+                        }
+                    }
                 } else if value == 2 {
                     // OUT
-                    todo!("OUT");
+                    let pos = self.general_registers[1] as usize;
+                    let len = self.general_registers[2] as usize;
+                    if !self.has_asccess_permission(len) {
+                        return Err(RuntimeError::AccessPermissionDenied {
+                            position: pr,
+                            op_code: get_op_code_form(op_code, adr),
+                            address: len,
+                        });
+                    }
+                    let len = self.mem[len] as usize;
+                    let mut line = String::new();
+                    for i in 0..len {
+                        if !self.has_asccess_permission(pos + i) {
+                            return Err(RuntimeError::AccessPermissionDenied {
+                                position: pr,
+                                op_code: get_op_code_form(op_code, adr),
+                                address: pos + i,
+                            });
+                        }
+                        let ch = (self.mem[pos + i] & 0xFF) as u8;
+                        line.push(jis_x_201::convert_to_char(ch, true));
+                    }
+                    if let Err(error) = writeln!(&mut io::stdout(), "{}", line) {
+                        return Err(RuntimeError::IoError(error));
+                    }
                 }
                 return Ok(());
             }
@@ -439,48 +574,103 @@ impl Emulator {
         match (op_code >> 8) & 0xFF {
             0x10 => {
                 // LD r,adr,x (OF=0,SF,ZF)
+                let value = self.mem[access];
+                self.general_registers[r1] = value;
+                self.overflow_flag = false;
+                self.sign_flag = (value as i16) < 0;
+                self.zero_flag = value == 0;
+                return Ok(());
             }
             0x11 => {
                 // ST r,adr,x
+                let r1_value = self.general_registers[r1];
+                self.mem[access] = r1_value;
+                return Ok(());
             }
             0x20 => {
-                // ADDA r,adr,x
+                // ADDA r,adr,x (OF,SF,ZF)
+                let (value, overflow) =
+                    (self.general_registers[r1] as i16).overflowing_add(self.mem[access] as i16);
+                self.general_registers[r1] = value as u16;
+                self.overflow_flag = overflow;
+                self.sign_flag = value < 0;
+                self.zero_flag = value == 0;
+                return Ok(());
             }
             0x22 => {
                 // ADDL r,adr,x
+                let (value, overflow) =
+                    self.general_registers[r1].overflowing_add(self.mem[access]);
+                self.general_registers[r1] = value;
+                self.overflow_flag = overflow;
+                self.sign_flag = (value as i16) < 0;
+                self.zero_flag = value == 0;
+                return Ok(());
             }
             0x21 => {
                 // SUBA r,adr,x
+                let (value, overflow) =
+                    (self.general_registers[r1] as i16).overflowing_sub(self.mem[access] as i16);
+                self.general_registers[r1] = value as u16;
+                self.overflow_flag = overflow;
+                self.sign_flag = value < 0;
+                self.zero_flag = value == 0;
+                return Ok(());
             }
             0x23 => {
                 // SUBL r,adr,x
+                let (value, overflow) =
+                    self.general_registers[r1].overflowing_sub(self.mem[access]);
+                self.general_registers[r1] = value;
+                self.overflow_flag = overflow;
+                self.sign_flag = (value as i16) < 0;
+                self.zero_flag = value == 0;
+                return Ok(());
             }
             0x30 => {
-                // AND r,adr,x
+                // AND r,adr,x (OF=0,SF,ZF)
+                let value = self.general_registers[r1] & self.mem[access];
+                self.general_registers[r1] = value;
+                self.overflow_flag = false;
+                self.sign_flag = (value as i16) < 0;
+                self.zero_flag = value == 0;
+                return Ok(());
             }
             0x31 => {
-                // OR r,adr,x
+                // OR r,adr,x (OF=0,SF,ZF)
+                let value = self.general_registers[r1] | self.mem[access];
+                self.general_registers[r1] = value;
+                self.overflow_flag = false;
+                self.sign_flag = (value as i16) < 0;
+                self.zero_flag = value == 0;
+                return Ok(());
             }
             0x32 => {
-                // XOR r,adr,x
+                // XOR r,adr,x (OF=0,SF,ZF)
+                let value = self.general_registers[r1] ^ self.mem[access];
+                self.general_registers[r1] = value;
+                self.overflow_flag = false;
+                self.sign_flag = (value as i16) < 0;
+                self.zero_flag = value == 0;
+                return Ok(());
             }
             0x40 => {
-                // CPA r,adr,x
+                // CPA r,adr,x (OF=0,SF,ZF)
+                let r1_value = self.general_registers[r1] as i16;
+                let value = self.mem[access] as i16;
+                self.overflow_flag = false;
+                self.sign_flag = r1_value < value;
+                self.zero_flag = r1_value == value;
+                return Ok(());
             }
             0x41 => {
-                // CPL r,adr,x
-            }
-            0x50 => {
-                // SLA r,adr,x
-            }
-            0x51 => {
-                // SRA r,adr,x
-            }
-            0x52 => {
-                // SLL r,adr,x
-            }
-            0x53 => {
-                // SRL r,adr,x
+                // CPL r,adr,x (OF=0,SF,ZF)
+                let r1_value = self.general_registers[r1];
+                let value = self.mem[access];
+                self.overflow_flag = false;
+                self.sign_flag = r1_value < value;
+                self.zero_flag = r1_value == value;
+                return Ok(());
             }
             _ => {}
         }
@@ -495,24 +685,52 @@ impl Emulator {
         match (op_code >> 8) & 0xFF {
             0x65 => {
                 // JPL adr,x
+                if !self.sign_flag && !self.zero_flag {
+                    self.program_register = access;
+                }
             }
             0x61 => {
                 // JMI adr,x
+                if self.sign_flag {
+                    self.program_register = access;
+                }
             }
             0x62 => {
                 // JNZ adr,x
+                if !self.zero_flag {
+                    self.program_register = access;
+                }
             }
             0x63 => {
                 // JZE adr,x
+                if self.zero_flag {
+                    self.program_register = access;
+                }
             }
             0x66 => {
                 // JOV adr,x
+                if self.overflow_flag {
+                    self.program_register = access;
+                }
             }
             0x64 => {
                 // JUMP adr,x
+                self.program_register = access;
             }
             0x80 => {
                 // CALL adr,x
+                let sp = self.stack_pointer - 1;
+                if sp < self.mem.len() - CALLSTACK_MAX_SIZE {
+                    return Err(RuntimeError::StackOverflow {
+                        position: pr,
+                        op_code: get_op_code_form(op_code, adr),
+                        stack_pointer: self.stack_pointer,
+                    });
+                }
+                self.stack_pointer = sp;
+                let pr = self.program_register;
+                self.mem[sp] = pr as u16;
+                self.program_register = access;
             }
             _ => {
                 // UNKNOWN CODE
@@ -724,6 +942,7 @@ impl Emulator {
                     self.compile_pos += 1;
                 }
                 casl2::Adr::LiteralStr(s) => {
+                    let s = jis_x_201::convert_kana_wide_full_to_half(&s);
                     let len = s.chars().count();
                     if !self.enough_remain(len) {
                         return Err("メモリ不足でプログラムをロードできませんでした".into());
@@ -771,6 +990,7 @@ impl Emulator {
                                 pos += 1;
                             }
                             casl2::Constant::Str(s) => {
+                                let s = jis_x_201::convert_kana_wide_full_to_half(&s);
                                 for ch in s.chars() {
                                     self.mem[pos] = jis_x_201::convert_from_char(ch) as u16;
                                     pos += 1;

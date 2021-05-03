@@ -612,7 +612,6 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn string(&mut self) -> Option<String> {
-        use crate::jis_x_201;
         if !matches!(self.next(), Some('\'')) {
             self.recover();
             return None;
@@ -620,10 +619,6 @@ impl<'a> Tokenizer<'a> {
         let mut quote = false;
         let mut text = String::new();
         while let Some(ch) = self.next() {
-            if !jis_x_201::contains(ch) {
-                self.recover();
-                return None;
-            }
             if quote {
                 if ch == '\'' {
                     quote = false;
