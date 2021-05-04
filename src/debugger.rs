@@ -7,7 +7,7 @@ use crate::Flags;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub fn run_nonstep(src_file: String, flags: Flags) -> io::Result<i32> {
     let _ = (src_file, flags);
@@ -21,9 +21,6 @@ pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
 
 pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
     let mut emu = Emulator::new();
-
-    // TEST
-    flags.compiler.for_debug_basic = true;
 
     if src_file.to_ascii_lowercase().ends_with(".cas") {
         match emu.compile_casl2(&src_file, &flags, true) {
@@ -52,27 +49,10 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
     emu.init_to_start();
 
     for _ in 0..1000000 {
-        if let Some(id) = emu.basic_step.take() {
-            if let Some((plabel, debug_info)) = emu.basic_info.get(&src_file) {
-                if let Some(msg) = debug_info.status_hint.get(id) {
-                    println!("[INFO] {}", msg);
-                    if let Some(loc) = emu.local_labels.get(plabel) {
-                        for (vname, vlabel) in debug_info.label_set.int_var_labels.iter() {
-                            if let Some(adr) = loc.get(&vlabel.label()) {
-                                println!("[INFO] {} = {}", vname, emu.mem[*adr as usize]);
-                            }
-                        }
-                    }
-                    let mut s = String::new();
-                    io::stdin().read_line(&mut s)?;
-                }
-            }
-        }
         match emu.step_through_code() {
             Ok(_) => {}
             Err(RuntimeError::IoError(error)) => return Err(error),
             Err(error) => {
-                // println!("{}", emu.last_run());
                 println!("{:?}", error);
                 break;
             }
@@ -1000,9 +980,78 @@ impl Emulator {
     fn compile_casl2(&mut self, src_file: &str, flags: &Flags, save: bool) -> io::Result<i32> {
         let text = fs::read_to_string(src_file)?;
 
-        let _ = (text, flags, save);
+        let casl2_src = match casl2::parse(text.as_str()) {
+            Ok(src) => src,
+            Err(error) => {
+                eprintln!("{:?}", error);
+                return Ok(6);
+            }
+        };
 
-        todo!()
+        if !casl2::utils::is_program(&casl2_src) {
+            eprintln!("ERROR: 不明な理由によりこのソースコーを取り扱うことができませんでした");
+            return Ok(7);
+        }
+
+        let casl2_src = if let Some(new_name) = flags.compiler.program_name.as_ref() {
+            if !casl2::Label::from(new_name).is_valid() {
+                eprintln!("ERROR: 禁止されている名前です  ( {} )", new_name);
+                return Ok(8);
+            }
+            let old_name = casl2::utils::get_program_name(&casl2_src).expect("BUG");
+            match casl2::utils::change_label(&casl2_src, old_name, new_name.as_str()) {
+                Some(src) => src,
+                None => {
+                    eprintln!(
+                        "ERROR: ソースコード内で既に使用されている名前です ( {} )",
+                        new_name
+                    );
+                    return Ok(9);
+                }
+            }
+        } else {
+            casl2_src
+        };
+
+        let casl2_src_list = flags.compiler.apply(casl2_src);
+
+        if let Some((name, _)) = casl2_src_list.last() {
+            if self.start_point.is_none() {
+                self.start_point = Some(name.clone());
+            }
+        }
+
+        let mut path = flags.create_dst_dir()?;
+
+        if save {
+            let backup = src_file.to_string() + ".backup";
+            let backup = Path::new(&backup);
+            if backup.parent() == Some(&path) {
+                if let Some(file) = backup.file_name() {
+                    path.push(file);
+                    let _copy_size = fs::copy(src_file, &path)?;
+                    eprintln!("生成されたファイル: {}", path.display());
+                    path.pop();
+                }
+            }
+        }
+
+        for (name, casl2_src) in casl2_src_list {
+            if save {
+                save_casl2_src(&mut path, &name, &casl2_src, flags.statistics)?;
+            }
+
+            if self.program_labels.contains_key(&name) {
+                continue;
+            }
+
+            if let Err(msg) = self.compile(src_file, name, casl2_src) {
+                eprintln!("CompileError{{ {} }}", msg);
+                return Ok(100);
+            }
+        }
+
+        Ok(0)
     }
 }
 

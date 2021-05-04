@@ -7,7 +7,6 @@ mod casl2;
 mod compiler;
 #[allow(dead_code)]
 mod debugger;
-#[allow(dead_code)]
 mod jis_x_201;
 mod parser;
 mod stat;
@@ -281,7 +280,7 @@ USAGE:
 
 OPTIONS:
     {flag_destination_directory} <DIR>
-                        生成されるCASL2ソースコードの出力先ディレクトリを指定する
+                        生成されるファイルの出力先ディレクトリを指定する
 
     {flag_remove_nop}
                         生成されるCASL2ソースコードからNOP行を除去しNOPにつけられたラベルを整理する
@@ -305,7 +304,7 @@ OPTIONS:
                         生成されるCASL2プログラムをテスト実行する
                         TARGETにはCASL2/BASIC/NONSTEPのいずれかを指定する
                           CASL2   .. CASL2のコード単位でステップ実行する
-                          BASIC   .. BASICのコード単位でステップ実行する (生成されるCASL2ソースコードにステップ実行用のコードが挿入されます)
+                          BASIC   .. BASICのコード単位でステップ実行する (生成されるCASL2プログラムにステップ実行用のコードが挿入されます)
                           NONSTEP .. プログラムの実行だけをします (ステップ数の制限がありません、無限ループのバグがある場合は止まりません)
 ",
         flag_src = FLAG_SOURCE_FILE,
