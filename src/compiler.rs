@@ -448,11 +448,7 @@ impl Compiler {
         }
         let len = self.debugger_hint.len();
         if len > 0 {
-            Some(casl2::Command::P {
-                code: casl2::P::Svc,
-                adr: casl2::Adr::Hex(0x1000 + len as u16),
-                x: None,
-            })
+            Some(casl2::Command::DebugBasicStep { id: len - 1 })
         } else {
             None
         }
@@ -461,7 +457,7 @@ impl Compiler {
     // debugger用のヒント表示のみを追加する
     fn show_debugger_hint(&mut self) {
         if let Some(cmd) = self.get_current_debugger_hint() {
-            self.code(casl2::Statement::code_with_comment(cmd, "DEBUG HINT"));
+            self.code(cmd);
         }
     }
 
@@ -485,7 +481,7 @@ impl Compiler {
             return;
         }
         if let Some(cmd) = self.get_current_debugger_hint() {
-            self.code(casl2::Statement::code_with_comment(cmd, "DEBUG HINT"));
+            self.code(cmd);
         }
         self.debugger_hint.push(hint());
     }
@@ -497,13 +493,9 @@ impl Compiler {
         }
         assert!(matches!(
             cmd,
-            casl2::Command::P {
-                code: casl2::P::Svc,
-                adr: casl2::Adr::Hex(h),
-                x: None,
-            } if (0x1001..=0x1000 + self.debugger_hint.len() as u16).contains(&h)
+            casl2::Command::DebugBasicStep { id } if (id < self.debugger_hint.len())
         ));
-        self.code(casl2::Statement::code_with_comment(cmd, "DEBUG HINT"));
+        self.code(cmd);
         self.debugger_hint.push(hint);
     }
 }

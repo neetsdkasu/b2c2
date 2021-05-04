@@ -52,28 +52,22 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
     emu.init_to_start();
 
     for _ in 0..1000000 {
-        let last_run = emu.last_run();
-        if last_run.contains("SVC") {
-            let adr = emu.mem[emu.last_run_position + 1];
-            if adr > 0x1000 {
-                if let Some((plabel, debug_info)) = emu.basic_info.get(&src_file) {
-                    let pos = adr as usize - 0x1001;
-                    if let Some(msg) = debug_info.status_hint.get(pos) {
-                        println!("[INFO] {}", msg);
-                        if let Some(loc) = emu.local_labels.get(plabel) {
-                            for (vname, vlabel) in debug_info.label_set.int_var_labels.iter() {
-                                if let Some(adr) = loc.get(&vlabel.label()) {
-                                    println!("[INFO] {} = {}", vname, emu.mem[*adr as usize]);
-                                }
+        if let Some(id) = emu.basic_step.take() {
+            if let Some((plabel, debug_info)) = emu.basic_info.get(&src_file) {
+                if let Some(msg) = debug_info.status_hint.get(id) {
+                    println!("[INFO] {}", msg);
+                    if let Some(loc) = emu.local_labels.get(plabel) {
+                        for (vname, vlabel) in debug_info.label_set.int_var_labels.iter() {
+                            if let Some(adr) = loc.get(&vlabel.label()) {
+                                println!("[INFO] {} = {}", vname, emu.mem[*adr as usize]);
                             }
                         }
-                        let mut s = String::new();
-                        io::stdin().read_line(&mut s)?;
                     }
+                    let mut s = String::new();
+                    io::stdin().read_line(&mut s)?;
                 }
             }
         }
-        // println!("{}", last_run);
         match emu.step_through_code() {
             Ok(_) => {}
             Err(RuntimeError::IoError(error)) => return Err(error),
@@ -84,7 +78,7 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
             }
         }
     }
-    println!("TOTAL STEPS: {}", emu.steps);
+    println!("TOTAL STEPS: {}", emu.step_count);
 
     Ok(0)
 }
@@ -146,8 +140,13 @@ struct Emulator {
     // 最後に実行したコードの位置(PRの値)
     last_run_position: usize,
 
-    // ステップ実行回数(step_through_code呼び出し回数)
-    steps: usize,
+    // CASL2ステップ数(step_through_code呼び出し回数)
+    step_count: usize,
+
+    // BASICステップ (DebugBasicStepのid)
+    basic_step: Option<usize>,
+    // BASICステップ数 (DebugBasicStepの呼び出し回数)
+    basic_step_count: usize,
 
     // プログラムの開始点のエントリラベル
     // (START命令に引数があるとBEGIN_OF_PROGRAMにはならないこともあるため)
@@ -184,7 +183,9 @@ impl Emulator {
             zero_flag: false,
 
             last_run_position: INITIAL_PROGRAM_REGISTER - 2,
-            steps: 0,
+            step_count: 0,
+            basic_step: None,
+            basic_step_count: 0,
 
             start_point: None,
             basic_info: HashMap::new(),
@@ -225,7 +226,9 @@ impl Emulator {
         self.mem[stack_pointer] = INITIAL_PROGRAM_REGISTER as u16;
         self.stack_pointer = stack_pointer;
         self.program_register = position;
-        self.steps = 0;
+        self.step_count = 0;
+        self.basic_step = None;
+        self.basic_step_count = 0;
 
         // GRとFRは不定
     }
@@ -284,7 +287,8 @@ impl Emulator {
         if !self.has_asccess_permission(pr) {
             return Err(RuntimeError::ExecutePermissionDenied { position: pr });
         }
-        self.steps += 1;
+        self.step_count += 1;
+        self.basic_step = None;
         self.last_run_position = pr;
         self.program_register += 1;
         let op_code = self.mem[pr];
@@ -653,6 +657,18 @@ impl Emulator {
                     writeln!(&mut io::stdout(), "{}", line)?;
                     io::stdout().flush()?;
                 }
+                return Ok(());
+            }
+            0xE0 => {
+                // DebugBasicStep id
+                if r1 != 0 || r2 != 0 {
+                    return Err(RuntimeError::InvalidOpCode {
+                        position: pr,
+                        op_code: get_op_code_form(op_code, adr),
+                    });
+                }
+                self.basic_step = Some(adr as usize);
+                self.basic_step_count += 1;
                 return Ok(());
             }
             _ => {}
@@ -1273,13 +1289,16 @@ impl Emulator {
                 }
             }
             casl2::Command::R { .. }
+            | casl2::Command::A { .. }
+            | casl2::Command::P { .. }
             | casl2::Command::Pop { .. }
             | casl2::Command::Ret
             | casl2::Command::Nop => {
                 self.mem[pos] = command.first_word();
             }
-            casl2::Command::A { .. } | casl2::Command::P { .. } => {
+            casl2::Command::DebugBasicStep { id } => {
                 self.mem[pos] = command.first_word();
+                self.mem[pos + 1] = *id as u16;
             }
         }
     }
@@ -1302,6 +1321,7 @@ fn get_op_code_form(op_code: u16, adr: u16) -> String {
         0x81 => format!("#{:04X}: RET", op_code),
         0x00 => format!("#{:04X}: NOP", op_code),
         0x71 => format!("#{:04X}: POP   GR{}", op_code, r1),
+        0xE0 => format!("#{:04X}: DEBUGBASICSTEP {}", op_code, adr),
         code if r2 == 0 => match code {
             0x12 => format!("#{:04X}: LAD   GR{},#{:04X}", op_code, r1, adr),
             0x70 => format!("#{:04X}: PUSH  #{:04X}", op_code, adr),
@@ -1372,14 +1392,15 @@ fn get_op_code_size(op_code: u16) -> usize {
         0x44 => 1, //format!("#{:04X}: CPA GR{},GR{}", op_code, r1, r2),
         0x45 => 1, //format!("#{:04X}: CPL GR{},GR{}", op_code, r1, r2),
 
-        0x12 => 2, //format!("#{:04X}: LAD GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x70 => 2, //format!("#{:04X}: PUSH #{:04X},GR{}",op_code,  adr, r2),
-        0xF0 => 2, //format!("#{:04X}: SVC #{:04X},GR{}", op_code, adr, r2),
-
         0x71 => 1, //format!("#{:04X}: POP GR{}", op_code, r1),
         0x81 => 1, //format!("#{:04X}: RET",op_code),
         0x00 => 1, //format!("#{:04X}: NOP",op_code),
 
+        0xE0 => 2, //format!("#{:04X}: DEBUGBASICSTEP {}", op_code, adr),
+
+        0x12 => 2, //format!("#{:04X}: LAD GR{},#{:04X},GR{}", op_code, r1, adr, r2),
+        0x70 => 2, //format!("#{:04X}: PUSH #{:04X},GR{}",op_code,  adr, r2),
+        0xF0 => 2, //format!("#{:04X}: SVC #{:04X},GR{}", op_code, adr, r2),
         0x10 => 2, //format!("#{:04X}: LD GR{},#{:04X},GR{}", op_code, r1, adr, r2),
         0x11 => 2, //format!("#{:04X}: ST GR{},#{:04X},GR{}", op_code, r1, adr, r2),
         0x20 => 2, //format!("#{:04X}: ADDA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
@@ -1473,6 +1494,7 @@ impl casl2::Command {
             casl2::Command::Pop { .. } => 0x71,
             casl2::Command::Ret => 0x81,
             casl2::Command::Nop => 0x00,
+            casl2::Command::DebugBasicStep { .. } => 0xE0,
         }
     }
 
@@ -1499,7 +1521,9 @@ impl casl2::Command {
                 (self.op_code() << 8) | x
             }
             casl2::Command::Pop { r } => (self.op_code() << 8) | ((*r as u16) << 4),
-            casl2::Command::Ret | casl2::Command::Nop => self.op_code() << 8,
+            casl2::Command::Ret | casl2::Command::Nop | casl2::Command::DebugBasicStep { .. } => {
+                self.op_code() << 8
+            }
         }
     }
 
@@ -1535,6 +1559,7 @@ impl casl2::Command {
             casl2::Command::Pop { .. } => 1,
             casl2::Command::Ret => 1,
             casl2::Command::Nop => 1,
+            casl2::Command::DebugBasicStep { .. } => 2,
         }
     }
 }

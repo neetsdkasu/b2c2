@@ -47,6 +47,7 @@ impl Statement {
         }
     }
 
+    #[cfg(test)]
     pub fn code_with_comment(command: Command, comment: &str) -> Self {
         Self::Code {
             label: None,
@@ -385,6 +386,9 @@ pub enum Command {
     },
     Ret,
     Nop,
+    DebugBasicStep {
+        id: usize,
+    },
 }
 
 #[cfg(test)]
@@ -624,6 +628,7 @@ impl fmt::Display for Command {
             Pop { r } => format!("{:<9} {}", "POP", r),
             Ret => return "RET".fmt(f),
             Nop => return "NOP".fmt(f),
+            DebugBasicStep { id } => format!("; DEBUGBASICSTEP {}", id),
         };
         s.fmt(f)
     }

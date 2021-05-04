@@ -166,6 +166,7 @@ pub fn analyze(statements: &[Statement]) -> String {
                     }
                     Command::Ret => *commands.entry("RET".to_string()).or_insert(0) += 1,
                     Command::Nop => *commands.entry("NOP".to_string()).or_insert(0) += 1,
+                    Command::DebugBasicStep { .. } => {}
                 }
             }
         }

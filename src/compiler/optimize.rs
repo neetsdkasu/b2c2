@@ -120,6 +120,7 @@ pub fn remove_nop(statements: &[casl2::Statement]) -> Vec<casl2::Statement> {
             | casl2::Command::Pop { .. }
             | casl2::Command::Ret => {}
             casl2::Command::Nop => unreachable!("BUG"),
+            casl2::Command::DebugBasicStep { .. } => {}
         }
     }
 
@@ -167,7 +168,8 @@ pub fn remove_unreferenced_label(statements: &[casl2::Statement]) -> Vec<casl2::
             | casl2::Command::R { .. }
             | casl2::Command::Pop { .. }
             | casl2::Command::Ret
-            | casl2::Command::Nop => {}
+            | casl2::Command::Nop
+            | casl2::Command::DebugBasicStep { .. } => {}
         }
     }
 
