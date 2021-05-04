@@ -52,7 +52,7 @@ fn main() {
     });
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Flags {
     src_file: Option<String>,
     pub compiler: compiler::Flag,

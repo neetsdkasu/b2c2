@@ -20,18 +20,20 @@ pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
 }
 
 pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
+    let stdin = io::stdin();
+    let mut stdin = stdin.lock();
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+
     let mut emu = Emulator::new();
 
-    if src_file.to_ascii_lowercase().ends_with(".cas") {
-        match emu.compile_casl2(&src_file, &flags, true) {
-            Ok(0) => {}
-            result => return result,
-        }
+    match if src_file.to_ascii_lowercase().ends_with(".cas") {
+        emu.compile_casl2(&src_file, &flags, true)
     } else {
-        match emu.compile_basic(&src_file, &flags, true) {
-            Ok(0) => {}
-            result => return result,
-        }
+        emu.compile_basic(&src_file, &flags, true)
+    } {
+        Ok(0) => {}
+        result => return result,
     }
 
     if emu.start_point.is_none() {
@@ -43,58 +45,166 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
 
     if !emu.unknown_labels.is_empty() {
         // 未解決ラベルを解決する処理を入れる
-        let dst_dir = flags.create_dst_dir()?;
         let src_dir = Path::new(&src_file).parent().unwrap();
-        while let Some((label, files)) = emu.suggest_load_file(&dst_dir, &src_dir)? {
-            println!("未解決のラベル: {}", label);
-            for (i, file_name) in files.iter().enumerate().take(10) {
-                println!(" 候補 {}: {}", i, file_name);
-            }
-            println!("候補の番号かファイルパスを入力してください");
-            let mut line = String::new();
-            if io::stdin().read_line(&mut line)? == 0 {
-                eprintln!("テスト実行を中止します");
-                return Ok(0);
-            }
-            let num = match line.lines().next().unwrap().parse::<i32>() {
-                Ok(num) => num,
-                _ => -1,
-            };
-            let count = files.len().min(10) as i32;
-            if num < 0 || count < num + 1 {
-                println!("テスト実行を中止します");
-                return Ok(0);
-            }
-            let new_src = files[num as usize].as_str();
-            if new_src.to_ascii_lowercase().ends_with(".cas") {
-                match emu.compile_casl2(new_src, &flags, false) {
-                    Ok(0) => {}
-                    result => return result,
-                }
-            } else {
-                match emu.compile_basic(new_src, &flags, false) {
-                    Ok(0) => {}
-                    result => return result,
-                }
-            }
-            println!("{}を読み込みました", new_src);
+        match resolve_files(&mut emu, &mut stdin, &mut stdout, &src_dir, &flags) {
+            Ok(0) => {}
+            Ok(99) => return Ok(0),
+            result => return result,
         }
     }
 
     emu.init_to_start();
 
     for _ in 0..10000000 {
-        match emu.step_through_code() {
+        match emu.step_through_code(&mut stdin, &mut stdout) {
             Ok(_) => {}
             Err(RuntimeError::IoError(error)) => return Err(error),
             Err(error) => {
-                println!("{:?}", error);
+                writeln!(stdout, "{:?}", error)?;
                 break;
             }
         }
     }
-    println!("TOTAL STEPS: {}", emu.step_count);
+    writeln!(stdout, "TOTAL STEPS: {}", emu.step_count)?;
 
+    Ok(0)
+}
+
+fn get_program_name(file: &str) -> io::Result<Option<String>> {
+    let text = fs::read_to_string(file)?;
+    if file.to_ascii_lowercase().ends_with(".cas") {
+        match casl2::parse(&text) {
+            Err(_) => Ok(None),
+            Ok(code) => Ok(casl2::utils::get_program_name(&code).map(|s| s.to_string())),
+        }
+    } else {
+        match parser::parse(text.as_bytes())? {
+            Err(_) => Ok(None),
+            Ok(code) => Ok(code.iter().find_map(|stmt| {
+                if let parser::Statement::ProgramName { name } = stmt {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            })),
+        }
+    }
+}
+
+fn resolve_files<R, W>(
+    emu: &mut Emulator,
+    stdin: &mut R,
+    stdout: &mut W,
+    src_dir: &Path,
+    flags: &Flags,
+) -> io::Result<i32>
+where
+    R: io::BufRead,
+    W: io::Write,
+{
+    const LIST_UP_SIZE: usize = 8;
+    let mut label_cache = HashMap::new();
+    let dst_dir = flags.create_dst_dir()?;
+    let casl2_flags = {
+        let mut flags = flags.clone();
+        flags.compiler = Default::default();
+        flags
+    };
+    while let Some((label, files)) = emu.suggest_load_file(&dst_dir, src_dir)? {
+        writeln!(stdout)?;
+        writeln!(stdout, "未解決のラベル: {}", label)?;
+        if files.is_empty() {
+            writeln!(
+                stdout,
+                "ラベル{}を解決できるファイルのパスを入力してください",
+                label
+            )?;
+            writeln!(stdout, "-1を入力するとテスト実行を中止します")?;
+        } else {
+            for (i, file_name) in files.iter().enumerate().take(LIST_UP_SIZE) {
+                writeln!(stdout, " 候補 {}: {}", i, file_name)?;
+            }
+            writeln!(stdout, "ラベル{}を解決できるファイルが候補にある場合は番号を、ない場合は解決できるファイルのパスを入力してください", label)?;
+            writeln!(
+                stdout,
+                "-1を入力するとテスト実行を中止します。空行の場合は全ての候補を順に調べラベル{}の解決を試みます",
+                label
+            )?;
+        }
+        write!(stdout, "? ")?;
+        stdout.flush()?;
+        let mut line = String::new();
+        if stdin.read_line(&mut line)? == 0 {
+            eprintln!("入力がキャンセルされました");
+            io::stderr().flush()?;
+            writeln!(stdout, "テスト実行を中止します")?;
+            return Ok(99);
+        }
+        let line = line.lines().next().unwrap();
+        let file = if line.is_empty() {
+            writeln!(stdout, "全ての候補を調べます...")?;
+            let mut found = None;
+            for file in files.iter() {
+                if let Some(name) = label_cache.get(file) {
+                    if name == &label {
+                        found = Some(file.clone());
+                        break;
+                    }
+                }
+                match get_program_name(&file)? {
+                    Some(name) if name == label => {
+                        found = Some(file.clone());
+                        break;
+                    }
+                    Some(name) => {
+                        label_cache.insert(file.clone(), name);
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(file) = found {
+                file
+            } else {
+                writeln!(stdout, "解決できるファイルを見つけられませんでした")?;
+                writeln!(stdout, "テスト実行を中止します")?;
+                return Ok(99);
+            }
+        } else {
+            let count = files.len().min(LIST_UP_SIZE) as i32;
+            let file = match line.parse::<i32>() {
+                Ok(-1) => {
+                    writeln!(stdout, "テスト実行を中止します")?;
+                    return Ok(99);
+                }
+                Ok(num) if num >= 0 && num < count => files[num as usize].clone(),
+                _ => {
+                    let path = Path::new(line);
+                    if path.is_file() && path.exists() {
+                        line.to_string()
+                    } else {
+                        writeln!(stdout, "{}が見つかりません", line)?;
+                        continue;
+                    }
+                }
+            };
+            match get_program_name(&file)? {
+                Some(name) if name == label => file,
+                _ => {
+                    writeln!(stdout, "{}はラベル{}を解決できませんでした", line, label)?;
+                    continue;
+                }
+            }
+        };
+        match if file.to_ascii_lowercase().ends_with(".cas") {
+            emu.compile_casl2(&file, &casl2_flags, false)
+        } else {
+            emu.compile_basic(&file, &flags, false)
+        } {
+            Ok(0) => {}
+            result => return result,
+        }
+        writeln!(stdout, "{}を読み込みました", file)?;
+    }
     Ok(0)
 }
 
@@ -301,6 +411,9 @@ impl Emulator {
         let lc_targets = [&lc_target_label, &lc_target_name, &lc_bas_target_name];
         let mut list = Vec::new();
         for (i, dir) in [dst_dir, src_dir].iter().enumerate() {
+            if i == 0 && dst_dir == src_dir {
+                continue;
+            }
             for entry in dir.read_dir()? {
                 let entry = entry?;
                 if !entry.path().is_file() {
@@ -372,7 +485,11 @@ impl From<io::Error> for RuntimeError {
 }
 
 impl Emulator {
-    fn step_through_code(&mut self) -> Result<(), RuntimeError> {
+    fn step_through_code<R, W>(&mut self, stdin: &mut R, stdout: &mut W) -> Result<(), RuntimeError>
+    where
+        R: io::BufRead,
+        W: io::Write,
+    {
         let pr = self.program_register;
         if !self.has_asccess_permission(pr) {
             return Err(RuntimeError::ExecutePermissionDenied { position: pr });
@@ -698,10 +815,10 @@ impl Emulator {
                             address: len,
                         });
                     }
-                    write!(&mut io::stdout(), "? ")?;
-                    io::stdout().flush()?;
+                    write!(stdout, "? ")?;
+                    stdout.flush()?;
                     let mut line = String::new();
-                    match io::stdin().read_line(&mut line)? {
+                    match stdin.read_line(&mut line)? {
                         0 => self.mem[len] = (-1_i16) as u16,
                         _ => {
                             let line = line.lines().next().unwrap();
@@ -744,8 +861,8 @@ impl Emulator {
                         let ch = (self.mem[pos + i] & 0xFF) as u8;
                         line.push(jis_x_201::convert_to_char(ch, true));
                     }
-                    writeln!(&mut io::stdout(), "{}", line)?;
-                    io::stdout().flush()?;
+                    writeln!(stdout, "{}", line)?;
+                    stdout.flush()?;
                 }
                 return Ok(());
             }
