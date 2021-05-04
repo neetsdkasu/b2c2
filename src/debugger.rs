@@ -61,7 +61,7 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
                 _ => -1,
             };
             let count = files.len().min(10) as i32;
-            if num < 0 && count < num + 1 {
+            if num < 0 || count < num + 1 {
                 println!("テスト実行を中止します");
                 return Ok(0);
             }
