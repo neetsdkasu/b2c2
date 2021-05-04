@@ -4,7 +4,7 @@ use crate::jis_x_201;
 use crate::parser;
 use crate::stat;
 use crate::Flags;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -43,12 +43,47 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
 
     if !emu.unknown_labels.is_empty() {
         // 未解決ラベルを解決する処理を入れる
-        todo!();
+        let dst_dir = flags.create_dst_dir()?;
+        let src_dir = Path::new(&src_file).parent().unwrap();
+        while let Some((label, files)) = emu.suggest_load_file(&dst_dir, &src_dir)? {
+            println!("未解決のラベル: {}", label);
+            for (i, file_name) in files.iter().enumerate().take(10) {
+                println!(" 候補 {}: {}", i, file_name);
+            }
+            println!("候補の番号かファイルパスを入力してください");
+            let mut line = String::new();
+            if io::stdin().read_line(&mut line)? == 0 {
+                eprintln!("テスト実行を中止します");
+                return Ok(0);
+            }
+            let num = match line.lines().next().unwrap().parse::<i32>() {
+                Ok(num) => num,
+                _ => -1,
+            };
+            let count = files.len().min(10) as i32;
+            if num < 0 && count < num + 1 {
+                println!("テスト実行を中止します");
+                return Ok(0);
+            }
+            let new_src = files[num as usize].as_str();
+            if new_src.to_ascii_lowercase().ends_with(".cas") {
+                match emu.compile_casl2(new_src, &flags, false) {
+                    Ok(0) => {}
+                    result => return result,
+                }
+            } else {
+                match emu.compile_basic(new_src, &flags, false) {
+                    Ok(0) => {}
+                    result => return result,
+                }
+            }
+            println!("{}を読み込みました", new_src);
+        }
     }
 
     emu.init_to_start();
 
-    for _ in 0..1000000 {
+    for _ in 0..10000000 {
         match emu.step_through_code() {
             Ok(_) => {}
             Err(RuntimeError::IoError(error)) => return Err(error),
@@ -149,6 +184,9 @@ struct Emulator {
 
     // 未解決ラベル(おそらく外部定義)
     unknown_labels: HashMap<String, Vec<usize>>,
+
+    // 読み込み済みファイル一覧
+    loaded_files: HashSet<String>,
 }
 
 impl Emulator {
@@ -174,6 +212,7 @@ impl Emulator {
             program_labels: HashMap::new(),
             program_list: Vec::new(),
             unknown_labels: HashMap::new(),
+            loaded_files: HashSet::new(),
         }
     }
 
@@ -219,6 +258,77 @@ impl Emulator {
 
     fn has_asccess_permission(&self, pos: usize) -> bool {
         (BEGIN_OF_PROGRAM..self.compile_pos).contains(&pos)
+    }
+}
+
+fn edit_distance(str1: &str, str2: &str) -> usize {
+    let str1 = str1.as_bytes();
+    let str2 = str2.as_bytes();
+    let mut dp = vec![vec![0; str1.len() + 1]; 2];
+    for (i, v) in dp[0].iter_mut().enumerate() {
+        *v = i;
+    }
+    for (i, ch2) in str2.iter().enumerate() {
+        let prev = i & 1;
+        let next = prev ^ 1;
+        dp[next][0] = i + 1;
+        for (k, ch1) in str1.iter().enumerate() {
+            let cost = if ch1 == ch2 { 0 } else { 1 };
+            dp[next][k + 1] = (dp[next][k] + 1)
+                .min(dp[prev][k] + cost)
+                .min(dp[prev][k + 1] + 1);
+        }
+    }
+    dp[str2.len() & 1][str1.len()]
+}
+
+impl Emulator {
+    fn suggest_load_file(
+        &self,
+        dst_dir: &Path,
+        src_dir: &Path,
+    ) -> io::Result<Option<(String, Vec<String>)>> {
+        let target_label = match self.unknown_labels.keys().next() {
+            Some(label) => label.clone(),
+            None => return Ok(None),
+        };
+        let lc_target_label = target_label.to_ascii_lowercase();
+        let target_name = format!("{}.cas", target_label);
+        let lc_target_name = target_name.to_ascii_lowercase();
+        let bas_target_name = format!("{}.bas", target_label);
+        let lc_bas_target_name = bas_target_name.to_ascii_lowercase();
+        let targets = [&target_label, &target_name, &bas_target_name];
+        let lc_targets = [&lc_target_label, &lc_target_name, &lc_bas_target_name];
+        let mut list = Vec::new();
+        for (i, dir) in [dst_dir, src_dir].iter().enumerate() {
+            for entry in dir.read_dir()? {
+                let entry = entry?;
+                if !entry.path().is_file() {
+                    continue;
+                }
+                let path = entry.path().to_string_lossy().into_owned();
+                if self.loaded_files.contains(&path) {
+                    continue;
+                }
+                let file_name = entry.file_name().to_string_lossy().into_owned();
+                let lc_file_name = file_name.to_ascii_lowercase();
+                let dist1 = targets
+                    .iter()
+                    .map(|target| edit_distance(&target, &file_name))
+                    .min()
+                    .unwrap();
+                let dist2 = lc_targets
+                    .iter()
+                    .map(|target| edit_distance(&target, &lc_file_name))
+                    .min()
+                    .unwrap();
+                let dist = dist1.min(dist2);
+                list.push((dist, i, path));
+            }
+        }
+        list.sort();
+        let list: Vec<_> = list.into_iter().map(|(.., p)| p).collect();
+        Ok(Some((target_label, list)))
     }
 }
 
@@ -896,7 +1006,7 @@ impl Emulator {
                 parser::CompileOption::Eof { common: true } => {
                     let src = compiler::subroutine::get_util_eof_store_code();
                     if save {
-                        save_casl2_src(&mut path, "EOF", &src, flags.statistics)?;
+                        self.save_casl2_src(&mut path, "EOF", &src, flags.statistics)?;
                     }
                     if !self.program_labels.contains_key(&"EOF".to_string()) {
                         if let Err(msg) = self.compile("EOF.cas", "EOF".into(), src) {
@@ -912,7 +1022,7 @@ impl Emulator {
                 } => {
                     let src = compiler::subroutine::get_util_allocator_code_for_common(*size);
                     if save {
-                        save_casl2_src(&mut path, "ALLOC", &src, flags.statistics)?;
+                        self.save_casl2_src(&mut path, "ALLOC", &src, flags.statistics)?;
                     }
                     if !self.program_labels.contains_key(&"ALLOC".to_string()) {
                         if let Err(msg) = self.compile("ALLOC.cas", "ALLOC".into(), src) {
@@ -927,7 +1037,7 @@ impl Emulator {
 
         for (name, casl2_src) in casl2_src_list {
             if save {
-                save_casl2_src(&mut path, &name, &casl2_src, flags.statistics)?;
+                self.save_casl2_src(&mut path, &name, &casl2_src, flags.statistics)?;
             }
 
             if self.program_labels.contains_key(&name) {
@@ -940,40 +1050,51 @@ impl Emulator {
             }
         }
 
+        self.loaded_files
+            .insert(Path::new(src_file).to_string_lossy().into_owned());
+
         Ok(0)
     }
 }
 
-fn save_casl2_src(
-    path: &mut PathBuf,
-    name: &str,
-    casl2_src: &[casl2::Statement],
-    statistics: bool,
-) -> io::Result<()> {
-    let file_name = format!("{}.cas", name);
-    path.push(file_name);
-    {
-        let mut dst_file = fs::File::create(&path)?;
+impl Emulator {
+    fn save_casl2_src(
+        &mut self,
+        path: &mut PathBuf,
+        name: &str,
+        casl2_src: &[casl2::Statement],
+        statistics: bool,
+    ) -> io::Result<()> {
+        let file_name = format!("{}.cas", name);
+        path.push(file_name);
+        {
+            self.loaded_files
+                .insert(path.to_string_lossy().into_owned());
 
-        for stmt in casl2_src.iter() {
-            writeln!(&mut dst_file, "{}", stmt)?;
+            let mut dst_file = fs::File::create(&path)?;
+
+            for stmt in casl2_src.iter() {
+                writeln!(&mut dst_file, "{}", stmt)?;
+            }
+
+            dst_file.flush()?;
+            eprintln!("生成されたファイル: {}", path.display());
+        }
+        path.pop();
+
+        if statistics {
+            let file_name = format!("{}.stat.txt", name);
+            path.push(file_name);
+            self.loaded_files
+                .insert(path.to_string_lossy().into_owned());
+            let statistics = stat::analyze(casl2_src);
+            fs::write(&path, statistics)?;
+            eprintln!("生成されたファイル: {}", path.display());
+            path.pop();
         }
 
-        dst_file.flush()?;
-        eprintln!("生成されたファイル: {}", path.display());
+        Ok(())
     }
-    path.pop();
-
-    if statistics {
-        let file_name = format!("{}.stat.txt", name);
-        path.push(file_name);
-        let statistics = stat::analyze(casl2_src);
-        fs::write(&path, statistics)?;
-        eprintln!("生成されたファイル: {}", path.display());
-        path.pop();
-    }
-
-    Ok(())
 }
 
 impl Emulator {
@@ -1038,7 +1159,7 @@ impl Emulator {
 
         for (name, casl2_src) in casl2_src_list {
             if save {
-                save_casl2_src(&mut path, &name, &casl2_src, flags.statistics)?;
+                self.save_casl2_src(&mut path, &name, &casl2_src, flags.statistics)?;
             }
 
             if self.program_labels.contains_key(&name) {
@@ -1050,6 +1171,9 @@ impl Emulator {
                 return Ok(100);
             }
         }
+
+        self.loaded_files
+            .insert(Path::new(src_file).to_string_lossy().into_owned());
 
         Ok(0)
     }

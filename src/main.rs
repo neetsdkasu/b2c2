@@ -301,7 +301,7 @@ OPTIONS:
                         生成されるCASL2ソースコードの統計情報ぽいものを出力する
 
     {flag_run_debugger} <TARGET>
-                        生成されるCASL2プログラムをテスト実行する
+                        生成されるCASL2プログラムに対してテスト実行もする
                         TARGETにはCASL2/BASIC/NONSTEPのいずれかを指定する
                           CASL2   .. CASL2のコード単位でステップ実行する
                           BASIC   .. BASICのコード単位でステップ実行する (生成されるCASL2プログラムにステップ実行用のコードが挿入されます)
