@@ -119,15 +119,22 @@ where
                 "ラベル{}を解決できるファイルのパスを入力してください",
                 label
             )?;
-            writeln!(stdout, "-1を入力するとテスト実行を中止します")?;
-        } else {
-            for (i, file_name) in files.iter().enumerate().take(LIST_UP_SIZE) {
-                writeln!(stdout, " 候補 {}: {}", i, file_name)?;
-            }
-            writeln!(stdout, "ラベル{}を解決できるファイルが候補にある場合は番号を、ない場合は解決できるファイルのパスを入力してください", label)?;
             writeln!(
                 stdout,
-                "-1を入力するとテスト実行を中止します。空行の場合は全ての候補を順に調べラベル{}の解決を試みます",
+                "-1を入力するとテスト実行を中止します。0を入力するとRETのみのダミーコードで解決されます。"
+            )?;
+        } else {
+            for (i, file_name) in files.iter().enumerate().take(LIST_UP_SIZE) {
+                writeln!(stdout, " 候補 {}: {}", i + 1, file_name)?;
+            }
+            writeln!(stdout, "ラベル{}を解決できるファイルが候補一覧にある場合は番号を、ない場合は解決できるファイルのパスを入力してください", label)?;
+            writeln!(
+                stdout,
+                "-1を入力するとテスト実行を中止します。0を入力するとRETのみのダミーコードで解決されます。"
+            )?;
+            writeln!(
+                stdout,
+                "空行の場合は全ての候補を順に調べラベル{}の解決を試みます",
                 label
             )?;
         }
@@ -140,8 +147,12 @@ where
             writeln!(stdout, "テスト実行を中止します")?;
             return Ok(99);
         }
-        let line = line.lines().next().unwrap();
+        let line = line.lines().next().unwrap().trim();
+        let line = line.trim();
         let file = if line.is_empty() {
+            if files.is_empty() {
+                continue;
+            }
             writeln!(stdout, "全ての候補を調べます...")?;
             let mut found = None;
             for file in files.iter() {
@@ -172,11 +183,23 @@ where
         } else {
             let count = files.len().min(LIST_UP_SIZE) as i32;
             let file = match line.parse::<i32>() {
+                Ok(0) => {
+                    writeln!(
+                        stdout,
+                        "ラベル{}にはRETのみのダミーコードを割り当てます",
+                        label
+                    )?;
+                    if let Err(msg) = emu.resolve_dummy_code(label) {
+                        eprintln!("CompileError{{ {} }}", msg);
+                        return Ok(20);
+                    }
+                    continue;
+                }
                 Ok(-1) => {
                     writeln!(stdout, "テスト実行を中止します")?;
                     return Ok(99);
                 }
-                Ok(num) if num >= 0 && num < count => files[num as usize].clone(),
+                Ok(num) if num >= 1 && num <= count => files[num as usize - 1].clone(),
                 _ => {
                     let path = Path::new(line);
                     if path.is_file() && path.exists() {
@@ -393,6 +416,22 @@ fn edit_distance(str1: &str, str2: &str) -> usize {
 }
 
 impl Emulator {
+    fn resolve_dummy_code(&mut self, label: String) -> Result<(), String> {
+        if !self.enough_remain(1) {
+            return Err("メモリ不足でダミープログラムをロードできませんでした".into());
+        }
+        let label_pos = self.compile_pos;
+        self.compile_pos += 1;
+        self.mem[label_pos] = casl2::Command::Ret.first_word();
+        if let Some(pos_list) = self.unknown_labels.remove(&label) {
+            for pos in pos_list {
+                self.mem[pos] = label_pos as u16;
+            }
+        }
+        self.program_labels.insert(label, label_pos);
+        Ok(())
+    }
+
     fn suggest_load_file(
         &self,
         dst_dir: &Path,
