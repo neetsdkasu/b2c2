@@ -351,14 +351,14 @@ impl IndexRegister {
     }
 }
 
-struct Tokenizer<'a> {
+pub struct Tokenizer<'a> {
     chars: std::str::Chars<'a>,
     stack: Vec<char>,
     temp: String,
     space_count: usize,
 }
 
-enum Token {
+pub enum Token {
     Word(String),
     Dec(i16),
     Hex(u16),
@@ -369,7 +369,7 @@ enum Token {
 }
 
 impl<'a> Tokenizer<'a> {
-    fn new(s: &'a str) -> Self {
+    pub fn new(s: &'a str) -> Self {
         Self {
             chars: s.chars(),
             stack: Vec::new(),
@@ -410,7 +410,7 @@ impl<'a> Tokenizer<'a> {
         self.temp.clear();
     }
 
-    fn value(&mut self) -> Option<Token> {
+    pub fn value(&mut self) -> Option<Token> {
         if let Some(w) = self.word() {
             return Some(Token::Word(w));
         }
@@ -436,7 +436,7 @@ impl<'a> Tokenizer<'a> {
     }
 
     // 破壊的操作、recover不可能
-    fn values(&mut self) -> Option<Vec<Token>> {
+    pub fn values(&mut self) -> Option<Vec<Token>> {
         let mut ret = vec![];
         if let Some(t) = self.value() {
             ret.push(t);
@@ -473,12 +473,12 @@ impl<'a> Tokenizer<'a> {
         Some(comment)
     }
 
-    fn rest(&mut self) -> String {
+    pub fn rest(&mut self) -> String {
         while self.next().is_some() {}
         self.take()
     }
 
-    fn word(&mut self) -> Option<String> {
+    pub fn word(&mut self) -> Option<String> {
         if !matches!(self.next(), Some(ch) if ch.is_ascii_uppercase()) {
             self.recover();
             return None;
@@ -492,7 +492,7 @@ impl<'a> Tokenizer<'a> {
         Some(self.take())
     }
 
-    fn space(&mut self) -> bool {
+    pub fn space(&mut self) -> bool {
         if !matches!(self.next(),Some(ch)if ch.is_ascii_whitespace()) {
             self.recover();
             return false;
@@ -508,7 +508,7 @@ impl<'a> Tokenizer<'a> {
         true
     }
 
-    fn integer(&mut self) -> Option<i16> {
+    pub fn integer(&mut self) -> Option<i16> {
         if !matches!(self.next(),
                 Some(ch) if ch == '-' || ch.is_ascii_digit())
         {
@@ -530,7 +530,7 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn lit_integer(&mut self) -> Option<i16> {
+    pub fn lit_integer(&mut self) -> Option<i16> {
         if !matches!(self.next(), Some('=')) {
             self.recover();
             return None;
@@ -557,7 +557,7 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn lit_hex(&mut self) -> Option<u16> {
+    pub fn lit_hex(&mut self) -> Option<u16> {
         if !matches!(self.next(), Some('=')) {
             self.recover();
             return None;
@@ -586,7 +586,7 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn hex(&mut self) -> Option<u16> {
+    pub fn hex(&mut self) -> Option<u16> {
         if !matches!(self.next(), Some('#')) {
             self.recover();
             return None;
@@ -611,7 +611,7 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn string(&mut self) -> Option<String> {
+    pub fn string(&mut self) -> Option<String> {
         if !matches!(self.next(), Some('\'')) {
             self.recover();
             return None;
@@ -642,7 +642,7 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn lit_string(&mut self) -> Option<String> {
+    pub fn lit_string(&mut self) -> Option<String> {
         if !matches!(self.next(), Some('=')) {
             self.recover();
             return None;
@@ -650,7 +650,7 @@ impl<'a> Tokenizer<'a> {
         self.string()
     }
 
-    fn comma(&mut self) -> bool {
+    pub fn comma(&mut self) -> bool {
         if matches!(self.next(), Some(',')) {
             self.clear();
             true

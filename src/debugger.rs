@@ -6,7 +6,7 @@ use crate::stat;
 use crate::Flags;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 
 pub fn run_nonstep(src_file: String, flags: Flags) -> io::Result<i32> {
@@ -24,7 +24,6 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
     let mut stdin = stdin.lock();
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
-
     let mut emu = Emulator::new();
 
     match if src_file.to_ascii_lowercase().ends_with(".cas") {
@@ -53,6 +52,12 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
         }
     }
 
+    match interactive_before_start(&mut emu, &mut stdin, &mut stdout) {
+        Ok(0) => {}
+        Ok(99) => return Ok(0),
+        result => return result,
+    }
+
     emu.init_to_start();
 
     for _ in 0..10000000 {
@@ -68,6 +73,100 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
     writeln!(stdout, "TOTAL STEPS: {}", emu.step_count)?;
 
     Ok(0)
+}
+
+fn interactive_before_start<R: BufRead, W: Write>(
+    emu: &mut Emulator,
+    stdin: &mut R,
+    stdout: &mut W,
+) -> io::Result<i32> {
+    let mut line = String::new();
+
+    writeln!(stdout)?;
+    writeln!(stdout, "実行開始前の設定")?;
+    writeln!(
+        stdout,
+        "使用可能なコマンド: set-reg set-mem set-mem-fill help"
+    )?;
+    loop {
+        writeln!(stdout)?;
+        write!(stdout, "> ")?;
+        stdout.flush()?;
+        line.clear();
+        if stdin.read_line(&mut line)? == 0 {
+            eprintln!("入力がキャンセルされました");
+            io::stderr().flush()?;
+            writeln!(stdout, "テスト実行を中止します")?;
+            return Ok(99);
+        }
+        let line = line.trim();
+        let mut cmd_and_param = line.splitn(2, ' ');        
+        let cmd = cmd_and_param.next().unwrap();
+        match cmd {
+            "help" => {
+                show_command_help_before_start(cmd_and_param.next(), stdout)?;
+            }
+            "run" => return Ok(0),
+            "cancel" => {
+                writeln!(stdout, "テスト実行を中止します")?;
+                return Ok(99);
+            }
+            _ => {
+                writeln!(stdout, "コマンドが正しくありません")?;
+            }
+        }
+    }
+}
+
+fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<()> {
+    if cmd.is_none() {
+        writeln!(stdout)?;
+        writeln!(stdout, "コマンド一覧")?;
+    }
+
+    if cmd.is_none() || cmd.filter(|s| "set-reg".eq_ignore_ascii_case(s)).is_some() {
+        writeln!(
+            stdout,
+            r#"
+    set-reg <REGISTER> <VALUE>
+                レジスタに値を設定する
+                    REGISTER .. GR0～GR7
+                    VALUE    .. 10進定数,16進定数,アドレス定数
+                    REGISTER .. OF,SF,ZF
+                    VALUE    .. 0,1"#
+        )?;
+    }
+
+    if cmd.is_none() || cmd.filter(|s| "set-mem".eq_ignore_ascii_case(s)).is_some() {
+        writeln!(
+            stdout,
+            r#"
+    set-mem <ADDRESS> <VALUE1>[,<VALUE2>..]
+                メモリの指定アドレスにデータを書き込む
+                値を複数列挙した場合はアドレスから連続した領域に書き込まれる
+                値が文字定数の場合も文字数分の連続した領域に書き込まれる
+                    ADDRESS  .. 16進定数,アドレス定数
+                    VALUE*   .. 10進定数,16進定数,文字定数,アドレス定数"#
+        )?;
+    }
+
+    if cmd.is_none()
+        || cmd
+            .filter(|s| "set-mem-fill".eq_ignore_ascii_case(s))
+            .is_some()
+    {
+        writeln!(
+            stdout,
+            r#"
+    set-mem-fill <ADDRESS> <LENGTH> <VALUE>
+                メモリの指定アドレスから指定の長さ分を指定の値で埋める
+                    ADDRESS  .. 16進定数,アドレス定数
+                    LENGTH   .. 正の10進定数,16進定数
+                    VALUE    .. 10進定数,16進定数"#
+        )?;
+    }
+
+    Ok(())
 }
 
 fn get_program_name(file: &str) -> io::Result<Option<String>> {
@@ -91,17 +190,13 @@ fn get_program_name(file: &str) -> io::Result<Option<String>> {
     }
 }
 
-fn resolve_files<R, W>(
+fn resolve_files<R: BufRead, W: Write>(
     emu: &mut Emulator,
     stdin: &mut R,
     stdout: &mut W,
     src_dir: &Path,
     flags: &Flags,
-) -> io::Result<i32>
-where
-    R: io::BufRead,
-    W: io::Write,
-{
+) -> io::Result<i32> {
     const LIST_UP_SIZE: usize = 8;
     let mut label_cache = HashMap::new();
     let dst_dir = flags.create_dst_dir()?;
@@ -138,7 +233,7 @@ where
                 label
             )?;
         }
-        write!(stdout, "? ")?;
+        write!(stdout, "> ")?;
         stdout.flush()?;
         let mut line = String::new();
         if stdin.read_line(&mut line)? == 0 {
@@ -147,7 +242,6 @@ where
             writeln!(stdout, "テスト実行を中止します")?;
             return Ok(99);
         }
-        let line = line.lines().next().unwrap().trim();
         let line = line.trim();
         let file = if line.is_empty() {
             if files.is_empty() {
@@ -235,11 +329,14 @@ where
 type Program = (String, String, Vec<(usize, casl2::Statement)>);
 
 // コールスタック用に確保する最大サイズ　(1呼び出しにつき、RPUSHで7語、MEMで1語、合計8語として、再帰呼び出しの深さ200とすると2000語分程度あればよいか？)
-const CALLSTACK_MAX_SIZE: usize = 0x0800; // 2048
-                                          // プログラムコードを埋め込みを開始する位置 (0はダメ)
-const BEGIN_OF_PROGRAM: usize = 0x0400; // 1024
-                                        // COMET2の容量(語数)
+const CALLSTACK_MAX_SIZE: usize = 0x0800; /* 2048 */
+
+// プログラムコードを埋め込みを開始する位置 (0はダメ)
+const BEGIN_OF_PROGRAM: usize = 0x2000; /* 8192 */
+
+// COMET2の容量(語数)
 const MEMORY_SIZE: usize = 0x10000;
+
 // スタックポインタの始点
 // 仕様どおりにするなら最初のプログラム起動時はOSからCALLが呼ばれるはずで
 // SP   <- (SP) - 1  (SP = 0xFFFD)
@@ -249,6 +346,7 @@ const MEMORY_SIZE: usize = 0x10000;
 // RET命令でSPが0xFFFDでは無い時に初期PRの値と同じならスタックが壊れてる(笑)
 // またSPが0xFFFDのRET命令で初期PRと異なる値を得たならプログラムが暴走する(笑)
 const CALLSTACK_START_POSITION: usize = 0xFFFF;
+
 // プログラムレジスタ(PR)の初期値
 // OSがCALLでプログラムを呼び出した位置に相当する
 // RET命令でこの値が取り出されたら、プログラム終了だがSP値が適切ではない場合はOSが暴走する(笑)

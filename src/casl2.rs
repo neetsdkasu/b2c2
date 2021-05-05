@@ -1,6 +1,6 @@
 use std::fmt;
 
-pub use self::parser::parse;
+pub use self::parser::{parse, Token, Tokenizer};
 
 mod parser;
 pub mod utils;
