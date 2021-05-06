@@ -1286,6 +1286,26 @@ impl Emulator {
                     writeln!(stdout, "{}", line)?;
                     stdout.flush()?;
                 }
+                // SVC後のGR,FRは不定なので、値を保持しないという仕様にした(雑)
+                self.general_registers[0] ^=
+                    (self.general_registers[1] << 1) ^ (self.general_registers[2] >> 1);
+                self.general_registers[1] ^=
+                    (self.general_registers[2] << 1) ^ (self.general_registers[3] >> 1);
+                self.general_registers[2] ^=
+                    (self.general_registers[3] << 1) ^ (self.general_registers[4] >> 1);
+                self.general_registers[3] ^=
+                    (self.general_registers[4] << 1) ^ (self.general_registers[5] >> 1);
+                self.general_registers[4] ^=
+                    (self.general_registers[5] << 1) ^ (self.general_registers[6] >> 1);
+                self.general_registers[5] ^=
+                    (self.general_registers[6] << 1) ^ (self.general_registers[7] >> 1);
+                self.general_registers[6] ^=
+                    (self.general_registers[7] << 1) ^ (self.general_registers[0] >> 1);
+                self.general_registers[7] ^=
+                    (self.general_registers[0] << 1) ^ (self.general_registers[3] >> 1);
+                self.overflow_flag = (self.general_registers[3] & 4) == 0;
+                self.sign_flag = (self.general_registers[5] & 4) == 0;
+                self.zero_flag = (self.general_registers[7] & 4) == 0;
                 return Ok(());
             }
             0xE0 => {
