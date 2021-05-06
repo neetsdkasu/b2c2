@@ -436,7 +436,7 @@ impl<'a> Tokenizer<'a> {
     }
 
     // 破壊的操作、recover不可能
-    pub fn values(&mut self) -> Option<Vec<Token>> {
+    fn values(&mut self) -> Option<Vec<Token>> {
         let mut ret = vec![];
         if let Some(t) = self.value() {
             ret.push(t);
@@ -652,6 +652,16 @@ impl<'a> Tokenizer<'a> {
 
     pub fn comma(&mut self) -> bool {
         if matches!(self.next(), Some(',')) {
+            self.clear();
+            true
+        } else {
+            self.recover();
+            false
+        }
+    }
+
+    pub fn colon(&mut self) -> bool {
+        if matches!(self.next(), Some(':')) {
             self.clear();
             true
         } else {

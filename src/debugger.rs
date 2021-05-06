@@ -4,7 +4,9 @@ use crate::jis_x_201;
 use crate::parser;
 use crate::stat;
 use crate::Flags;
-use std::collections::{HashMap, HashSet};
+use std::borrow::Cow;
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::convert::TryFrom;
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -82,13 +84,23 @@ fn interactive_before_start<R: BufRead, W: Write>(
 ) -> io::Result<i32> {
     let mut line = String::new();
 
-    writeln!(stdout)?;
-    writeln!(stdout, "実行開始前の設定")?;
-    writeln!(
-        stdout,
-        "使用可能なコマンド: set-reg set-mem set-mem-fill help"
-    )?;
+    let command_list = vec![
+        "help",
+        "show-reg",
+        "show-mem",
+        "show-labels",
+        "show-var",
+        "set-reg",
+        "set-mem",
+        "set-mem-fill",
+        "cancel",
+    ]
+    .join(" ");
+
     loop {
+        writeln!(stdout)?;
+        writeln!(stdout, "実行開始前の設定")?;
+        writeln!(stdout, "使用可能なデバッガコマンド: {}", command_list)?;
         writeln!(stdout)?;
         write!(stdout, "> ")?;
         stdout.flush()?;
@@ -100,7 +112,7 @@ fn interactive_before_start<R: BufRead, W: Write>(
             return Ok(99);
         }
         let line = line.trim();
-        let mut cmd_and_param = line.splitn(2, ' ');        
+        let mut cmd_and_param = line.splitn(2, ' ').map(|s| s.trim());
         let cmd = cmd_and_param.next().unwrap();
         match cmd {
             "help" => {
@@ -111,6 +123,12 @@ fn interactive_before_start<R: BufRead, W: Write>(
                 writeln!(stdout, "テスト実行を中止します")?;
                 return Ok(99);
             }
+            "show-reg" => show_reg(emu, stdout)?,
+            "show-labels" => show_label(emu, stdout, cmd_and_param.next())?,
+            "set-reg" => {
+                let msg = set_reg(emu, cmd_and_param.next());
+                writeln!(stdout, "{}", msg)?;
+            }
             _ => {
                 writeln!(stdout, "コマンドが正しくありません")?;
             }
@@ -118,43 +136,276 @@ fn interactive_before_start<R: BufRead, W: Write>(
     }
 }
 
-fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<()> {
-    if cmd.is_none() {
-        writeln!(stdout)?;
-        writeln!(stdout, "コマンド一覧")?;
+fn show_label<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let mut count = 0;
+    if let Some(label) = param {
+        let label = label.to_string();
+        match emu.program_labels.get(&label) {
+            Some(adr) => {
+                writeln!(stdout, " #{:04X} {:<8}", adr, label)?;
+            }
+            None => {
+                writeln!(stdout, "ラベル{}が見つかりません", label)?;
+                return Ok(());
+            }
+        }
+        let label_map = match emu.local_labels.get(&label) {
+            Some(map) => map,
+            None => {
+                writeln!(stdout, "ラベル{}にローカルラベルは設定されてません", label)?;
+                return Ok(());
+            }
+        };
+        for (adr, key) in label_map
+            .iter()
+            .map(|(key, adr)| (adr, key))
+            .collect::<BTreeSet<_>>()
+        {
+            write!(stdout, " #{:04X} {:<8}    ", adr, key,)?;
+            count += 1;
+            if (count & 3) == 0 {
+                writeln!(stdout)?;
+            }
+        }
+    } else {
+        for (adr, key) in emu
+            .program_labels
+            .iter()
+            .map(|(key, adr)| (adr, key))
+            .collect::<BTreeSet<_>>()
+        {
+            write!(stdout, " #{:04X} {:<8}    ", adr, key)?;
+            count += 1;
+            if (count & 3) == 0 {
+                writeln!(stdout)?;
+            }
+        }
+        for (adr, key) in emu
+            .labels_for_debug
+            .iter()
+            .map(|(key, (adr, _))| (adr, key))
+            .collect::<BTreeSet<_>>()
+        {
+            write!(stdout, " #{:04X} {:<8}   ", adr, key)?;
+            count += 1;
+            if (count & 3) == 0 {
+                writeln!(stdout)?;
+            }
+        }
     }
+    if (count & 3) != 0 {
+        writeln!(stdout)?;
+    }
+    Ok(())
+}
 
-    if cmd.is_none() || cmd.filter(|s| "set-reg".eq_ignore_ascii_case(s)).is_some() {
+fn show_reg<W: Write>(emu: &Emulator, stdout: &mut W) -> io::Result<()> {
+    writeln!(stdout)?;
+    writeln!(
+        stdout,
+        "PR:  #{:04}         SP:  #{:04X}         FR:  (OF: {}, SF: {}, ZF: {})",
+        emu.program_register,
+        emu.stack_pointer,
+        if emu.overflow_flag { '1' } else { '0' },
+        if emu.sign_flag { '1' } else { '0' },
+        if emu.zero_flag { '1' } else { '0' }
+    )?;
+    writeln!(
+        stdout,
+        "GR0: #{0:04X}({0:6}) GR1: #{1:04X}({1:6}) GR2: #{2:04X}({2:6}) GR3: #{3:04X}({3:6})",
+        emu.general_registers[0] as i16,
+        emu.general_registers[1] as i16,
+        emu.general_registers[2] as i16,
+        emu.general_registers[3] as i16
+    )?;
+    writeln!(
+        stdout,
+        "GR4: #{0:04X}({0:6}) GR5: #{1:04X}({1:6}) GR6: #{2:04X}({2:6}) GR7: #{3:04X}({3:6})",
+        emu.general_registers[4] as i16,
+        emu.general_registers[5] as i16,
+        emu.general_registers[6] as i16,
+        emu.general_registers[7] as i16
+    )?;
+    Ok(())
+}
+
+enum ExtendedLabel {
+    GlobalLabel(String),
+    LocalLabel(String, String),
+    GlobalLabelOffset(String, u16),
+    LocalLabelOffset(String, String, u16),
+}
+
+impl<'a> casl2::Tokenizer<'a> {
+    fn extended_label(&mut self) -> Result<Option<ExtendedLabel>, &'static str> {
+        let global_label = match self.word() {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+        if !self.colon() {
+            return Ok(Some(ExtendedLabel::GlobalLabel(global_label)));
+        }
+        if let Some(offset) = self.hex() {
+            return Ok(Some(ExtendedLabel::GlobalLabelOffset(global_label, offset)));
+        }
+        let local_label = match self.word() {
+            Some(s) => s,
+            None => return Err("引数が不正です"),
+        };
+        if !self.colon() {
+            return Ok(Some(ExtendedLabel::LocalLabel(global_label, local_label)));
+        }
+        if let Some(offset) = self.hex() {
+            Ok(Some(ExtendedLabel::LocalLabelOffset(
+                global_label,
+                local_label,
+                offset,
+            )))
+        } else {
+            Err("引数が不正です")
+        }
+    }
+}
+
+fn get_single_value(
+    emu: &mut Emulator,
+    tokenizer: &mut casl2::Tokenizer<'_>,
+) -> Result<u16, Cow<'static, str>> {
+    match tokenizer.extended_label()? {
+        Some(ExtendedLabel::GlobalLabel(label)) => match emu.program_labels.get(&label) {
+            Some(adr) => Ok(*adr as u16),
+            None => Err(Cow::Owned(format!("ラベル{}が見つかりません", label))),
+        },
+        Some(ExtendedLabel::GlobalLabelOffset(label, offset)) => {
+            // TODO +offsetのオーバーフローチェック
+            match emu.program_labels.get(&label) {
+                Some(adr) => Ok(*adr as u16 + offset),
+                None => Err(Cow::Owned(format!("ラベル{}が見つかりません", label))),
+            }
+        }
+        Some(ExtendedLabel::LocalLabel(glabel, llabel)) => match emu.local_labels.get(&glabel) {
+            Some(label_map) => match label_map.get(&llabel) {
+                Some(adr) => Ok(*adr as u16),
+                None => Err(Cow::Owned(format!("ラベル{}が見つかりません", llabel))),
+            },
+            None => Err(Cow::Owned(format!("ラベル{}が見つかりません", glabel))),
+        },
+        Some(ExtendedLabel::LocalLabelOffset(glabel, llabel, offset)) => {
+            // TODO +offsetのオーバーフローチェック
+            match emu.local_labels.get(&glabel) {
+                Some(label_map) => match label_map.get(&llabel) {
+                    Some(adr) => Ok(*adr as u16 + offset),
+                    None => Err(Cow::Owned(format!("ラベル{}が見つかりません", llabel))),
+                },
+                None => Err(Cow::Owned(format!("ラベル{}が見つかりません", glabel))),
+            }
+        }
+        None => {
+            let value = match tokenizer.value() {
+                Some(value) => value,
+                None => return Err(Cow::Borrowed("引数が不正です")),
+            };
+            match value {
+                casl2::Token::Word(_) => unreachable!("BUG"),
+                casl2::Token::Dec(d) => Ok(d as u16),
+                casl2::Token::Hex(h) => Ok(h),
+                casl2::Token::Str(_) => todo!(),
+                casl2::Token::LitDec(_) => todo!(),
+                casl2::Token::LitHex(_) => todo!(),
+                casl2::Token::LitStr(_) => todo!(),
+            }
+        }
+    }
+}
+
+fn set_reg<'a, 'b>(emu: &mut Emulator, param: Option<&'a str>) -> Cow<'b, str> {
+    let params = match param {
+        Some(param) => param.split_whitespace().collect::<Vec<_>>(),
+        None => return Cow::Borrowed("引数がありません"),
+    };
+
+    let (reg, value) = if let [reg, value] = params.as_slice() {
+        (reg, value)
+    } else {
+        return Cow::Borrowed("引数の数が正しくありません");
+    };
+
+    match casl2::Register::try_from(*reg) {
+        Ok(reg) => {
+            let mut tokenizer = casl2::Tokenizer::new(value);
+            match get_single_value(emu, &mut tokenizer) {
+                Err(msg) => msg,
+                Ok(value) => {
+                    emu.general_registers[reg as usize] = value;
+                    Cow::Owned(format!("{}に#{:04X}を設定しました", reg, value))
+                }
+            }
+        }
+        Err(_) => todo!(),
+    }
+}
+
+fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<()> {
+    writeln!(stdout)?;
+    writeln!(stdout, "コマンドヘルプ")?;
+
+    let cmd = match cmd {
+        Some(cmd) => cmd,
+        None => {
+            writeln!(
+                stdout,
+                r#"
+    set-reg <REGISTER> <VALUE>
+                レジスタに値を設定する
+    set-mem <ADDRESS> <VALUE1>[,<VALUE2>..]
+                メモリの指定アドレスにデータを書き込む
+    set-mem-fill <ADDRESS> <LENGTH> <VALUE>
+                メモリの指定アドレスから指定の長さ分を指定の値で埋める
+    show-reg
+                各レジスタの現在の値を表示する
+    show-mem <ADDRESS> <LENGTH>
+                メモリの指定アドレスから指定の長さ分の領域の各値を列挙する
+    show-labels [<PROGRAM_ENTRY>]
+                ラベルの一覧とアドレスを表示する。PROGRAM_ENTRYを指定した場合はローカルラベルを表示する
+    show-var <BASIC_SRC_FILE>
+                指定したBASICプログラムの変数名と対応するラベルとアドレスと値を表示する
+    cancel
+                テスト実行を中止する
+    help <COMMAND_NAME>
+                指定デバッガコマンドの詳細ヘルプを表示する
+"#
+            )?;
+            return Ok(());
+        }
+    };
+
+    if "set-reg".eq_ignore_ascii_case(cmd) {
         writeln!(
             stdout,
             r#"
     set-reg <REGISTER> <VALUE>
                 レジスタに値を設定する
                     REGISTER .. GR0～GR7
-                    VALUE    .. 10進定数,16進定数,アドレス定数
+                    VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル
                     REGISTER .. OF,SF,ZF
                     VALUE    .. 0,1"#
         )?;
     }
 
-    if cmd.is_none() || cmd.filter(|s| "set-mem".eq_ignore_ascii_case(s)).is_some() {
+    if "set-mem".eq_ignore_ascii_case(cmd) {
         writeln!(
             stdout,
             r#"
     set-mem <ADDRESS> <VALUE1>[,<VALUE2>..]
                 メモリの指定アドレスにデータを書き込む
                 値を複数列挙した場合はアドレスから連続した領域に書き込まれる
-                値が文字定数の場合も文字数分の連続した領域に書き込まれる
+                値が文字定数の場合は文字数分の連続した領域に書き込まれる
                     ADDRESS  .. 16進定数,アドレス定数
-                    VALUE*   .. 10進定数,16進定数,文字定数,アドレス定数"#
+                    VALUE*   .. 10進定数,16進定数,文字定数,アドレス定数,リテラル"#
         )?;
     }
 
-    if cmd.is_none()
-        || cmd
-            .filter(|s| "set-mem-fill".eq_ignore_ascii_case(s))
-            .is_some()
-    {
+    if "set-mem-fill".eq_ignore_ascii_case(cmd) {
         writeln!(
             stdout,
             r#"
@@ -162,9 +413,39 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 メモリの指定アドレスから指定の長さ分を指定の値で埋める
                     ADDRESS  .. 16進定数,アドレス定数
                     LENGTH   .. 正の10進定数,16進定数
-                    VALUE    .. 10進定数,16進定数"#
+                    VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル"#
         )?;
     }
+
+    writeln!(
+        stdout,
+        r#"
+    10進定数
+                -32768　～ 32767
+    16進定数
+                #0000 ～ #FFFF
+    文字定数
+                'X' 'Abc123' 'Let''s go' などの文字・文字列を引用符で囲ったもの
+    アドレス定数
+        ラベル           
+                        グローバルラベル (各プログラムのエントリラベル、デバッガコマンドで定義したラベル)
+                            例: MAIN
+        ラベル:ラベル
+                        ローカルラベル (各プログラムの内部のラベル)。 プログラムのエントリラベル:内部ラベル　で表記
+                            例: MAIN:I1
+        ラベル:16進定数       
+                        グローバルラベルの位置から16進定数分の相対位置のアドレスを返す
+                            例: MYMEM:#0012
+        ラベル:ラベル:16進定数   
+                        ローカルラベルの位置から16進定数分の相対位置のアドレスを返す
+                            例: MAIN:MEM:#0015
+    リテラル
+                10進定数、16進定数、文字定数の頭に=を付けて指定
+                定数格納の領域を確保しそのアドレスを返す
+                    例: =123 =#ABCD ='XYZ'
+              
+"#
+    )?;
 
     Ok(())
 }
@@ -398,6 +679,9 @@ struct Emulator {
     // (START命令に引数があるとBEGIN_OF_PROGRAMにはならないこともあるため)
     start_point: Option<String>,
 
+    // デバッガコマンドから設定したラベル
+    labels_for_debug: HashMap<String, (usize, casl2::Statement)>,
+
     // 挿入するプログラムの埋め込み開始位置
     compile_pos: usize,
 
@@ -407,7 +691,7 @@ struct Emulator {
     // プログラムごとのラベルとメモリ位置の対応 (プログラムエントリラベル, (ラベル, メモリ位置))
     local_labels: HashMap<String, HashMap<String, usize>>,
 
-    // プログラムのエントリラベルとメモリ位置の対応 (ラベル, メモリ位置)
+    // プログラムのエントリラベルとメモリ位置の対応 (プログラムエントリラベル, メモリ位置)
     program_labels: HashMap<String, usize>,
 
     // プログラムリスト (ファイル名, ラベル, ソースコード(コードメモリ位置, コード))
@@ -435,6 +719,7 @@ impl Emulator {
             step_count: 0,
             basic_step: None,
             basic_step_count: 0,
+            labels_for_debug: HashMap::new(),
 
             start_point: None,
             basic_info: HashMap::new(),
