@@ -90,10 +90,11 @@ fn interactive_before_start<R: BufRead, W: Write>(
         "show-mem",
         "show-labels",
         "show-var",
+        "list-files",
         "set-reg",
         "set-mem",
         "set-mem-fill",
-        "cancel",
+        "quit",
     ]
     .join(" ");
 
@@ -119,12 +120,14 @@ fn interactive_before_start<R: BufRead, W: Write>(
                 show_command_help_before_start(cmd_and_param.next(), stdout)?;
             }
             "run" => return Ok(0),
-            "cancel" => {
+            "quit" => {
                 writeln!(stdout, "テスト実行を中止します")?;
                 return Ok(99);
             }
             "show-reg" => show_reg(emu, stdout)?,
             "show-labels" => show_label(emu, stdout, cmd_and_param.next())?,
+            "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
+            "list-files" => list_files(emu, stdout)?,
             "set-reg" => {
                 let msg = set_reg(emu, cmd_and_param.next());
                 writeln!(stdout, "{}", msg)?;
@@ -134,6 +137,149 @@ fn interactive_before_start<R: BufRead, W: Write>(
             }
         }
     }
+}
+
+fn list_files<W: Write>(emu: &Emulator, stdout: &mut W) -> io::Result<()> {
+    let mut last: Option<&str> = None;
+    for (file, key, _) in emu.program_list.iter() {
+        if let Some(f) = last.as_ref() {
+            if *f == file.as_str() {
+                write!(stdout, " {}", key)?;
+                continue;
+            }
+        }
+        writeln!(stdout)?;
+        writeln!(stdout, " {}", file)?;
+        write!(stdout, "        {}", key)?;
+        last = Some(file.as_str());
+    }
+    writeln!(stdout)?;
+    Ok(())
+}
+
+fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let file = match param {
+        Some(file) => emu.basic_info.get(&file.to_string()),
+        None => {
+            let (file, _, _) = emu.program_list.first().expect("BUG");
+            emu.basic_info.get(file)
+        }
+    };
+    match file {
+        None => {
+            writeln!(stdout, "変数情報が見つかりませんでした")?;
+        }
+        Some((key, info)) => {
+            for (name, (label, _)) in info.label_set.argument_labels.iter() {
+                print_value_label(emu, stdout, key, name, label)?;
+            }
+            for (name, label) in info.label_set.bool_var_labels.iter() {
+                print_value_label(emu, stdout, key, name, label)?;
+            }
+            for (name, label) in info.label_set.int_var_labels.iter() {
+                print_value_label(emu, stdout, key, name, label)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_value_label<W: Write>(
+    emu: &Emulator,
+    stdout: &mut W,
+    key: &str,
+    name: &str,
+    label: &compiler::ValueLabel,
+) -> io::Result<()> {
+    let map = emu.local_labels.get(key).expect("BUG");
+    use compiler::ValueLabel::*;
+    match label {
+        VarBoolean(s) => {
+            let adr = *map.get(s).expect("BUG");
+            let raw = emu.mem[adr];
+            let value = if raw == 0 {
+                "False"
+            } else if raw == 0xFFFF {
+                "True"
+            } else {
+                "????"
+            };
+            writeln!(
+                stdout,
+                " {:<20} #{:04X} {:<8}  (Val #{:04X} {})",
+                name, adr, s, raw, value
+            )?;
+        }
+        VarInteger(s) => {
+            let adr = *map.get(s).expect("BUG");
+            let raw = emu.mem[adr];
+            let value = raw as i16;
+            writeln!(
+                stdout,
+                " {:<20} #{:04X} {:<8}  (Val #{:04X} {:6})",
+                name, adr, s, raw, value
+            )?;
+        }
+        VarRefBoolean(s) => {
+            let adr = *map.get(s).expect("BUG");
+            let refer = emu.mem[adr];
+            let raw = emu.mem[refer as usize];
+            let value = if raw == 0 {
+                "False"
+            } else if raw == 0xFFFF {
+                "True"
+            } else {
+                "????"
+            };
+            writeln!(
+                stdout,
+                " {:<20} #{:04X} {:<8}  (Ref #{:04X}) (Val #{:04X} {})",
+                name, adr, s, refer, raw, value
+            )?;
+        }
+        VarRefInteger(s) => {
+            let adr = *map.get(s).expect("BUG");
+            let refer = emu.mem[adr];
+            let raw = emu.mem[refer as usize];
+            let value = raw as i16;
+            writeln!(
+                stdout,
+                " {:<20} #{:04X} {:<8}  (Ref #{:04X}) (Val #{:04X} {:6})",
+                name, adr, s, refer, raw, value
+            )?;
+        }
+        MemBoolean(offset) => {
+            let pos = *map.get(&"MEM".to_string()).expect("BUG");
+            let adr = emu.mem[pos] as usize + offset;
+            let raw = emu.mem[adr];
+            let value = if raw == 0 {
+                "False"
+            } else if raw == 0xFFFF {
+                "True"
+            } else {
+                "????"
+            };
+            writeln!(
+                stdout,
+                " {:<20} #{:04X} MEM:#{:04X} (Val #{:04X} {})",
+                name, adr, offset, raw, value
+            )?;
+        }
+        MemInteger(offset) => {
+            let pos = *map.get(&"MEM".to_string()).expect("BUG");
+            let adr = emu.mem[pos] as usize + offset;
+            let raw = emu.mem[adr];
+            let value = raw as i16;
+            writeln!(
+                stdout,
+                " {:<20} #{:04X} MEM:#{:04X} (Val #{:04X} {:6})",
+                name, adr, offset, raw, value
+            )?;
+        }
+        MemRefBoolean(..) => todo!(),
+        MemRefInteger(..) => todo!(),
+    }
+    Ok(())
 }
 
 fn show_label<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
@@ -234,6 +380,8 @@ enum ExtendedLabel {
     LocalLabel(String, String),
     GlobalLabelOffset(String, u16),
     LocalLabelOffset(String, String, u16),
+    GlobalLabelOffsetRegister(String, casl2::Register),
+    LocalLabelOffsetRegister(String, String, casl2::Register),
 }
 
 impl<'a> casl2::Tokenizer<'a> {
@@ -253,7 +401,21 @@ impl<'a> casl2::Tokenizer<'a> {
             None => return Err("引数が不正です"),
         };
         if !self.colon() {
-            return Ok(Some(ExtendedLabel::LocalLabel(global_label, local_label)));
+            let ex = match casl2::Register::try_from(local_label.as_str()) {
+                Ok(reg) => ExtendedLabel::GlobalLabelOffsetRegister(global_label, reg),
+                Err(_) => ExtendedLabel::LocalLabel(global_label, local_label),
+            };
+            return Ok(Some(ex));
+        }
+        if let Some(s) = self.word() {
+            return match casl2::Register::try_from(s.as_str()) {
+                Ok(reg) => Ok(Some(ExtendedLabel::LocalLabelOffsetRegister(
+                    global_label,
+                    local_label,
+                    reg,
+                ))),
+                Err(_) => Err("引数が不正です"),
+            };
         }
         if let Some(offset) = self.hex() {
             Ok(Some(ExtendedLabel::LocalLabelOffset(
@@ -277,9 +439,27 @@ fn get_single_value(
             None => Err(Cow::Owned(format!("ラベル{}が見つかりません", label))),
         },
         Some(ExtendedLabel::GlobalLabelOffset(label, offset)) => {
-            // TODO +offsetのオーバーフローチェック
             match emu.program_labels.get(&label) {
-                Some(adr) => Ok(*adr as u16 + offset),
+                Some(adr) => match (*adr as u16).checked_add(offset) {
+                    Some(adr) => Ok(adr),
+                    None => Err(Cow::Owned(format!(
+                        "{}:#{:04X}がオーバーフローしました",
+                        label, offset
+                    ))),
+                },
+                None => Err(Cow::Owned(format!("ラベル{}が見つかりません", label))),
+            }
+        }
+        Some(ExtendedLabel::GlobalLabelOffsetRegister(label, reg)) => {
+            let offset = emu.general_registers[reg as usize];
+            match emu.program_labels.get(&label) {
+                Some(adr) => match (*adr as u16).checked_add(offset) {
+                    Some(adr) => Ok(adr),
+                    None => Err(Cow::Owned(format!(
+                        "{}:{}がオーバーフローしました",
+                        label, reg
+                    ))),
+                },
                 None => Err(Cow::Owned(format!("ラベル{}が見つかりません", label))),
             }
         }
@@ -291,10 +471,31 @@ fn get_single_value(
             None => Err(Cow::Owned(format!("ラベル{}が見つかりません", glabel))),
         },
         Some(ExtendedLabel::LocalLabelOffset(glabel, llabel, offset)) => {
-            // TODO +offsetのオーバーフローチェック
             match emu.local_labels.get(&glabel) {
                 Some(label_map) => match label_map.get(&llabel) {
-                    Some(adr) => Ok(*adr as u16 + offset),
+                    Some(adr) => match (*adr as u16).checked_add(offset) {
+                        Some(adr) => Ok(adr),
+                        None => Err(Cow::Owned(format!(
+                            "{}:{}:#{:04X}がオーバーフローしました",
+                            glabel, llabel, offset
+                        ))),
+                    },
+                    None => Err(Cow::Owned(format!("ラベル{}が見つかりません", llabel))),
+                },
+                None => Err(Cow::Owned(format!("ラベル{}が見つかりません", glabel))),
+            }
+        }
+        Some(ExtendedLabel::LocalLabelOffsetRegister(glabel, llabel, reg)) => {
+            let offset = emu.general_registers[reg as usize];
+            match emu.local_labels.get(&glabel) {
+                Some(label_map) => match label_map.get(&llabel) {
+                    Some(adr) => match (*adr as u16).checked_add(offset) {
+                        Some(adr) => Ok(adr),
+                        None => Err(Cow::Owned(format!(
+                            "{}:{}:{}がオーバーフローしました",
+                            glabel, llabel, reg
+                        ))),
+                    },
                     None => Err(Cow::Owned(format!("ラベル{}が見つかりません", llabel))),
                 },
                 None => Err(Cow::Owned(format!("ラベル{}が見つかりません", glabel))),
@@ -367,9 +568,11 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 メモリの指定アドレスから指定の長さ分の領域の各値を列挙する
     show-labels [<PROGRAM_ENTRY>]
                 ラベルの一覧とアドレスを表示する。PROGRAM_ENTRYを指定した場合はローカルラベルを表示する
-    show-var <BASIC_SRC_FILE>
+    show-var [<BASIC_SRC_FILE>]
                 指定したBASICプログラムの変数名と対応するラベルとアドレスと値を表示する
-    cancel
+    list-files
+                読み込んだソースファイルの一覧を表示する
+    quit
                 テスト実行を中止する
     help <COMMAND_NAME>
                 指定デバッガコマンドの詳細ヘルプを表示する
@@ -427,23 +630,29 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
     文字定数
                 'X' 'Abc123' 'Let''s go' などの文字・文字列を引用符で囲ったもの
     アドレス定数
-        ラベル           
+        ラベル
                         グローバルラベル (各プログラムのエントリラベル、デバッガコマンドで定義したラベル)
                             例: MAIN
         ラベル:ラベル
                         ローカルラベル (各プログラムの内部のラベル)。 プログラムのエントリラベル:内部ラベル　で表記
                             例: MAIN:I1
-        ラベル:16進定数       
+        ラベル:16進定数
                         グローバルラベルの位置から16進定数分の相対位置のアドレスを返す
                             例: MYMEM:#0012
-        ラベル:ラベル:16進定数   
+        ラベル:ラベル:16進定数
                         ローカルラベルの位置から16進定数分の相対位置のアドレスを返す
                             例: MAIN:MEM:#0015
+        ラベル:GR*
+                        グローバルラベルの位置からGRレジスタの値分の相対位置のアドレスを返す
+                            例: MYMEM:GR2
+        ラベル:ラベル:GR*
+                        ローカルラベルの位置からGRレジスタの値分の相対位置のアドレスを返す
+                            例: MAIN:MEM:GR5
     リテラル
                 10進定数、16進定数、文字定数の頭に=を付けて指定
                 定数格納の領域を確保しそのアドレスを返す
                     例: =123 =#ABCD ='XYZ'
-              
+
 "#
     )?;
 
@@ -514,6 +723,7 @@ fn resolve_files<R: BufRead, W: Write>(
                 label
             )?;
         }
+        writeln!(stdout)?;
         write!(stdout, "> ")?;
         stdout.flush()?;
         let mut line = String::new();
