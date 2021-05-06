@@ -1849,24 +1849,24 @@ impl Emulator {
                     let pos = pos.as_string();
                     let len = len.as_string();
                     if let Some(label_pos) = labels.get(pos) {
-                        self.mem[*mempos + 5] = *label_pos as u16;
+                        self.mem[*mempos + 18] = *label_pos as u16;
                     } else if let Some(label_pos) = self.program_labels.get(pos).copied() {
-                        self.mem[*mempos + 5] = label_pos as u16;
+                        self.mem[*mempos + 18] = label_pos as u16;
                     } else {
                         self.unknown_labels
                             .entry(pos.clone())
                             .or_insert_with(Vec::new)
-                            .push(*mempos + 5);
+                            .push(*mempos + 18);
                     }
                     if let Some(label_pos) = labels.get(len) {
-                        self.mem[*mempos + 7] = *label_pos as u16;
+                        self.mem[*mempos + 20] = *label_pos as u16;
                     } else if let Some(label_pos) = self.program_labels.get(len).copied() {
-                        self.mem[*mempos + 7] = label_pos as u16;
+                        self.mem[*mempos + 20] = label_pos as u16;
                     } else {
                         self.unknown_labels
                             .entry(len.clone())
                             .or_insert_with(Vec::new)
-                            .push(*mempos + 7);
+                            .push(*mempos + 20);
                     }
                 }
                 casl2::Command::A { adr, .. } | casl2::Command::P { adr, .. } => match adr {
@@ -1919,9 +1919,23 @@ impl Emulator {
                 let src = casl2::parse(
                     r#" PUSH 0,GR1
                         PUSH 0,GR2
+                        PUSH 0,GR3
+                        PUSH 0,GR4
+                        PUSH 0,GR5
+                        PUSH 0,GR6
+                        PUSH 0,GR7
+                        LD  GR1,GR0
+                        PUSH 0,GR1
                         LAD GR1,0
                         LAD GR2,0
                         SVC 1
+                        POP GR1
+                        LD  GR0,GR1
+                        POP GR7
+                        POP GR6
+                        POP GR5
+                        POP GR4
+                        POP GR3
                         POP GR2
                         POP GR1
                     "#,
@@ -1950,9 +1964,23 @@ impl Emulator {
                 let src = casl2::parse(
                     r#" PUSH 0,GR1
                         PUSH 0,GR2
+                        PUSH 0,GR3
+                        PUSH 0,GR4
+                        PUSH 0,GR5
+                        PUSH 0,GR6
+                        PUSH 0,GR7
+                        LD  GR1,GR0
+                        PUSH 0,GR1
                         LAD GR1,0
                         LAD GR2,0
                         SVC 2
+                        POP GR1
+                        LD  GR0,GR1
+                        POP GR7
+                        POP GR6
+                        POP GR5
+                        POP GR4
+                        POP GR3
                         POP GR2
                         POP GR1
                     "#,
@@ -2254,14 +2282,29 @@ impl casl2::Command {
                 })
                 .sum(),
             casl2::Command::In { .. } | casl2::Command::Out { .. } => {
+                // 0  0
                 // 2  2 PUSH 0,GR1
                 // 2  4 PUSH 0,GR2
-                // 2  6 LAD GR1,POS
-                // 2  8 LAD GR2,LEN
-                // 2 10 SVC 1 (or 2)
-                // 1 11 POP GR2
-                // 1 12 POP GR1
-                12
+                // 2  6 PUSH 0,GR3
+                // 2  8 PUSH 0,GR4
+                // 2 10 PUSH 0,GR5
+                // 2 12 PUSH 0,GR6
+                // 2 14 PUSH 0,GR7
+                // 1 15 LD  GR1,GR0
+                // 2 17 PUSH 0,GR1
+                // 2 19 LAD GR1,BUF  (BUF offset 18)
+                // 2 21 LAD GR2,LEN  (LEN offset 20)
+                // 2 23 SVC 1
+                // 1 24 POP GR1
+                // 1 25 LD  GR0,GR1
+                // 1 26 POP GR7
+                // 1 27 POP GR6
+                // 1 28 POP GR5
+                // 1 29 POP GR4
+                // 1 30 POP GR3
+                // 1 31 POP GR2
+                // 1 32 POP GR1
+                32
             }
             casl2::Command::Rpush => 14,
             casl2::Command::Rpop => 7,
