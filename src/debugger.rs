@@ -90,6 +90,7 @@ fn interactive_before_start<R: BufRead, W: Write>(
         "show-labels",
         "show-var",
         "list-files",
+        "list-code",
         "set-reg",
         "set-mem",
         "set-mem-fill",
@@ -101,7 +102,6 @@ fn interactive_before_start<R: BufRead, W: Write>(
 
     loop {
         writeln!(stdout)?;
-        writeln!(stdout, "実行開始前の設定")?;
         writeln!(stdout, "使用可能なデバッガコマンド: {}", command_list)?;
         writeln!(stdout)?;
         write!(stdout, "> ")?;
@@ -130,6 +130,7 @@ fn interactive_before_start<R: BufRead, W: Write>(
             "show-labels" => show_label(emu, stdout, cmd_and_param.next())?,
             "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
             "list-files" => list_files(emu, stdout)?,
+            "list-code" => list_code(emu, stdout, cmd_and_param.next())?,
             "set-reg" => {
                 let msg = set_reg(emu, cmd_and_param.next());
                 writeln!(stdout, "{}", msg)?;
@@ -143,6 +144,34 @@ fn interactive_before_start<R: BufRead, W: Write>(
             }
         }
     }
+}
+
+fn list_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let _ = param;
+    let mut pos = BEGIN_OF_PROGRAM;
+    for _ in 0..20 {
+        let op_code = emu.mem[pos];
+        match get_op_code_size(op_code) {
+            0 => {
+                let s = get_op_code_form(op_code, None);
+                writeln!(stdout, " #{:04X}: {}", pos, s)?;
+                pos += 1;
+            }
+            1 => {
+                let s = get_op_code_form(op_code, None);
+                writeln!(stdout, " #{:04X}: {}", pos, s)?;
+                pos += 1;
+            }
+            2 => {
+                let adr = emu.mem[pos + 1];
+                let s = get_op_code_form(op_code, Some(adr));
+                writeln!(stdout, " #{:04X}: {}", pos, s)?;
+                pos += 2;
+            }
+            _ => unreachable!("BUG"),
+        }
+    }
+    Ok(())
 }
 
 fn list_files<W: Write>(emu: &Emulator, stdout: &mut W) -> io::Result<()> {
@@ -179,12 +208,201 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             for (name, (label, _)) in info.label_set.argument_labels.iter() {
                 print_value_label(emu, stdout, key, name, label)?;
             }
+            for (name, (label, _)) in info.label_set.str_argument_labels.iter() {
+                print_str_label(emu, stdout, key, name, label)?;
+            }
+            for (name, (label, _)) in info.label_set.arr_argument_labels.iter() {
+                print_arr_label(emu, stdout, key, name, label)?;
+            }
             for (name, label) in info.label_set.bool_var_labels.iter() {
                 print_value_label(emu, stdout, key, name, label)?;
             }
             for (name, label) in info.label_set.int_var_labels.iter() {
                 print_value_label(emu, stdout, key, name, label)?;
             }
+            for (name, label) in info.label_set.str_var_labels.iter() {
+                print_str_label(emu, stdout, key, name, label)?;
+            }
+            for (name, label) in info.label_set.bool_arr_labels.iter() {
+                print_arr_label(emu, stdout, key, name, label)?;
+            }
+            for (name, label) in info.label_set.int_arr_labels.iter() {
+                print_arr_label(emu, stdout, key, name, label)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_arr_label<W: Write>(
+    emu: &Emulator,
+    stdout: &mut W,
+    key: &str,
+    name: &str,
+    label: &compiler::ArrayLabel,
+) -> io::Result<()> {
+    let map = emu.local_labels.get(key).expect("BUG");
+    use compiler::ArrayLabel::*;
+    match label {
+        TempArrayOfBoolean(_str_labels, _size) => todo!(),
+        TempArrayOfInteger(_str_labels, _size) => todo!(),
+        VarArrayOfBoolean(label, size) => {
+            let size = *size;
+            let adr = *map.get(label).expect("BUG");
+            let mut s = String::new();
+            let mut t = String::new();
+            let mut broken = false;
+            for i in 0..size {
+                let v = emu.mem[adr + i];
+                if i < 8 {
+                    match v {
+                        0 => s.push_str("False "),
+                        1 => s.push_str("True "),
+                        _ => s.push_str("???? "),
+                    }
+                    t.push_str(&format!("#{:04X} ", v));
+                }
+                if !(0..=1).contains(&v) {
+                    broken = true;
+                }
+            }
+            if size <= 8 {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} {:<8}             Val: [{}] [{}]{}"#,
+                    name,
+                    adr,
+                    label,
+                    s,
+                    t,
+                    if broken { " (異常値)" } else { "" }
+                )?;
+            } else {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} {:<8}             Val: [{} .. [{} ..{}"#,
+                    name,
+                    adr,
+                    label,
+                    s,
+                    t,
+                    if broken { " (異常値)" } else { "" }
+                )?;
+            }
+        }
+        VarArrayOfInteger(label, size) => {
+            let size = *size;
+            let adr = *map.get(label).expect("BUG");
+            let mut s = String::new();
+            let mut t = String::new();
+            for i in 0..size.min(8) {
+                s.push_str(&format!("{} ", emu.mem[adr + i] as i16));
+                t.push_str(&format!("#{:04X} ", emu.mem[adr + i]));
+            }
+            if size <= 8 {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} {:<8}             Val: [{}] [{}]"#,
+                    name, adr, label, s, t
+                )?;
+            } else {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} {:<8}             Val: [{} .. [{} .."#,
+                    name, adr, label, s, t
+                )?;
+            }
+        }
+        VarRefArrayOfBoolean(_label, _size) => todo!(),
+        VarRefArrayOfInteger(_label, _size) => todo!(),
+        MemArrayOfBoolean { offset: _, size: _ } => todo!(),
+        MemArrayOfInteger { offset: _, size: _ } => todo!(),
+        MemRefArrayOfBoolean { offset: _, size: _ } => todo!(),
+        MemRefArrayOfInteger { offset: _, size: _ } => todo!(),
+    }
+    Ok(())
+}
+
+fn print_str_label<W: Write>(
+    emu: &Emulator,
+    stdout: &mut W,
+    key: &str,
+    name: &str,
+    label: &compiler::StrLabels,
+) -> io::Result<()> {
+    let map = emu.local_labels.get(key).expect("BUG");
+    use compiler::StrLabelType::*;
+    match &label.label_type {
+        Const(_str) => {
+            // IN/OUTの定数 LB**/LL**
+            todo!()
+        }
+        Lit(_str) => {
+            // リテラル ='abc'/=3
+            todo!()
+        }
+        Temp => {
+            // 一時変数 TB**/TL**
+            todo!()
+        }
+        Var => {
+            // 文字列変数 SB**/SL**
+            let adr = *map.get(&label.len).expect("BUG");
+            let len = emu.mem[adr];
+            let value = len as i16;
+            let broken = len > 256;
+            writeln!(
+                stdout,
+                " {:<20} #{:04X} {:<8}             Val: {:6} [#{:04X}]{}",
+                name,
+                adr,
+                label.len,
+                value,
+                len,
+                if broken { " (異常値)" } else { "" }
+            )?;
+            let adr = *map.get(&label.len).expect("BUG");
+            let mut s = String::new();
+            let mut t = String::new();
+            for i in 0..len.min(8) as usize {
+                let ch = emu.mem[adr + i];
+                t.push_str(&format!("#{:04X} ", ch));
+                let ch = jis_x_201::convert_to_char(ch as u8, true);
+                s.push(ch);
+            }
+            if len <= 8 {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} {:<8}             Val: {:6} [{}]"#,
+                    "",
+                    adr,
+                    label.pos,
+                    format!(r#""{}""#, s),
+                    t
+                )?;
+            } else {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} {:<8}             Val: "{}.. [{} .."#,
+                    "", adr, label.pos, s, t
+                )?;
+            }
+        }
+        ArgRef => {
+            // 引数(参照型) ARG*/ARG*
+            todo!()
+        }
+        ArgVal => {
+            // 引数 ARG*/ARG*
+            todo!()
+        }
+        MemRef(_offset) => {
+            // メモリ(MEMからのオフセット)
+            todo!()
+        }
+        MemVal(_offset) => {
+            // メモリ(MEMからのオフセット)
+            todo!()
         }
     }
     Ok(())
@@ -212,8 +430,17 @@ fn print_value_label<W: Write>(
             };
             writeln!(
                 stdout,
-                " {:<20} #{:04X} {:<8}  (Val #{:04X} {})",
-                name, adr, s, raw, value
+                " {:<20} #{:04X} {:<8}             Val: {:6} [#{:04X}]{}",
+                name,
+                adr,
+                s,
+                value,
+                raw,
+                if (0..=1).contains(&raw) {
+                    ""
+                } else {
+                    " (異常値)"
+                }
             )?;
         }
         VarInteger(s) => {
@@ -222,8 +449,8 @@ fn print_value_label<W: Write>(
             let value = raw as i16;
             writeln!(
                 stdout,
-                " {:<20} #{:04X} {:<8}  (Val #{:04X} {:6})",
-                name, adr, s, raw, value
+                " {:<20} #{:04X} {:<8}             Val: {:6} [#{:04X}]",
+                name, adr, s, value, raw
             )?;
         }
         VarRefBoolean(s) => {
@@ -239,8 +466,18 @@ fn print_value_label<W: Write>(
             };
             writeln!(
                 stdout,
-                " {:<20} #{:04X} {:<8}  (Ref #{:04X}) (Val #{:04X} {})",
-                name, adr, s, refer, raw, value
+                " {:<20} #{:04X} {:<8}  Ref: #{:04X} Val: {:6} [#{:04X}]{}",
+                name,
+                adr,
+                s,
+                refer,
+                value,
+                raw,
+                if (0..=1).contains(&raw) {
+                    ""
+                } else {
+                    " (異常値)"
+                }
             )?;
         }
         VarRefInteger(s) => {
@@ -250,8 +487,8 @@ fn print_value_label<W: Write>(
             let value = raw as i16;
             writeln!(
                 stdout,
-                " {:<20} #{:04X} {:<8}  (Ref #{:04X}) (Val #{:04X} {:6})",
-                name, adr, s, refer, raw, value
+                " {:<20} #{:04X} {:<8}  Ref: #{:04X} Val: {:6} [#{:04X}]",
+                name, adr, s, refer, value, raw
             )?;
         }
         MemBoolean(offset) => {
@@ -267,8 +504,17 @@ fn print_value_label<W: Write>(
             };
             writeln!(
                 stdout,
-                " {:<20} #{:04X} MEM:#{:04X} (Val #{:04X} {})",
-                name, adr, offset, raw, value
+                " {:<20} #{:04X} MEM:#{:04X}            Val: {:6} [#{:04X}]{}",
+                name,
+                adr,
+                offset,
+                value,
+                raw,
+                if (0..=1).contains(&raw) {
+                    ""
+                } else {
+                    " (異常値)"
+                }
             )?;
         }
         MemInteger(offset) => {
@@ -278,12 +524,50 @@ fn print_value_label<W: Write>(
             let value = raw as i16;
             writeln!(
                 stdout,
-                " {:<20} #{:04X} MEM:#{:04X} (Val #{:04X} {:6})",
-                name, adr, offset, raw, value
+                " {:<20} #{:04X} MEM:#{:04X}            Val: {:6} [#{:04X}]",
+                name, adr, offset, value, raw
             )?;
         }
-        MemRefBoolean(..) => todo!(),
-        MemRefInteger(..) => todo!(),
+        MemRefBoolean(offset) => {
+            let pos = *map.get(&"MEM".to_string()).expect("BUG");
+            let adr = emu.mem[pos] as usize + offset;
+            let refer = emu.mem[adr];
+            let raw = emu.mem[refer as usize];
+            let value = if raw == 0 {
+                "False"
+            } else if raw == 0xFFFF {
+                "True"
+            } else {
+                "????"
+            };
+            writeln!(
+                stdout,
+                " {:<20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: {:6} [#{:04X}]{}",
+                name,
+                adr,
+                offset,
+                refer,
+                value,
+                raw,
+                if (0..=1).contains(&raw) {
+                    ""
+                } else {
+                    " (異常値)"
+                }
+            )?;
+        }
+        MemRefInteger(offset) => {
+            let pos = *map.get(&"MEM".to_string()).expect("BUG");
+            let adr = emu.mem[pos] as usize + offset;
+            let refer = emu.mem[adr];
+            let raw = emu.mem[refer as usize];
+            let value = raw as i16;
+            writeln!(
+                stdout,
+                " {:<20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: {:6} [#{:04X}]",
+                name, adr, offset, refer, value, raw
+            )?;
+        }
     }
     Ok(())
 }
@@ -621,6 +905,8 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 指定したBASICプログラムの変数名と対応するラベルとアドレスと値を表示する
     list-files
                 読み込んだソースファイルの一覧を表示する
+    list-code [<LENGTH> [<ADDRESS>]]
+                コードを表示する
     quit
                 テスト実行を中止する
     help <COMMAND_NAME>
@@ -1040,7 +1326,7 @@ impl Emulator {
         let pos = self.last_run_position;
         let op_code = self.mem[pos];
         let adr = self.mem[pos + 1];
-        format!("[#{:04X}] {}", pos, get_op_code_form(op_code, adr))
+        format!("[#{:04X}] {}", pos, get_op_code_form(op_code, Some(adr)))
     }
 
     fn init_to_start(&mut self) {
@@ -1275,7 +1561,7 @@ impl Emulator {
         if op_code_size == 0 {
             return Err(RuntimeError::InvalidOpCode {
                 position: pr,
-                op_code: get_op_code_form(op_code, 0),
+                op_code: get_op_code_form(op_code, None),
             });
         }
 
@@ -1283,7 +1569,7 @@ impl Emulator {
             if !(0..8).contains(&r1) || !(0..8).contains(&r2) {
                 return Err(RuntimeError::InvalidOpCode {
                     position: pr,
-                    op_code: get_op_code_form(op_code, 0),
+                    op_code: get_op_code_form(op_code, None),
                 });
             }
             match (op_code >> 8) & 0xFF {
@@ -1383,7 +1669,7 @@ impl Emulator {
                     if self.stack_pointer >= CALLSTACK_START_POSITION {
                         return Err(RuntimeError::StackEmpty {
                             position: pr,
-                            op_code: get_op_code_form(op_code, 0),
+                            op_code: get_op_code_form(op_code, None),
                         });
                     }
                     let value = self.mem[self.stack_pointer];
@@ -1395,7 +1681,7 @@ impl Emulator {
                     if self.stack_pointer >= CALLSTACK_START_POSITION {
                         return Err(RuntimeError::StackEmpty {
                             position: pr,
-                            op_code: get_op_code_form(op_code, 0),
+                            op_code: get_op_code_form(op_code, None),
                         });
                     }
                     let adr = self.mem[self.stack_pointer] as usize;
@@ -1406,14 +1692,14 @@ impl Emulator {
                         } else {
                             return Err(RuntimeError::AbnormalTermination {
                                 position: pr,
-                                op_code: get_op_code_form(op_code, 0),
+                                op_code: get_op_code_form(op_code, None),
                             });
                         }
                     }
                     if !self.has_asccess_permission(adr) {
                         return Err(RuntimeError::AccessPermissionDenied {
                             position: pr,
-                            op_code: get_op_code_form(op_code, 0),
+                            op_code: get_op_code_form(op_code, None),
                             address: adr,
                         });
                     }
@@ -1425,7 +1711,7 @@ impl Emulator {
                 _ => {
                     return Err(RuntimeError::InvalidOpCode {
                         position: pr,
-                        op_code: get_op_code_form(op_code, 0),
+                        op_code: get_op_code_form(op_code, None),
                     })
                 }
             }
@@ -1440,7 +1726,7 @@ impl Emulator {
         if !(0..8).contains(&r1) || !(0..8).contains(&r2) {
             return Err(RuntimeError::InvalidOpCode {
                 position: pr,
-                op_code: get_op_code_form(op_code, adr),
+                op_code: get_op_code_form(op_code, Some(adr)),
             });
         }
 
@@ -1540,7 +1826,7 @@ impl Emulator {
                 if r1 != 0 {
                     return Err(RuntimeError::InvalidOpCode {
                         position: pr,
-                        op_code: get_op_code_form(op_code, adr),
+                        op_code: get_op_code_form(op_code, Some(adr)),
                     });
                 }
                 let value = adr.wrapping_add(if r2 == 0 {
@@ -1552,7 +1838,7 @@ impl Emulator {
                 if sp < self.mem.len() - CALLSTACK_MAX_SIZE {
                     return Err(RuntimeError::StackOverflow {
                         position: pr,
-                        op_code: get_op_code_form(op_code, adr),
+                        op_code: get_op_code_form(op_code, Some(adr)),
                         stack_pointer: self.stack_pointer,
                     });
                 }
@@ -1565,7 +1851,7 @@ impl Emulator {
                 if r1 != 0 {
                     return Err(RuntimeError::InvalidOpCode {
                         position: pr,
-                        op_code: get_op_code_form(op_code, adr),
+                        op_code: get_op_code_form(op_code, Some(adr)),
                     });
                 }
                 let value = adr.wrapping_add(if r2 == 0 {
@@ -1580,7 +1866,7 @@ impl Emulator {
                     if !self.has_asccess_permission(len) {
                         return Err(RuntimeError::AccessPermissionDenied {
                             position: pr,
-                            op_code: get_op_code_form(op_code, adr),
+                            op_code: get_op_code_form(op_code, Some(adr)),
                             address: len,
                         });
                     }
@@ -1598,7 +1884,7 @@ impl Emulator {
                                 if !self.has_asccess_permission(pos + i) {
                                     return Err(RuntimeError::AccessPermissionDenied {
                                         position: pr,
-                                        op_code: get_op_code_form(op_code, adr),
+                                        op_code: get_op_code_form(op_code, Some(adr)),
                                         address: pos + i,
                                     });
                                 }
@@ -1613,7 +1899,7 @@ impl Emulator {
                     if !self.has_asccess_permission(len) {
                         return Err(RuntimeError::AccessPermissionDenied {
                             position: pr,
-                            op_code: get_op_code_form(op_code, adr),
+                            op_code: get_op_code_form(op_code, Some(adr)),
                             address: len,
                         });
                     }
@@ -1623,7 +1909,7 @@ impl Emulator {
                         if !self.has_asccess_permission(pos + i) {
                             return Err(RuntimeError::AccessPermissionDenied {
                                 position: pr,
-                                op_code: get_op_code_form(op_code, adr),
+                                op_code: get_op_code_form(op_code, Some(adr)),
                                 address: pos + i,
                             });
                         }
@@ -1660,7 +1946,7 @@ impl Emulator {
                 if r1 != 0 || r2 != 0 {
                     return Err(RuntimeError::InvalidOpCode {
                         position: pr,
-                        op_code: get_op_code_form(op_code, adr),
+                        op_code: get_op_code_form(op_code, Some(adr)),
                     });
                 }
                 self.basic_step = Some(adr as usize);
@@ -1680,7 +1966,7 @@ impl Emulator {
         if !self.has_asccess_permission(access) {
             return Err(RuntimeError::AccessPermissionDenied {
                 position: pr,
-                op_code: get_op_code_form(op_code, adr),
+                op_code: get_op_code_form(op_code, Some(adr)),
                 address: access,
             });
         }
@@ -1792,7 +2078,7 @@ impl Emulator {
         if r1 != 0 {
             return Err(RuntimeError::InvalidOpCode {
                 position: pr,
-                op_code: get_op_code_form(op_code, adr),
+                op_code: get_op_code_form(op_code, Some(adr)),
             });
         }
 
@@ -1837,7 +2123,7 @@ impl Emulator {
                 if sp < self.mem.len() - CALLSTACK_MAX_SIZE {
                     return Err(RuntimeError::StackOverflow {
                         position: pr,
-                        op_code: get_op_code_form(op_code, adr),
+                        op_code: get_op_code_form(op_code, Some(adr)),
                         stack_pointer: self.stack_pointer,
                     });
                 }
@@ -1850,7 +2136,7 @@ impl Emulator {
                 // UNKNOWN CODE
                 return Err(RuntimeError::InvalidOpCode {
                     position: pr,
-                    op_code: get_op_code_form(op_code, adr),
+                    op_code: get_op_code_form(op_code, Some(adr)),
                 });
             }
         }
@@ -2411,78 +2697,139 @@ impl Emulator {
     }
 }
 
-fn get_op_code_form(op_code: u16, adr: u16) -> String {
+fn get_op_code_form(op_code: u16, adr: Option<u16>) -> String {
     let r1 = (op_code >> 4) & 0xF;
     let r2 = op_code & 0xF;
-    match (op_code >> 8) & 0xFF {
-        0x14 => format!("#{:04X}: LD    GR{},GR{}", op_code, r1, r2),
-        0x24 => format!("#{:04X}: ADDA  GR{},GR{}", op_code, r1, r2),
-        0x26 => format!("#{:04X}: ADDL  GR{},GR{}", op_code, r1, r2),
-        0x25 => format!("#{:04X}: SUBA  GR{},GR{}", op_code, r1, r2),
-        0x27 => format!("#{:04X}: SUBL  GR{},GR{}", op_code, r1, r2),
-        0x34 => format!("#{:04X}: AND   GR{},GR{}", op_code, r1, r2),
-        0x35 => format!("#{:04X}: OR    GR{},GR{}", op_code, r1, r2),
-        0x36 => format!("#{:04X}: XOR   GR{},GR{}", op_code, r1, r2),
-        0x44 => format!("#{:04X}: CPA   GR{},GR{}", op_code, r1, r2),
-        0x45 => format!("#{:04X}: CPL   GR{},GR{}", op_code, r1, r2),
-        0x81 => format!("#{:04X}: RET", op_code),
-        0x00 => format!("#{:04X}: NOP", op_code),
-        0x71 => format!("#{:04X}: POP   GR{}", op_code, r1),
-        0xE0 => format!("#{:04X}: DEBUGBASICSTEP {}", op_code, adr),
-        code if r2 == 0 => match code {
-            0x12 => format!("#{:04X}: LAD   GR{},#{:04X}", op_code, r1, adr),
-            0x70 => format!("#{:04X}: PUSH  #{:04X}", op_code, adr),
-            0xF0 => format!("#{:04X}: SVC   #{:04X}", op_code, adr),
-            0x10 => format!("#{:04X}: LD    GR{},#{:04X}", op_code, r1, adr),
-            0x11 => format!("#{:04X}: ST    GR{},#{:04X}", op_code, r1, adr),
-            0x20 => format!("#{:04X}: ADDA  GR{},#{:04X}", op_code, r1, adr),
-            0x22 => format!("#{:04X}: ADDL  GR{},#{:04X}", op_code, r1, adr),
-            0x21 => format!("#{:04X}: SUBA  GR{},#{:04X}", op_code, r1, adr),
-            0x23 => format!("#{:04X}: SUBL  GR{},#{:04X}", op_code, r1, adr),
-            0x30 => format!("#{:04X}: AND   GR{},#{:04X}", op_code, r1, adr),
-            0x31 => format!("#{:04X}: OR    GR{},#{:04X}", op_code, r1, adr),
-            0x32 => format!("#{:04X}: XOR   GR{},#{:04X}", op_code, r1, adr),
-            0x40 => format!("#{:04X}: CPA   GR{},#{:04X}", op_code, r1, adr),
-            0x41 => format!("#{:04X}: CPL   GR{},#{:04X}", op_code, r1, adr),
-            0x50 => format!("#{:04X}: SLA   GR{},#{:04X}", op_code, r1, adr),
-            0x51 => format!("#{:04X}: SRA   GR{},#{:04X}", op_code, r1, adr),
-            0x52 => format!("#{:04X}: SLL   GR{},#{:04X}", op_code, r1, adr),
-            0x53 => format!("#{:04X}: SRL   GR{},#{:04X}", op_code, r1, adr),
-            0x65 => format!("#{:04X}: JPL   #{:04X}", op_code, adr),
-            0x61 => format!("#{:04X}: JMI   #{:04X}", op_code, adr),
-            0x62 => format!("#{:04X}: JNZ   #{:04X}", op_code, adr),
-            0x63 => format!("#{:04X}: JZE   #{:04X}", op_code, adr),
-            0x66 => format!("#{:04X}: JOV   #{:04X}", op_code, adr),
-            0x64 => format!("#{:04X}: JUMP  #{:04X}", op_code, adr),
-            0x80 => format!("#{:04X}: CALL  #{:04X}", op_code, adr),
-            _ => format!("#{:04X}: UNKNOWN", op_code),
-        },
-        0x12 => format!("#{:04X}: LAD   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x70 => format!("#{:04X}: PUSH  #{:04X},GR{}", op_code, adr, r2),
-        0xF0 => format!("#{:04X}: SVC   #{:04X},GR{}", op_code, adr, r2),
-        0x10 => format!("#{:04X}: LD    GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x11 => format!("#{:04X}: ST    GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x20 => format!("#{:04X}: ADDA  GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x22 => format!("#{:04X}: ADDL  GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x21 => format!("#{:04X}: SUBA  GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x23 => format!("#{:04X}: SUBL  GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x30 => format!("#{:04X}: AND   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x31 => format!("#{:04X}: OR    GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x32 => format!("#{:04X}: XOR   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x40 => format!("#{:04X}: CPA   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x41 => format!("#{:04X}: CPL   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x50 => format!("#{:04X}: SLA   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x51 => format!("#{:04X}: SRA   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x52 => format!("#{:04X}: SLL   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x53 => format!("#{:04X}: SRL   GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x65 => format!("#{:04X}: JPL   #{:04X},GR{}", op_code, adr, r2),
-        0x61 => format!("#{:04X}: JMI   #{:04X},GR{}", op_code, adr, r2),
-        0x62 => format!("#{:04X}: JNZ   #{:04X},GR{}", op_code, adr, r2),
-        0x63 => format!("#{:04X}: JZE   #{:04X},GR{}", op_code, adr, r2),
-        0x66 => format!("#{:04X}: JOV   #{:04X},GR{}", op_code, adr, r2),
-        0x64 => format!("#{:04X}: JUMP  #{:04X},GR{}", op_code, adr, r2),
-        0x80 => format!("#{:04X}: CALL  #{:04X},GR{}", op_code, adr, r2),
-        _ => format!("#{:04X}: UNKNOWN", op_code),
+    if !(0..8).contains(&r1) || !(0..8).contains(&r2) {
+        if let Some(adr) = adr {
+            return format!("[#{:04X} #{:04X}] UNKNOWN", op_code, adr);
+        } else {
+            return format!("[#{:04X}      ] UNKNOWN", op_code);
+        }
+    }
+    if let Some(adr) = adr {
+        match (op_code >> 8) & 0xFF {
+            0xE0 => format!("[#{0:04X} #{1:04X}] DEBUGBASICSTEP {1}", op_code, adr),
+            code if r2 == 0 => match code {
+                0x12 => format!("[#{0:04X} #{2:04X}] LAD   GR{1},#{2:04X}", op_code, r1, adr),
+                0x70 => format!("[#{0:04X} #{1:04X}] PUSH  #{1:04X}", op_code, adr),
+                0xF0 => format!("[#{0:04X} #{1:04X}] SVC   #{1:04X}", op_code, adr),
+                0x10 => format!("[#{0:04X} #{2:04X}] LD    GR{1},#{2:04X}", op_code, r1, adr),
+                0x11 => format!("[#{0:04X} #{2:04X}] ST    GR{1},#{2:04X}", op_code, r1, adr),
+                0x20 => format!("[#{0:04X} #{2:04X}] ADDA  GR{1},#{2:04X}", op_code, r1, adr),
+                0x22 => format!("[#{0:04X} #{2:04X}] ADDL  GR{1},#{2:04X}", op_code, r1, adr),
+                0x21 => format!("[#{0:04X} #{2:04X}] SUBA  GR{1},#{2:04X}", op_code, r1, adr),
+                0x23 => format!("[#{0:04X} #{2:04X}] SUBL  GR{1},#{2:04X}", op_code, r1, adr),
+                0x30 => format!("[#{0:04X} #{2:04X}] AND   GR{1},#{2:04X}", op_code, r1, adr),
+                0x31 => format!("[#{0:04X} #{2:04X}] OR    GR{1},#{2:04X}", op_code, r1, adr),
+                0x32 => format!("[#{0:04X} #{2:04X}] XOR   GR{1},#{2:04X}", op_code, r1, adr),
+                0x40 => format!("[#{0:04X} #{2:04X}] CPA   GR{1},#{2:04X}", op_code, r1, adr),
+                0x41 => format!("[#{0:04X} #{2:04X}] CPL   GR{1},#{2:04X}", op_code, r1, adr),
+                0x50 => format!("[#{0:04X} #{2:04X}] SLA   GR{1},#{2:04X}", op_code, r1, adr),
+                0x51 => format!("[#{0:04X} #{2:04X}] SRA   GR{1},#{2:04X}", op_code, r1, adr),
+                0x52 => format!("[#{0:04X} #{2:04X}] SLL   GR{1},#{2:04X}", op_code, r1, adr),
+                0x53 => format!("[#{0:04X} #{2:04X}] SRL   GR{1},#{2:04X}", op_code, r1, adr),
+                0x65 => format!("[#{0:04X} #{1:04X}] JPL   #{1:04X}", op_code, adr),
+                0x61 => format!("[#{0:04X} #{1:04X}] JMI   #{1:04X}", op_code, adr),
+                0x62 => format!("[#{0:04X} #{1:04X}] JNZ   #{1:04X}", op_code, adr),
+                0x63 => format!("[#{0:04X} #{1:04X}] JZE   #{1:04X}", op_code, adr),
+                0x66 => format!("[#{0:04X} #{1:04X}] JOV   #{1:04X}", op_code, adr),
+                0x64 => format!("[#{0:04X} #{1:04X}] JUMP  #{1:04X}", op_code, adr),
+                0x80 => format!("[#{0:04X} #{1:04X}] CALL  #{1:04X}", op_code, adr),
+                _ => format!("[#{:04X} #{:04X}] UNKNOWN", op_code, adr),
+            },
+            0x12 => format!(
+                "[#{0:04X} #{2:04X}] LAD   GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x70 => format!("[#{0:04X} #{1:04X}] PUSH  #{1:04X},GR{2}", op_code, adr, r2),
+            0xF0 => format!("[#{0:04X} #{1:04X}] SVC   #{1:04X},GR{2}", op_code, adr, r2),
+            0x10 => format!(
+                "[#{0:04X} #{2:04X}] LD    GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x11 => format!(
+                "[#{0:04X} #{2:04X}] ST    GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x20 => format!(
+                "[#{0:04X} #{2:04X}] ADDA  GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x22 => format!(
+                "[#{0:04X} #{2:04X}] ADDL  GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x21 => format!(
+                "[#{0:04X} #{2:04X}] SUBA  GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x23 => format!(
+                "[#{0:04X} #{2:04X}] SUBL  GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x30 => format!(
+                "[#{0:04X} #{2:04X}] AND   GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x31 => format!(
+                "[#{0:04X} #{2:04X}] OR    GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x32 => format!(
+                "[#{0:04X} #{2:04X}] XOR   GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x40 => format!(
+                "[#{0:04X} #{2:04X}] CPA   GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x41 => format!(
+                "[#{0:04X} #{2:04X}] CPL   GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x50 => format!(
+                "[#{0:04X} #{2:04X}] SLA   GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x51 => format!(
+                "[#{0:04X} #{2:04X}] SRA   GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x52 => format!(
+                "[#{0:04X} #{2:04X}] SLL   GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x53 => format!(
+                "[#{0:04X} #{2:04X}] SRL   GR{1},#{2:04X},GR{3}",
+                op_code, r1, adr, r2
+            ),
+            0x65 => format!("[#{0:04X} #{1:04X}] JPL   #{1:04X},GR{2}", op_code, adr, r2),
+            0x61 => format!("[#{0:04X} #{1:04X}] JMI   #{1:04X},GR{2}", op_code, adr, r2),
+            0x62 => format!("[#{0:04X} #{1:04X}] JNZ   #{1:04X},GR{2}", op_code, adr, r2),
+            0x63 => format!("[#{0:04X} #{1:04X}] JZE   #{1:04X},GR{2}", op_code, adr, r2),
+            0x66 => format!("[#{0:04X} #{1:04X}] JOV   #{1:04X},GR{2}", op_code, adr, r2),
+            0x64 => format!("[#{0:04X} #{1:04X}] JUMP  #{1:04X},GR{2}", op_code, adr, r2),
+            0x80 => format!("[#{0:04X} #{1:04X}] CALL  #{1:04X},GR{2}", op_code, adr, r2),
+            _ => format!("[#{:04X} #{:04X}] UNKNOWN", op_code, adr),
+        }
+    } else {
+        match (op_code >> 8) & 0xFF {
+            0x14 => format!("[#{:04X}      ] LD    GR{},GR{}", op_code, r1, r2),
+            0x24 => format!("[#{:04X}      ] ADDA  GR{},GR{}", op_code, r1, r2),
+            0x26 => format!("[#{:04X}      ] ADDL  GR{},GR{}", op_code, r1, r2),
+            0x25 => format!("[#{:04X}      ] SUBA  GR{},GR{}", op_code, r1, r2),
+            0x27 => format!("[#{:04X}      ] SUBL  GR{},GR{}", op_code, r1, r2),
+            0x34 => format!("[#{:04X}      ] AND   GR{},GR{}", op_code, r1, r2),
+            0x35 => format!("[#{:04X}      ] OR    GR{},GR{}", op_code, r1, r2),
+            0x36 => format!("[#{:04X}      ] XOR   GR{},GR{}", op_code, r1, r2),
+            0x44 => format!("[#{:04X}      ] CPA   GR{},GR{}", op_code, r1, r2),
+            0x45 => format!("[#{:04X}      ] CPL   GR{},GR{}", op_code, r1, r2),
+            0x81 => format!("[#{:04X}      ] RET", op_code),
+            0x00 => format!("[#{:04X}      ] NOP", op_code),
+            0x71 => format!("[#{:04X}      ] POP   GR{}", op_code, r1),
+            _ => format!("[#{:04X}      ] UNKNOWN", op_code),
+        }
     }
 }
 
