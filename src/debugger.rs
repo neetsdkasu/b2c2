@@ -4,7 +4,7 @@ use crate::jis_x_201;
 use crate::parser;
 use crate::stat;
 use crate::Flags;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::fs;
 use std::io::{self, BufRead, Write};
@@ -53,30 +53,67 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
         }
     }
 
-    match interactive_before_start(&mut emu, &mut stdin, &mut stdout) {
-        Ok(0) => {}
-        Ok(99) => return Ok(0),
-        result => return result,
-    }
-
     emu.init_to_start();
 
-    for _ in 0..10000000 {
-        match emu.step_through_code(&mut stdin, &mut stdout) {
-            Ok(_) => {}
-            Err(RuntimeError::IoError(error)) => return Err(error),
-            Err(error) => {
-                writeln!(stdout, "{:?}", error)?;
-                break;
+    let mut err_status: Option<RuntimeError> = None;
+
+    loop {
+        writeln!(stdout, "Steps: {}", emu.step_count)?;
+        writeln!(stdout, "Last Code")?;
+        let lp = emu.last_run_position;
+        let op_code = emu.mem[lp];
+        match get_op_code_size(op_code) {
+            2 => {
+                let adr = emu.mem[lp + 1];
+                let s = get_op_code_form(op_code, Some(adr));
+                writeln!(stdout, " #{:04X}: {}", lp, s)?;
+            }
+            _ => {
+                let s = get_op_code_form(op_code, None);
+                writeln!(stdout, " #{:04X}: {}", lp, s)?;
+            }
+        }
+        if let Some(err) = err_status.as_ref() {
+            writeln!(stdout, "Program Status")?;
+            writeln!(stdout, " {:?}", err)?;
+        } else {
+            writeln!(stdout, "Next Code")?;
+            let pr = emu.program_register;
+            let op_code = emu.mem[pr];
+            match get_op_code_size(op_code) {
+                2 => {
+                    let adr = emu.mem[pr + 1];
+                    let s = get_op_code_form(op_code, Some(adr));
+                    writeln!(stdout, " #{:04X}: {}", pr, s)?;
+                }
+                _ => {
+                    let s = get_op_code_form(op_code, None);
+                    writeln!(stdout, " #{:04X}: {}", pr, s)?;
+                }
+            }
+        }
+
+        show_reg(&emu, &mut stdout)?;
+
+        match interactive(&mut emu, &mut stdin, &mut stdout) {
+            Ok(0) => {}
+            Ok(99) => return Ok(0),
+            result => return result,
+        }
+
+        if err_status.is_none() {
+            match emu.step_through_code(&mut stdin, &mut stdout) {
+                Ok(_) => {}
+                Err(RuntimeError::IoError(error)) => return Err(error),
+                Err(error) => {
+                    err_status = Some(error);
+                }
             }
         }
     }
-    writeln!(stdout, "TOTAL STEPS: {}", emu.step_count)?;
-
-    Ok(0)
 }
 
-fn interactive_before_start<R: BufRead, W: Write>(
+fn interactive<R: BufRead, W: Write>(
     emu: &mut Emulator,
     stdin: &mut R,
     stdout: &mut W,
@@ -146,29 +183,27 @@ fn interactive_before_start<R: BufRead, W: Write>(
     }
 }
 
+fn is_valid_boolean(v: u16) -> bool {
+    v == 0 || v == 0xFFFF
+}
+
 fn list_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let _ = param;
-    let mut pos = BEGIN_OF_PROGRAM;
+    let mut pos = emu.program_register;
     for _ in 0..20 {
         let op_code = emu.mem[pos];
         match get_op_code_size(op_code) {
-            0 => {
-                let s = get_op_code_form(op_code, None);
-                writeln!(stdout, " #{:04X}: {}", pos, s)?;
-                pos += 1;
-            }
-            1 => {
-                let s = get_op_code_form(op_code, None);
-                writeln!(stdout, " #{:04X}: {}", pos, s)?;
-                pos += 1;
-            }
             2 => {
                 let adr = emu.mem[pos + 1];
                 let s = get_op_code_form(op_code, Some(adr));
                 writeln!(stdout, " #{:04X}: {}", pos, s)?;
                 pos += 2;
             }
-            _ => unreachable!("BUG"),
+            _ => {
+                let s = get_op_code_form(op_code, None);
+                writeln!(stdout, " #{:04X}: {}", pos, s)?;
+                pos += 1;
+            }
         }
     }
     Ok(())
@@ -205,28 +240,68 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             writeln!(stdout, "変数情報が見つかりませんでした")?;
         }
         Some((key, info)) => {
-            for (name, (label, _)) in info.label_set.argument_labels.iter() {
+            for (name, (label, _)) in info
+                .label_set
+                .argument_labels
+                .iter()
+                .collect::<BTreeMap<_, _>>()
+            {
                 print_value_label(emu, stdout, key, name, label)?;
             }
-            for (name, (label, _)) in info.label_set.str_argument_labels.iter() {
+            for (name, (label, _)) in info
+                .label_set
+                .str_argument_labels
+                .iter()
+                .collect::<BTreeMap<_, _>>()
+            {
                 print_str_label(emu, stdout, key, name, label)?;
             }
-            for (name, (label, _)) in info.label_set.arr_argument_labels.iter() {
+            for (name, (label, _)) in info
+                .label_set
+                .arr_argument_labels
+                .iter()
+                .collect::<BTreeMap<_, _>>()
+            {
                 print_arr_label(emu, stdout, key, name, label)?;
             }
-            for (name, label) in info.label_set.bool_var_labels.iter() {
+            for (name, label) in info
+                .label_set
+                .bool_var_labels
+                .iter()
+                .collect::<BTreeMap<_, _>>()
+            {
                 print_value_label(emu, stdout, key, name, label)?;
             }
-            for (name, label) in info.label_set.int_var_labels.iter() {
+            for (name, label) in info
+                .label_set
+                .int_var_labels
+                .iter()
+                .collect::<BTreeMap<_, _>>()
+            {
                 print_value_label(emu, stdout, key, name, label)?;
             }
-            for (name, label) in info.label_set.str_var_labels.iter() {
+            for (name, label) in info
+                .label_set
+                .str_var_labels
+                .iter()
+                .collect::<BTreeMap<_, _>>()
+            {
                 print_str_label(emu, stdout, key, name, label)?;
             }
-            for (name, label) in info.label_set.bool_arr_labels.iter() {
+            for (name, label) in info
+                .label_set
+                .bool_arr_labels
+                .iter()
+                .collect::<BTreeMap<_, _>>()
+            {
                 print_arr_label(emu, stdout, key, name, label)?;
             }
-            for (name, label) in info.label_set.int_arr_labels.iter() {
+            for (name, label) in info
+                .label_set
+                .int_arr_labels
+                .iter()
+                .collect::<BTreeMap<_, _>>()
+            {
                 print_arr_label(emu, stdout, key, name, label)?;
             }
         }
@@ -262,7 +337,7 @@ fn print_arr_label<W: Write>(
                     }
                     t.push_str(&format!("#{:04X} ", v));
                 }
-                if !(0..=1).contains(&v) {
+                if !is_valid_boolean(v) {
                     broken = true;
                 }
             }
@@ -361,7 +436,7 @@ fn print_str_label<W: Write>(
                 len,
                 if broken { " (異常値)" } else { "" }
             )?;
-            let adr = *map.get(&label.len).expect("BUG");
+            let adr = *map.get(&label.pos).expect("BUG");
             let mut s = String::new();
             let mut t = String::new();
             for i in 0..len.min(8) as usize {
@@ -436,7 +511,7 @@ fn print_value_label<W: Write>(
                 s,
                 value,
                 raw,
-                if (0..=1).contains(&raw) {
+                if is_valid_boolean(raw) {
                     ""
                 } else {
                     " (異常値)"
@@ -473,7 +548,7 @@ fn print_value_label<W: Write>(
                 refer,
                 value,
                 raw,
-                if (0..=1).contains(&raw) {
+                if is_valid_boolean(raw) {
                     ""
                 } else {
                     " (異常値)"
@@ -510,7 +585,7 @@ fn print_value_label<W: Write>(
                 offset,
                 value,
                 raw,
-                if (0..=1).contains(&raw) {
+                if is_valid_boolean(raw) {
                     ""
                 } else {
                     " (異常値)"
@@ -549,7 +624,7 @@ fn print_value_label<W: Write>(
                 refer,
                 value,
                 raw,
-                if (0..=1).contains(&raw) {
+                if is_valid_boolean(raw) {
                     ""
                 } else {
                     " (異常値)"
@@ -639,9 +714,10 @@ fn show_reg<W: Write>(emu: &Emulator, stdout: &mut W) -> io::Result<()> {
     writeln!(stdout)?;
     writeln!(
         stdout,
-        "PR:  #{:04}         SP:  #{:04X}         FR:  (OF: {}, SF: {}, ZF: {})",
+        "PR:  #{:04X}         SP:  #{:04X}[{:6}] FR:  (OF: {}, SF: {}, ZF: {})",
         emu.program_register,
         emu.stack_pointer,
+        CALLSTACK_START_POSITION - emu.stack_pointer,
         if emu.overflow_flag { '1' } else { '0' },
         if emu.sign_flag { '1' } else { '0' },
         if emu.zero_flag { '1' } else { '0' }
@@ -1322,13 +1398,6 @@ impl Emulator {
         }
     }
 
-    fn last_run(&self) -> String {
-        let pos = self.last_run_position;
-        let op_code = self.mem[pos];
-        let adr = self.mem[pos + 1];
-        format!("[#{:04X}] {}", pos, get_op_code_form(op_code, Some(adr)))
-    }
-
     fn init_to_start(&mut self) {
         let position = self
             .start_point
@@ -1686,6 +1755,7 @@ impl Emulator {
                     }
                     let adr = self.mem[self.stack_pointer] as usize;
                     self.stack_pointer += 1;
+                    self.program_register = adr;
                     if adr == INITIAL_PROGRAM_REGISTER {
                         if self.stack_pointer == CALLSTACK_START_POSITION {
                             return Err(RuntimeError::NormalTermination { position: pr });
@@ -1703,7 +1773,6 @@ impl Emulator {
                             address: adr,
                         });
                     }
-                    self.program_register = adr;
                 }
                 0x00 if r1 == 0 && r2 == 0 => {
                     // NOP
@@ -1870,7 +1939,7 @@ impl Emulator {
                             address: len,
                         });
                     }
-                    write!(stdout, "? ")?;
+                    write!(stdout, "[IN] ? ")?;
                     stdout.flush()?;
                     let mut line = String::new();
                     match stdin.read_line(&mut line)? {
@@ -1916,7 +1985,7 @@ impl Emulator {
                         let ch = (self.mem[pos + i] & 0xFF) as u8;
                         line.push(jis_x_201::convert_to_char(ch, true));
                     }
-                    writeln!(stdout, "{}", line)?;
+                    writeln!(stdout, "[OUT] {}", line)?;
                     stdout.flush()?;
                 }
                 // SVC後のGR,FRは不定なので、値を保持しないという仕様にした(雑)
