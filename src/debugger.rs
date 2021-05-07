@@ -4,7 +4,6 @@ use crate::jis_x_201;
 use crate::parser;
 use crate::stat;
 use crate::Flags;
-use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::fs;
@@ -94,6 +93,8 @@ fn interactive_before_start<R: BufRead, W: Write>(
         "set-reg",
         "set-mem",
         "set-mem-fill",
+        "load-reg",
+        "copy-mem",
         "quit",
     ]
     .join(" ");
@@ -116,15 +117,16 @@ fn interactive_before_start<R: BufRead, W: Write>(
         let mut cmd_and_param = line.splitn(2, ' ').map(|s| s.trim());
         let cmd = cmd_and_param.next().unwrap();
         match cmd {
+            "run" => return Ok(0),
             "help" => {
                 show_command_help_before_start(cmd_and_param.next(), stdout)?;
             }
-            "run" => return Ok(0),
             "quit" => {
                 writeln!(stdout, "テスト実行を中止します")?;
                 return Ok(99);
             }
             "show-reg" => show_reg(emu, stdout)?,
+            "show-mem" => todo!(),
             "show-labels" => show_label(emu, stdout, cmd_and_param.next())?,
             "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
             "list-files" => list_files(emu, stdout)?,
@@ -132,6 +134,10 @@ fn interactive_before_start<R: BufRead, W: Write>(
                 let msg = set_reg(emu, cmd_and_param.next());
                 writeln!(stdout, "{}", msg)?;
             }
+            "set-mem" => todo!(),
+            "set-mem-fill" => todo!(),
+            "load-reg" => todo!(),
+            "copy-mem" => todo!(),
             _ => {
                 writeln!(stdout, "コマンドが正しくありません")?;
             }
@@ -429,60 +435,59 @@ impl<'a> casl2::Tokenizer<'a> {
     }
 }
 
+enum Value {
+    Int(u16),
+    Str(String),
+}
+
 fn get_single_value(
     emu: &mut Emulator,
     tokenizer: &mut casl2::Tokenizer<'_>,
-) -> Result<u16, Cow<'static, str>> {
+) -> Result<Value, String> {
     match tokenizer.extended_label()? {
         Some(ExtendedLabel::GlobalLabel(label)) => match emu.program_labels.get(&label) {
-            Some(adr) => Ok(*adr as u16),
-            None => Err(Cow::Owned(format!("ラベル{}が見つかりません", label))),
+            Some(adr) => Ok(Value::Int(*adr as u16)),
+            None => Err(format!("ラベル{}が見つかりません", label)),
         },
         Some(ExtendedLabel::GlobalLabelOffset(label, offset)) => {
             match emu.program_labels.get(&label) {
                 Some(adr) => match (*adr as u16).checked_add(offset) {
-                    Some(adr) => Ok(adr),
-                    None => Err(Cow::Owned(format!(
-                        "{}:#{:04X}がオーバーフローしました",
-                        label, offset
-                    ))),
+                    Some(adr) => Ok(Value::Int(adr)),
+                    None => Err(format!("{}:#{:04X}がオーバーフローしました", label, offset)),
                 },
-                None => Err(Cow::Owned(format!("ラベル{}が見つかりません", label))),
+                None => Err(format!("ラベル{}が見つかりません", label)),
             }
         }
         Some(ExtendedLabel::GlobalLabelOffsetRegister(label, reg)) => {
             let offset = emu.general_registers[reg as usize];
             match emu.program_labels.get(&label) {
                 Some(adr) => match (*adr as u16).checked_add(offset) {
-                    Some(adr) => Ok(adr),
-                    None => Err(Cow::Owned(format!(
-                        "{}:{}がオーバーフローしました",
-                        label, reg
-                    ))),
+                    Some(adr) => Ok(Value::Int(adr)),
+                    None => Err(format!("{}:{}がオーバーフローしました", label, reg)),
                 },
-                None => Err(Cow::Owned(format!("ラベル{}が見つかりません", label))),
+                None => Err(format!("ラベル{}が見つかりません", label)),
             }
         }
         Some(ExtendedLabel::LocalLabel(glabel, llabel)) => match emu.local_labels.get(&glabel) {
             Some(label_map) => match label_map.get(&llabel) {
-                Some(adr) => Ok(*adr as u16),
-                None => Err(Cow::Owned(format!("ラベル{}が見つかりません", llabel))),
+                Some(adr) => Ok(Value::Int(*adr as u16)),
+                None => Err(format!("ラベル{}が見つかりません", llabel)),
             },
-            None => Err(Cow::Owned(format!("ラベル{}が見つかりません", glabel))),
+            None => Err(format!("ラベル{}が見つかりません", glabel)),
         },
         Some(ExtendedLabel::LocalLabelOffset(glabel, llabel, offset)) => {
             match emu.local_labels.get(&glabel) {
                 Some(label_map) => match label_map.get(&llabel) {
                     Some(adr) => match (*adr as u16).checked_add(offset) {
-                        Some(adr) => Ok(adr),
-                        None => Err(Cow::Owned(format!(
+                        Some(adr) => Ok(Value::Int(adr)),
+                        None => Err(format!(
                             "{}:{}:#{:04X}がオーバーフローしました",
                             glabel, llabel, offset
-                        ))),
+                        )),
                     },
-                    None => Err(Cow::Owned(format!("ラベル{}が見つかりません", llabel))),
+                    None => Err(format!("ラベル{}が見つかりません", llabel)),
                 },
-                None => Err(Cow::Owned(format!("ラベル{}が見つかりません", glabel))),
+                None => Err(format!("ラベル{}が見つかりません", glabel)),
             }
         }
         Some(ExtendedLabel::LocalLabelOffsetRegister(glabel, llabel, reg)) => {
@@ -490,45 +495,60 @@ fn get_single_value(
             match emu.local_labels.get(&glabel) {
                 Some(label_map) => match label_map.get(&llabel) {
                     Some(adr) => match (*adr as u16).checked_add(offset) {
-                        Some(adr) => Ok(adr),
-                        None => Err(Cow::Owned(format!(
+                        Some(adr) => Ok(Value::Int(adr)),
+                        None => Err(format!(
                             "{}:{}:{}がオーバーフローしました",
                             glabel, llabel, reg
-                        ))),
+                        )),
                     },
-                    None => Err(Cow::Owned(format!("ラベル{}が見つかりません", llabel))),
+                    None => Err(format!("ラベル{}が見つかりません", llabel)),
                 },
-                None => Err(Cow::Owned(format!("ラベル{}が見つかりません", glabel))),
+                None => Err(format!("ラベル{}が見つかりません", glabel)),
             }
         }
         None => {
             let value = match tokenizer.value() {
                 Some(value) => value,
-                None => return Err(Cow::Borrowed("引数が不正です")),
+                None => return Err("引数が不正です".to_string()),
             };
             match value {
                 casl2::Token::Word(_) => unreachable!("BUG"),
-                casl2::Token::Dec(d) => Ok(d as u16),
-                casl2::Token::Hex(h) => Ok(h),
-                casl2::Token::Str(_) => todo!(),
-                casl2::Token::LitDec(_) => todo!(),
-                casl2::Token::LitHex(_) => todo!(),
-                casl2::Token::LitStr(_) => todo!(),
+                casl2::Token::Dec(d) => Ok(Value::Int(d as u16)),
+                casl2::Token::Hex(h) => Ok(Value::Int(h)),
+                casl2::Token::Str(s) => Ok(Value::Str(
+                    jis_x_201::convert_kana_wide_full_to_half(&s)
+                        .chars()
+                        .map(jis_x_201::convert_from_char)
+                        .map(|ch| jis_x_201::convert_to_char(ch, true))
+                        .collect(),
+                )),
+                casl2::Token::LitDec(d) => match emu.make_literal_int(d as u16) {
+                    Ok(pos) => Ok(Value::Int(pos as u16)),
+                    Err(msg) => Err(msg.to_string()),
+                },
+                casl2::Token::LitHex(h) => match emu.make_literal_int(h) {
+                    Ok(pos) => Ok(Value::Int(pos as u16)),
+                    Err(msg) => Err(msg.to_string()),
+                },
+                casl2::Token::LitStr(s) => match emu.make_literal_str(&s) {
+                    Ok(pos) => Ok(Value::Int(pos as u16)),
+                    Err(msg) => Err(msg.to_string()),
+                },
             }
         }
     }
 }
 
-fn set_reg<'a, 'b>(emu: &mut Emulator, param: Option<&'a str>) -> Cow<'b, str> {
+fn set_reg(emu: &mut Emulator, param: Option<&str>) -> String {
     let params = match param {
         Some(param) => param.split_whitespace().collect::<Vec<_>>(),
-        None => return Cow::Borrowed("引数がありません"),
+        None => return "引数がありません".to_string(),
     };
 
     let (reg, value) = if let [reg, value] = params.as_slice() {
         (reg, value)
     } else {
-        return Cow::Borrowed("引数の数が正しくありません");
+        return "引数の数が正しくありません".to_string();
     };
 
     match casl2::Register::try_from(*reg) {
@@ -536,13 +556,38 @@ fn set_reg<'a, 'b>(emu: &mut Emulator, param: Option<&'a str>) -> Cow<'b, str> {
             let mut tokenizer = casl2::Tokenizer::new(value);
             match get_single_value(emu, &mut tokenizer) {
                 Err(msg) => msg,
-                Ok(value) => {
+                Ok(Value::Int(value)) => {
                     emu.general_registers[reg as usize] = value;
-                    Cow::Owned(format!("{}に#{:04X}を設定しました", reg, value))
+                    format!("{}に#{:04X}を設定しました", reg, value)
                 }
+                Ok(Value::Str(s)) => match s.chars().map(jis_x_201::convert_from_char).next() {
+                    Some(ch) => {
+                        emu.general_registers[reg as usize] = ch as u16;
+                        format!("{}に{:04X}を設定しました", reg, ch as u16)
+                    }
+                    None => "空の文字定数は設定できません".to_string(),
+                },
             }
         }
-        Err(_) => todo!(),
+        Err(_) => {
+            let flag = match *value {
+                "0" => false,
+                "1" => true,
+                _ => return "引数が正しくありません".to_string(),
+            };
+            if "OF".eq_ignore_ascii_case(*reg) {
+                emu.overflow_flag = flag;
+                format!("OFに{}を設定しました", value)
+            } else if "SF".eq_ignore_ascii_case(*reg) {
+                emu.sign_flag = flag;
+                format!("SFに{}を設定しました", value)
+            } else if "ZF".eq_ignore_ascii_case(*reg) {
+                emu.zero_flag = flag;
+                format!("ZFに{}を設定しました", value)
+            } else {
+                "引数が正しくありません".to_string()
+            }
+        }
     }
 }
 
@@ -557,11 +602,15 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 stdout,
                 r#"
     set-reg <REGISTER> <VALUE>
-                レジスタに値を設定する
+                値をレジスタに設定する
     set-mem <ADDRESS> <VALUE1>[,<VALUE2>..]
-                メモリの指定アドレスにデータを書き込む
+                値をメモリの指定アドレスに書き込む
     set-mem-fill <ADDRESS> <LENGTH> <VALUE>
                 メモリの指定アドレスから指定の長さ分を指定の値で埋める
+    load-reg <REGISTER> <ADDRESS>
+                メモリの指定アドレスにある値をレジスタに設定する
+    copy-mem <ADDRESS_FROM> <ADDRESS_TO> <LENGTH>
+                メモリのデータをコピーする
     show-reg
                 各レジスタの現在の値を表示する
     show-mem <ADDRESS> <LENGTH>
@@ -582,12 +631,15 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
         }
     };
 
+    let mut explain_consts = false;
+
     if "set-reg".eq_ignore_ascii_case(cmd) {
+        explain_consts = true;
         writeln!(
             stdout,
             r#"
     set-reg <REGISTER> <VALUE>
-                レジスタに値を設定する
+                値をレジスタに設定する
                     REGISTER .. GR0～GR7
                     VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル
                     REGISTER .. OF,SF,ZF
@@ -596,11 +648,12 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
     }
 
     if "set-mem".eq_ignore_ascii_case(cmd) {
+        explain_consts = true;
         writeln!(
             stdout,
             r#"
     set-mem <ADDRESS> <VALUE1>[,<VALUE2>..]
-                メモリの指定アドレスにデータを書き込む
+                値をメモリの指定アドレスに書き込む
                 値を複数列挙した場合はアドレスから連続した領域に書き込まれる
                 値が文字定数の場合は文字数分の連続した領域に書き込まれる
                     ADDRESS  .. 16進定数,アドレス定数
@@ -609,6 +662,7 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
     }
 
     if "set-mem-fill".eq_ignore_ascii_case(cmd) {
+        explain_consts = true;
         writeln!(
             stdout,
             r#"
@@ -620,9 +674,46 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
         )?;
     }
 
-    writeln!(
-        stdout,
-        r#"
+    if "load-reg".eq_ignore_ascii_case(cmd) {
+        todo!();
+    }
+
+    if "copy-mem".eq_ignore_ascii_case(cmd) {
+        todo!();
+    }
+
+    if "show-reg".eq_ignore_ascii_case(cmd) {
+        todo!();
+    }
+
+    if "show-mem".eq_ignore_ascii_case(cmd) {
+        todo!();
+    }
+
+    if "show-labels".eq_ignore_ascii_case(cmd) {
+        todo!();
+    }
+
+    if "show-var".eq_ignore_ascii_case(cmd) {
+        todo!();
+    }
+
+    if "list-files".eq_ignore_ascii_case(cmd) {
+        todo!();
+    }
+
+    if "quit".eq_ignore_ascii_case(cmd) {
+        todo!();
+    }
+
+    if "help".eq_ignore_ascii_case(cmd) {
+        todo!();
+    }
+
+    if explain_consts {
+        writeln!(
+            stdout,
+            r#"
     10進定数
                 -32768　～ 32767
     16進定数
@@ -651,10 +742,9 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
     リテラル
                 10進定数、16進定数、文字定数の頭に=を付けて指定
                 定数格納の領域を確保しそのアドレスを返す
-                    例: =123 =#ABCD ='XYZ'
-
-"#
-    )?;
+                    例: =123 =#ABCD ='XYZ'"#
+        )?;
+    }
 
     Ok(())
 }
@@ -892,6 +982,9 @@ struct Emulator {
     // デバッガコマンドから設定したラベル
     labels_for_debug: HashMap<String, (usize, casl2::Statement)>,
 
+    // デバッガコマンドで生成したリテラル
+    literals_for_debug: HashMap<String, (usize, Value)>,
+
     // 挿入するプログラムの埋め込み開始位置
     compile_pos: usize,
 
@@ -930,6 +1023,7 @@ impl Emulator {
             basic_step: None,
             basic_step_count: 0,
             labels_for_debug: HashMap::new(),
+            literals_for_debug: HashMap::new(),
 
             start_point: None,
             basic_info: HashMap::new(),
@@ -979,11 +1073,11 @@ impl Emulator {
     }
 
     fn enough_remain(&self, len: usize) -> bool {
-        len < self.mem.len() - self.compile_pos - CALLSTACK_MAX_SIZE
+        len < self.mem.len() - CALLSTACK_MAX_SIZE - self.compile_pos
     }
 
     fn has_asccess_permission(&self, pos: usize) -> bool {
-        (BEGIN_OF_PROGRAM..self.compile_pos).contains(&pos)
+        (BEGIN_OF_PROGRAM..self.mem.len() - CALLSTACK_MAX_SIZE).contains(&pos)
     }
 }
 
@@ -1009,6 +1103,49 @@ fn edit_distance(str1: &str, str2: &str) -> usize {
 }
 
 impl Emulator {
+    fn make_literal_int(&mut self, v: u16) -> Result<usize, &str> {
+        let key = v.to_string();
+        if let Some((pos, _)) = self.literals_for_debug.get(&key) {
+            return Ok(*pos);
+        }
+        if !self.enough_remain(1) {
+            return Err("メモリ不足でリテラルを生成できません");
+        }
+        let pos = self.compile_pos;
+        self.mem[pos] = v;
+        self.compile_pos += 1;
+        self.literals_for_debug.insert(key, (pos, Value::Int(v)));
+        Ok(pos)
+    }
+
+    fn make_literal_str(&mut self, s: &str) -> Result<usize, &str> {
+        if s.is_empty() {
+            return Err("空の文字定数のリテラルは生成できません");
+        }
+        let bs = jis_x_201::convert_kana_wide_full_to_half(s)
+            .chars()
+            .map(jis_x_201::convert_from_char)
+            .collect::<Vec<_>>();
+        let s = bs
+            .iter()
+            .map(|ch| jis_x_201::convert_to_char(*ch, true))
+            .collect::<String>();
+        let key = format!("'{}", s);
+        if let Some((pos, _)) = self.literals_for_debug.get(&key) {
+            return Ok(*pos);
+        }
+        if !self.enough_remain(bs.len()) {
+            return Err("メモリ不足でリテラルを生成できません");
+        }
+        let pos = self.compile_pos;
+        for (i, ch) in bs.iter().enumerate() {
+            self.mem[pos + i] = *ch as u16;
+        }
+        self.compile_pos += bs.len();
+        self.literals_for_debug.insert(key, (pos, Value::Str(s)));
+        Ok(pos)
+    }
+
     fn resolve_dummy_code(&mut self, label: String) -> Result<(), String> {
         if !self.enough_remain(1) {
             return Err("メモリ不足でダミープログラムをロードできませんでした".into());
