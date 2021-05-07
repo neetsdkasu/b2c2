@@ -127,7 +127,8 @@ fn interactive<R: BufRead, W: Write>(
         "show-labels",
         "show-var",
         "list-files",
-        "list-code",
+        "dump-code",
+        "dump-mem",
         "set-reg",
         "set-mem",
         "set-mem-fill",
@@ -167,7 +168,6 @@ fn interactive<R: BufRead, W: Write>(
             "show-labels" => show_label(emu, stdout, cmd_and_param.next())?,
             "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
             "list-files" => list_files(emu, stdout)?,
-            "list-code" => list_code(emu, stdout, cmd_and_param.next())?,
             "set-reg" => {
                 let msg = set_reg(emu, cmd_and_param.next());
                 writeln!(stdout, "{}", msg)?;
@@ -176,6 +176,8 @@ fn interactive<R: BufRead, W: Write>(
             "set-mem-fill" => todo!(),
             "load-reg" => todo!(),
             "copy-mem" => todo!(),
+            "dump-code" => dump_code(emu, stdout, cmd_and_param.next())?,
+            "dump-mem" => dump_mem(emu, stdout, cmd_and_param.next())?,
             _ => {
                 writeln!(stdout, "コマンドが正しくありません")?;
             }
@@ -187,21 +189,215 @@ fn is_valid_boolean(v: u16) -> bool {
     v == 0 || v == 0xFFFF
 }
 
-fn list_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
-    let _ = param;
-    let mut pos = emu.program_register;
-    for _ in 0..20 {
+fn dump_mem<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let (adr, size) = match param {
+        None => {
+            let adr = emu.program_register;
+            let size = (adr + 0x80).min(0x10000) - adr;
+            (adr, size)
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let adr = iter.next().unwrap();
+            let size = iter.next();
+            let mut tokenizer = casl2::Tokenizer::new(adr);
+            let adr = if let Some(adr) = tokenizer.hex() {
+                if !tokenizer.rest().trim().is_empty() {
+                    writeln!(stdout, "引数が不正です")?;
+                    return Ok(());
+                }
+                adr as usize
+            } else {
+                match tokenizer.extended_label() {
+                    Ok(Some(label)) => {
+                        if !tokenizer.rest().trim().is_empty() {
+                            writeln!(stdout, "引数が不正です")?;
+                            return Ok(());
+                        }
+                        match label.get_address(emu) {
+                            Ok(adr) => adr,
+                            Err(msg) => {
+                                writeln!(stdout, "{}", msg)?;
+                                return Ok(());
+                            }
+                        }
+                    }
+                    Ok(_) => {
+                        writeln!(stdout, "引数が不正です")?;
+                        return Ok(());
+                    }
+                    Err(msg) => {
+                        writeln!(stdout, "{}", msg)?;
+                        return Ok(());
+                    }
+                }
+            };
+            let size = match size {
+                None => 0x80,
+                Some(s) => {
+                    let mut tokenizer = casl2::Tokenizer::new(s);
+                    if let Some(v) = tokenizer.hex() {
+                        if !tokenizer.rest().trim().is_empty() {
+                            writeln!(stdout, "引数が不正です")?;
+                            return Ok(());
+                        }
+                        v as usize
+                    } else if let Some(v) = tokenizer.integer() {
+                        if !tokenizer.rest().trim().is_empty() {
+                            writeln!(stdout, "引数が不正です")?;
+                            return Ok(());
+                        }
+                        if v > 0 {
+                            v as usize
+                        } else {
+                            writeln!(stdout, "引数が不正です")?;
+                            return Ok(());
+                        }
+                    } else {
+                        writeln!(stdout, "引数が不正です")?;
+                        return Ok(());
+                    }
+                }
+            };
+            if adr + size > 0x10000 {
+                writeln!(stdout, "サイズの指定が不正です")?;
+                return Ok(());
+            }
+            (adr, size)
+        }
+    };
+    let mut pos = adr & (0xFFFF ^ 0x7);
+    write!(stdout, "       ")?;
+    for i in 0..8 {
+        if i == 4 {
+            write!(stdout, " ")?;
+        }
+        write!(stdout, " {:4X}", (pos & 0x8) + i)?;
+    }
+    writeln!(stdout)?;
+    write!(stdout, "       ")?;
+    for i in 0..8 {
+        if i == 4 {
+            write!(stdout, " ")?;
+        }
+        write!(stdout, " {:4X}", ((pos & 0x8) + i) ^ 0x8)?;
+    }
+    writeln!(stdout)?;
+    let mut s = String::new();
+    while pos < adr + size {
+        s.clear();
+        write!(stdout, "#{:04X}: ", pos)?;
+        for i in 0..8 {
+            if i == 4 {
+                write!(stdout, " ")?;
+                s.push(' ');
+            }
+            if (adr..adr + size).contains(&(pos + i)) {
+                let v = emu.mem[pos + i];
+                write!(stdout, " {:04X}", v)?;
+                s.push(jis_x_201::convert_to_char((v >> 8) as u8, true));
+                s.push(jis_x_201::convert_to_char(v as u8, true));
+            } else {
+                write!(stdout, " ....")?;
+                s.push_str("..");
+            }
+        }
+        writeln!(stdout, "   {}", s)?;
+        pos += 8;
+    }
+    Ok(())
+}
+
+fn dump_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let (adr, size) = match param {
+        None => {
+            let adr = emu.program_register;
+            let size = (adr + 0x20).min(0x10000) - adr;
+            (adr, size)
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let adr = iter.next().unwrap();
+            let size = iter.next();
+            let mut tokenizer = casl2::Tokenizer::new(adr);
+            let adr = if let Some(adr) = tokenizer.hex() {
+                if !tokenizer.rest().trim().is_empty() {
+                    writeln!(stdout, "引数が不正です")?;
+                    return Ok(());
+                }
+                adr as usize
+            } else {
+                match tokenizer.extended_label() {
+                    Ok(Some(label)) => {
+                        if !tokenizer.rest().trim().is_empty() {
+                            writeln!(stdout, "引数が不正です")?;
+                            return Ok(());
+                        }
+                        match label.get_address(emu) {
+                            Ok(adr) => adr,
+                            Err(msg) => {
+                                writeln!(stdout, "{}", msg)?;
+                                return Ok(());
+                            }
+                        }
+                    }
+                    Ok(_) => {
+                        writeln!(stdout, "引数が不正です")?;
+                        return Ok(());
+                    }
+                    Err(msg) => {
+                        writeln!(stdout, "{}", msg)?;
+                        return Ok(());
+                    }
+                }
+            };
+            let size = match size {
+                None => 0x20,
+                Some(s) => {
+                    let mut tokenizer = casl2::Tokenizer::new(s);
+                    if let Some(v) = tokenizer.hex() {
+                        if !tokenizer.rest().trim().is_empty() {
+                            writeln!(stdout, "引数が不正です")?;
+                            return Ok(());
+                        }
+                        v as usize
+                    } else if let Some(v) = tokenizer.integer() {
+                        if !tokenizer.rest().trim().is_empty() {
+                            writeln!(stdout, "引数が不正です")?;
+                            return Ok(());
+                        }
+                        if v > 0 {
+                            v as usize
+                        } else {
+                            writeln!(stdout, "引数が不正です")?;
+                            return Ok(());
+                        }
+                    } else {
+                        writeln!(stdout, "引数が不正です")?;
+                        return Ok(());
+                    }
+                }
+            };
+            if adr + size > 0x10000 {
+                writeln!(stdout, "サイズの指定が不正です")?;
+                return Ok(());
+            }
+            (adr, size)
+        }
+    };
+    let mut pos = adr;
+    while pos < adr + size {
         let op_code = emu.mem[pos];
         match get_op_code_size(op_code) {
             2 => {
                 let adr = emu.mem[pos + 1];
                 let s = get_op_code_form(op_code, Some(adr));
-                writeln!(stdout, " #{:04X}: {}", pos, s)?;
+                writeln!(stdout, "#{:04X}:  {}", pos, s)?;
                 pos += 2;
             }
             _ => {
                 let s = get_op_code_form(op_code, None);
-                writeln!(stdout, " #{:04X}: {}", pos, s)?;
+                writeln!(stdout, "#{:04X}:  {}", pos, s)?;
                 pos += 1;
             }
         }
@@ -795,6 +991,70 @@ impl<'a> casl2::Tokenizer<'a> {
     }
 }
 
+impl ExtendedLabel {
+    fn get_address(&self, emu: &Emulator) -> Result<usize, String> {
+        match self {
+            Self::GlobalLabel(label) => match emu.program_labels.get(label) {
+                Some(adr) => Ok(*adr),
+                None => Err(format!("ラベル{}が見つかりません", label)),
+            },
+            Self::GlobalLabelOffset(label, offset) => match emu.program_labels.get(label) {
+                Some(adr) => match (*adr as u16).checked_add(*offset) {
+                    Some(adr) => Ok(adr as usize),
+                    None => Err(format!("{}:#{:04X}がオーバーフローしました", label, offset)),
+                },
+                None => Err(format!("ラベル{}が見つかりません", label)),
+            },
+            Self::GlobalLabelOffsetRegister(label, reg) => {
+                let offset = emu.general_registers[*reg as usize];
+                match emu.program_labels.get(label) {
+                    Some(adr) => match (*adr as u16).checked_add(offset) {
+                        Some(adr) => Ok(adr as usize),
+                        None => Err(format!("{}:{}がオーバーフローしました", label, reg)),
+                    },
+                    None => Err(format!("ラベル{}が見つかりません", label)),
+                }
+            }
+            Self::LocalLabel(glabel, llabel) => match emu.local_labels.get(glabel) {
+                Some(label_map) => match label_map.get(llabel) {
+                    Some(adr) => Ok(*adr),
+                    None => Err(format!("ラベル{}が見つかりません", llabel)),
+                },
+                None => Err(format!("ラベル{}が見つかりません", glabel)),
+            },
+            Self::LocalLabelOffset(glabel, llabel, offset) => match emu.local_labels.get(glabel) {
+                Some(label_map) => match label_map.get(llabel) {
+                    Some(adr) => match (*adr as u16).checked_add(*offset) {
+                        Some(adr) => Ok(adr as usize),
+                        None => Err(format!(
+                            "{}:{}:#{:04X}がオーバーフローしました",
+                            glabel, llabel, offset
+                        )),
+                    },
+                    None => Err(format!("ラベル{}が見つかりません", llabel)),
+                },
+                None => Err(format!("ラベル{}が見つかりません", glabel)),
+            },
+            Self::LocalLabelOffsetRegister(glabel, llabel, reg) => {
+                let offset = emu.general_registers[*reg as usize];
+                match emu.local_labels.get(glabel) {
+                    Some(label_map) => match label_map.get(llabel) {
+                        Some(adr) => match (*adr as u16).checked_add(offset) {
+                            Some(adr) => Ok(adr as usize),
+                            None => Err(format!(
+                                "{}:{}:{}がオーバーフローしました",
+                                glabel, llabel, reg
+                            )),
+                        },
+                        None => Err(format!("ラベル{}が見つかりません", llabel)),
+                    },
+                    None => Err(format!("ラベル{}が見つかりません", glabel)),
+                }
+            }
+        }
+    }
+}
+
 enum Value {
     Int(u16),
     Str(String),
@@ -805,67 +1065,7 @@ fn get_single_value(
     tokenizer: &mut casl2::Tokenizer<'_>,
 ) -> Result<Value, String> {
     match tokenizer.extended_label()? {
-        Some(ExtendedLabel::GlobalLabel(label)) => match emu.program_labels.get(&label) {
-            Some(adr) => Ok(Value::Int(*adr as u16)),
-            None => Err(format!("ラベル{}が見つかりません", label)),
-        },
-        Some(ExtendedLabel::GlobalLabelOffset(label, offset)) => {
-            match emu.program_labels.get(&label) {
-                Some(adr) => match (*adr as u16).checked_add(offset) {
-                    Some(adr) => Ok(Value::Int(adr)),
-                    None => Err(format!("{}:#{:04X}がオーバーフローしました", label, offset)),
-                },
-                None => Err(format!("ラベル{}が見つかりません", label)),
-            }
-        }
-        Some(ExtendedLabel::GlobalLabelOffsetRegister(label, reg)) => {
-            let offset = emu.general_registers[reg as usize];
-            match emu.program_labels.get(&label) {
-                Some(adr) => match (*adr as u16).checked_add(offset) {
-                    Some(adr) => Ok(Value::Int(adr)),
-                    None => Err(format!("{}:{}がオーバーフローしました", label, reg)),
-                },
-                None => Err(format!("ラベル{}が見つかりません", label)),
-            }
-        }
-        Some(ExtendedLabel::LocalLabel(glabel, llabel)) => match emu.local_labels.get(&glabel) {
-            Some(label_map) => match label_map.get(&llabel) {
-                Some(adr) => Ok(Value::Int(*adr as u16)),
-                None => Err(format!("ラベル{}が見つかりません", llabel)),
-            },
-            None => Err(format!("ラベル{}が見つかりません", glabel)),
-        },
-        Some(ExtendedLabel::LocalLabelOffset(glabel, llabel, offset)) => {
-            match emu.local_labels.get(&glabel) {
-                Some(label_map) => match label_map.get(&llabel) {
-                    Some(adr) => match (*adr as u16).checked_add(offset) {
-                        Some(adr) => Ok(Value::Int(adr)),
-                        None => Err(format!(
-                            "{}:{}:#{:04X}がオーバーフローしました",
-                            glabel, llabel, offset
-                        )),
-                    },
-                    None => Err(format!("ラベル{}が見つかりません", llabel)),
-                },
-                None => Err(format!("ラベル{}が見つかりません", glabel)),
-            }
-        }
-        Some(ExtendedLabel::LocalLabelOffsetRegister(glabel, llabel, reg)) => {
-            let offset = emu.general_registers[reg as usize];
-            match emu.local_labels.get(&glabel) {
-                Some(label_map) => match label_map.get(&llabel) {
-                    Some(adr) => match (*adr as u16).checked_add(offset) {
-                        Some(adr) => Ok(Value::Int(adr)),
-                        None => Err(format!(
-                            "{}:{}:{}がオーバーフローしました",
-                            glabel, llabel, reg
-                        )),
-                    },
-                    None => Err(format!("ラベル{}が見つかりません", llabel)),
-                },
-                None => Err(format!("ラベル{}が見つかりません", glabel)),
-            }
-        }
+        Some(label) => label.get_address(emu).map(|adr| Value::Int(adr as u16)),
         None => {
             let value = match tokenizer.value() {
                 Some(value) => value,
@@ -917,23 +1117,33 @@ fn set_reg(emu: &mut Emulator, param: Option<&str>) -> String {
             match get_single_value(emu, &mut tokenizer) {
                 Err(msg) => msg,
                 Ok(Value::Int(value)) => {
-                    emu.general_registers[reg as usize] = value;
-                    format!("{}に#{:04X}を設定しました", reg, value)
-                }
-                Ok(Value::Str(s)) => match s.chars().map(jis_x_201::convert_from_char).next() {
-                    Some(ch) => {
-                        emu.general_registers[reg as usize] = ch as u16;
-                        format!("{}に{:04X}を設定しました", reg, ch as u16)
+                    if tokenizer.rest().trim().is_empty() {
+                        emu.general_registers[reg as usize] = value;
+                        format!("{}に#{:04X}を設定しました", reg, value)
+                    } else {
+                        "引数が不正です".to_string()
                     }
-                    None => "空の文字定数は設定できません".to_string(),
-                },
+                }
+                Ok(Value::Str(s)) => {
+                    if tokenizer.rest().trim().is_empty() {
+                        match s.chars().map(jis_x_201::convert_from_char).next() {
+                            Some(ch) => {
+                                emu.general_registers[reg as usize] = ch as u16;
+                                format!("{}に{:04X}を設定しました", reg, ch as u16)
+                            }
+                            None => "空の文字定数は設定できません".to_string(),
+                        }
+                    } else {
+                        "引数が不正です".to_string()
+                    }
+                }
             }
         }
         Err(_) => {
             let flag = match *value {
                 "0" => false,
                 "1" => true,
-                _ => return "引数が正しくありません".to_string(),
+                _ => return "引数が不正です".to_string(),
             };
             if "OF".eq_ignore_ascii_case(*reg) {
                 emu.overflow_flag = flag;
@@ -945,7 +1155,7 @@ fn set_reg(emu: &mut Emulator, param: Option<&str>) -> String {
                 emu.zero_flag = flag;
                 format!("ZFに{}を設定しました", value)
             } else {
-                "引数が正しくありません".to_string()
+                "引数が不正です".to_string()
             }
         }
     }
@@ -981,8 +1191,10 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 指定したBASICプログラムの変数名と対応するラベルとアドレスと値を表示する
     list-files
                 読み込んだソースファイルの一覧を表示する
-    list-code [<LENGTH> [<ADDRESS>]]
-                コードを表示する
+    dump-mem [<ADDRESS> [<SIZE>]]
+                メモリダンプする
+    dump-code [<ADDRESS> [<SIZE>]]
+                メモリをコード表示する
     quit
                 テスト実行を中止する
     help <COMMAND_NAME>
@@ -1061,6 +1273,14 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
     }
 
     if "list-files".eq_ignore_ascii_case(cmd) {
+        todo!();
+    }
+
+    if "dump-mem".eq_ignore_ascii_case(cmd) {
+        todo!();
+    }
+
+    if "dump-code".eq_ignore_ascii_case(cmd) {
         todo!();
     }
 
@@ -2781,8 +3001,6 @@ fn get_op_code_form(op_code: u16, adr: Option<u16>) -> String {
             0xE0 => format!("[#{0:04X} #{1:04X}] DEBUGBASICSTEP {1}", op_code, adr),
             code if r2 == 0 => match code {
                 0x12 => format!("[#{0:04X} #{2:04X}] LAD   GR{1},#{2:04X}", op_code, r1, adr),
-                0x70 => format!("[#{0:04X} #{1:04X}] PUSH  #{1:04X}", op_code, adr),
-                0xF0 => format!("[#{0:04X} #{1:04X}] SVC   #{1:04X}", op_code, adr),
                 0x10 => format!("[#{0:04X} #{2:04X}] LD    GR{1},#{2:04X}", op_code, r1, adr),
                 0x11 => format!("[#{0:04X} #{2:04X}] ST    GR{1},#{2:04X}", op_code, r1, adr),
                 0x20 => format!("[#{0:04X} #{2:04X}] ADDA  GR{1},#{2:04X}", op_code, r1, adr),
@@ -2798,6 +3016,9 @@ fn get_op_code_form(op_code: u16, adr: Option<u16>) -> String {
                 0x51 => format!("[#{0:04X} #{2:04X}] SRA   GR{1},#{2:04X}", op_code, r1, adr),
                 0x52 => format!("[#{0:04X} #{2:04X}] SLL   GR{1},#{2:04X}", op_code, r1, adr),
                 0x53 => format!("[#{0:04X} #{2:04X}] SRL   GR{1},#{2:04X}", op_code, r1, adr),
+                _ if r1 != 0 => format!("[#{:04X} #{:04X}] UNKNOWN", op_code, adr),
+                0x70 => format!("[#{0:04X} #{1:04X}] PUSH  #{1:04X}", op_code, adr),
+                0xF0 => format!("[#{0:04X} #{1:04X}] SVC   #{1:04X}", op_code, adr),
                 0x65 => format!("[#{0:04X} #{1:04X}] JPL   #{1:04X}", op_code, adr),
                 0x61 => format!("[#{0:04X} #{1:04X}] JMI   #{1:04X}", op_code, adr),
                 0x62 => format!("[#{0:04X} #{1:04X}] JNZ   #{1:04X}", op_code, adr),
@@ -2811,8 +3032,6 @@ fn get_op_code_form(op_code: u16, adr: Option<u16>) -> String {
                 "[#{0:04X} #{2:04X}] LAD   GR{1},#{2:04X},GR{3}",
                 op_code, r1, adr, r2
             ),
-            0x70 => format!("[#{0:04X} #{1:04X}] PUSH  #{1:04X},GR{2}", op_code, adr, r2),
-            0xF0 => format!("[#{0:04X} #{1:04X}] SVC   #{1:04X},GR{2}", op_code, adr, r2),
             0x10 => format!(
                 "[#{0:04X} #{2:04X}] LD    GR{1},#{2:04X},GR{3}",
                 op_code, r1, adr, r2
@@ -2873,6 +3092,9 @@ fn get_op_code_form(op_code: u16, adr: Option<u16>) -> String {
                 "[#{0:04X} #{2:04X}] SRL   GR{1},#{2:04X},GR{3}",
                 op_code, r1, adr, r2
             ),
+            _ if r1 != 0 => format!("[#{:04X} #{:04X}] UNKNOWN", op_code, adr),
+            0x70 => format!("[#{0:04X} #{1:04X}] PUSH  #{1:04X},GR{2}", op_code, adr, r2),
+            0xF0 => format!("[#{0:04X} #{1:04X}] SVC   #{1:04X},GR{2}", op_code, adr, r2),
             0x65 => format!("[#{0:04X} #{1:04X}] JPL   #{1:04X},GR{2}", op_code, adr, r2),
             0x61 => format!("[#{0:04X} #{1:04X}] JMI   #{1:04X},GR{2}", op_code, adr, r2),
             0x62 => format!("[#{0:04X} #{1:04X}] JNZ   #{1:04X},GR{2}", op_code, adr, r2),
@@ -2894,15 +3116,22 @@ fn get_op_code_form(op_code: u16, adr: Option<u16>) -> String {
             0x36 => format!("[#{:04X}      ] XOR   GR{},GR{}", op_code, r1, r2),
             0x44 => format!("[#{:04X}      ] CPA   GR{},GR{}", op_code, r1, r2),
             0x45 => format!("[#{:04X}      ] CPL   GR{},GR{}", op_code, r1, r2),
+            _ if r2 != 0 => format!("[#{:04X}      ] UNKNOWN", op_code),
+            0x71 => format!("[#{:04X}      ] POP   GR{}", op_code, r1),
+            _ if r1 != 0 => format!("[#{:04X}      ] UNKNOWN", op_code),
             0x81 => format!("[#{:04X}      ] RET", op_code),
             0x00 => format!("[#{:04X}      ] NOP", op_code),
-            0x71 => format!("[#{:04X}      ] POP   GR{}", op_code, r1),
             _ => format!("[#{:04X}      ] UNKNOWN", op_code),
         }
     }
 }
 
 fn get_op_code_size(op_code: u16) -> usize {
+    let r1 = (op_code >> 4) & 0xF;
+    let r2 = op_code & 0xF;
+    if !(0..8).contains(&r1) || !(0..8).contains(&r2) {
+        return 0;
+    }
     match (op_code >> 8) & 0xFF {
         0x14 => 1, //format!("#{:04X}: LD GR{},GR{}", op_code, r1, r2),
         0x24 => 1, //format!("#{:04X}: ADDA GR{},GR{}",op_code,  r1, r2),
@@ -2915,15 +3144,13 @@ fn get_op_code_size(op_code: u16) -> usize {
         0x44 => 1, //format!("#{:04X}: CPA GR{},GR{}", op_code, r1, r2),
         0x45 => 1, //format!("#{:04X}: CPL GR{},GR{}", op_code, r1, r2),
 
-        0x71 => 1, //format!("#{:04X}: POP GR{}", op_code, r1),
-        0x81 => 1, //format!("#{:04X}: RET",op_code),
-        0x00 => 1, //format!("#{:04X}: NOP",op_code),
+        0x71 if r2 == 0 => 1, //format!("#{:04X}: POP GR{}", op_code, r1),
+        0x81 if r1 == 0 && r2 == 0 => 1, //format!("#{:04X}: RET",op_code),
+        0x00 if r1 == 0 && r2 == 0 => 1, //format!("#{:04X}: NOP",op_code),
 
-        0xE0 => 2, //format!("#{:04X}: DEBUGBASICSTEP {}", op_code, adr),
+        0xE0 if r1 == 0 && r2 == 0 => 2, //format!("#{:04X}: DEBUGBASICSTEP {}", op_code, adr),
 
         0x12 => 2, //format!("#{:04X}: LAD GR{},#{:04X},GR{}", op_code, r1, adr, r2),
-        0x70 => 2, //format!("#{:04X}: PUSH #{:04X},GR{}",op_code,  adr, r2),
-        0xF0 => 2, //format!("#{:04X}: SVC #{:04X},GR{}", op_code, adr, r2),
         0x10 => 2, //format!("#{:04X}: LD GR{},#{:04X},GR{}", op_code, r1, adr, r2),
         0x11 => 2, //format!("#{:04X}: ST GR{},#{:04X},GR{}", op_code, r1, adr, r2),
         0x20 => 2, //format!("#{:04X}: ADDA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
@@ -2939,6 +3166,11 @@ fn get_op_code_size(op_code: u16) -> usize {
         0x51 => 2, //format!("#{:04X}: SRA GR{},#{:04X},GR{}", op_code, r1, adr, r2),
         0x52 => 2, //format!("#{:04X}: SLL GR{},#{:04X},GR{}",op_code,  r1, adr, r2),
         0x53 => 2, //format!("#{:04X}: SRL GR{},#{:04X},GR{}",op_code,  r1, adr, r2),
+
+        _ if r1 != 0 => 0,
+
+        0x70 => 2, //format!("#{:04X}: PUSH #{:04X},GR{}",op_code,  adr, r2),
+        0xF0 => 2, //format!("#{:04X}: SVC #{:04X},GR{}", op_code, adr, r2),
         0x65 => 2, //format!("#{:04X}: JPL #{:04X},GR{}", op_code, adr, r2),
         0x61 => 2, //format!("#{:04X}: JMI #{:04X},GR{}", op_code, adr, r2),
         0x62 => 2, //format!("#{:04X}: JNZ #{:04X},GR{}", op_code, adr, r2),
