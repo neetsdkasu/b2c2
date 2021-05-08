@@ -669,4 +669,14 @@ impl<'a> Tokenizer<'a> {
             false
         }
     }
+
+    pub fn atmark(&mut self) -> bool {
+        if matches!(self.next(), Some('@')) {
+            self.clear();
+            true
+        } else {
+            self.recover();
+            false
+        }
+    }
 }

@@ -190,7 +190,7 @@ fn is_valid_boolean(v: u16) -> bool {
 }
 
 fn dump_mem<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
-    let (adr, size) = match param {
+    let (adr, size) = match param.map(|s| s.to_ascii_uppercase()) {
         None => {
             let adr = emu.program_register;
             let size = (adr + 0x80).min(0x10000) - adr;
@@ -259,11 +259,11 @@ fn dump_mem<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
                     }
                 }
             };
-            if adr + size > 0x10000 {
-                writeln!(stdout, "サイズの指定が不正です")?;
-                return Ok(());
+            if adr + size <= 0x10000 {
+                (adr, size)
+            } else {
+                (adr, 0x10000 - adr)
             }
-            (adr, size)
         }
     };
     let mut pos = adr & (0xFFFF ^ 0x7);
@@ -284,7 +284,7 @@ fn dump_mem<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
     }
     writeln!(stdout)?;
     let mut s = String::new();
-    while pos < adr + size {
+    while pos < adr + size && pos < 0x10000 {
         s.clear();
         write!(stdout, "#{:04X}: ", pos)?;
         for i in 0..8 {
@@ -309,7 +309,7 @@ fn dump_mem<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
 }
 
 fn dump_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
-    let (adr, size) = match param {
+    let (adr, size) = match param.map(|s| s.to_ascii_uppercase()) {
         None => {
             let adr = emu.program_register;
             let size = (adr + 0x20).min(0x10000) - adr;
@@ -378,15 +378,15 @@ fn dump_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> i
                     }
                 }
             };
-            if adr + size > 0x10000 {
-                writeln!(stdout, "サイズの指定が不正です")?;
-                return Ok(());
+            if adr + size <= 0x10000 {
+                (adr, size)
+            } else {
+                (adr, 0x10000 - adr)
             }
-            (adr, size)
         }
     };
     let mut pos = adr;
-    while pos < adr + size {
+    while pos < adr + size && pos < 0x10000 {
         let op_code = emu.mem[pos];
         match get_op_code_size(op_code) {
             2 => {
@@ -846,7 +846,7 @@ fn print_value_label<W: Write>(
 fn show_label<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let mut count = 0;
     if let Some(label) = param {
-        let label = label.to_string();
+        let label = label.to_ascii_uppercase();
         match emu.program_labels.get(&label) {
             Some(adr) => {
                 writeln!(stdout, " #{:04X} {:<8}", adr, label)?;
@@ -944,10 +944,65 @@ enum ExtendedLabel {
     LocalLabelOffset(String, String, u16),
     GlobalLabelOffsetRegister(String, casl2::Register),
     LocalLabelOffsetRegister(String, String, casl2::Register),
+    GeneralRegister(casl2::Register),
+    GeneralRegisterOffset(casl2::Register, u16),
+    GeneralRegisterOffsetRegister(casl2::Register, casl2::Register),
+    ProgramRegister,
+    ProgramRegisterOffset(u16),
+    ProgramRegisterOffsetRegister(casl2::Register),
+    StackPointer,
+    StackPointerOffset(u16),
+    StackPointerOffsetRegister(casl2::Register),
 }
 
 impl<'a> casl2::Tokenizer<'a> {
     fn extended_label(&mut self) -> Result<Option<ExtendedLabel>, &'static str> {
+        if self.atmark() {
+            let reg = match self.word() {
+                Some(s) => s,
+                None => return Err("引数が不正です"),
+            };
+            let temp = match casl2::Register::try_from(reg.as_str()) {
+                Ok(reg) => ExtendedLabel::GeneralRegister(reg),
+                _ if reg == "PR" => ExtendedLabel::ProgramRegister,
+                _ if reg == "SP" => ExtendedLabel::StackPointer,
+                _ => return Err("引数が不正です"),
+            };
+            if !self.colon() {
+                return Ok(Some(temp));
+            }
+            if let Some(offset) = self.hex() {
+                return Ok(Some(match temp {
+                    ExtendedLabel::GeneralRegister(reg) => {
+                        ExtendedLabel::GeneralRegisterOffset(reg, offset)
+                    }
+                    ExtendedLabel::ProgramRegister => ExtendedLabel::ProgramRegisterOffset(offset),
+                    ExtendedLabel::StackPointer => ExtendedLabel::StackPointerOffset(offset),
+                    _ => unreachable!("BUG"),
+                }));
+            }
+            if let Some(greg) = self.word() {
+                match casl2::Register::try_from(greg.as_str()) {
+                    Err(_) => return Err("引数が不正です"),
+                    Ok(greg) => {
+                        return Ok(Some(match temp {
+                            ExtendedLabel::GeneralRegister(reg) => {
+                                ExtendedLabel::GeneralRegisterOffsetRegister(reg, greg)
+                            }
+                            ExtendedLabel::ProgramRegister => {
+                                ExtendedLabel::ProgramRegisterOffsetRegister(greg)
+                            }
+                            ExtendedLabel::StackPointer => {
+                                ExtendedLabel::StackPointerOffsetRegister(greg)
+                            }
+                            _ => unreachable!("BUG"),
+                        }))
+                    }
+                }
+            } else {
+                return Err("引数が不正です");
+            }
+        }
         let global_label = match self.word() {
             Some(s) => s,
             None => return Ok(None),
@@ -1051,6 +1106,54 @@ impl ExtendedLabel {
                     None => Err(format!("ラベル{}が見つかりません", glabel)),
                 }
             }
+            Self::GeneralRegister(reg) => Ok(emu.general_registers[*reg as usize] as usize),
+            Self::GeneralRegisterOffset(reg, offset) => {
+                let gr = emu.general_registers[*reg as usize];
+                match gr.checked_add(*offset) {
+                    Some(adr) => Ok(adr as usize),
+                    None => Err(format!("@{}:#{:04X}がオーバーフローしました", reg, offset)),
+                }
+            }
+            Self::GeneralRegisterOffsetRegister(reg, greg) => {
+                let gr = emu.general_registers[*reg as usize];
+                let offset = emu.general_registers[*greg as usize];
+                match gr.checked_add(offset) {
+                    Some(adr) => Ok(adr as usize),
+                    None => Err(format!("@{}:{}がオーバーフローしました", reg, greg)),
+                }
+            }
+            Self::ProgramRegister => Ok(emu.program_register),
+            Self::ProgramRegisterOffset(offset) => {
+                let adr = emu.program_register as u16;
+                match adr.checked_add(*offset) {
+                    Some(adr) => Ok(adr as usize),
+                    None => Err(format!("@PR:#{:04X}がオーバーフローしました", offset)),
+                }
+            }
+            Self::ProgramRegisterOffsetRegister(reg) => {
+                let adr = emu.program_register as u16;
+                let offset = emu.general_registers[*reg as usize];
+                match adr.checked_add(offset) {
+                    Some(adr) => Ok(adr as usize),
+                    None => Err(format!("@PR:{}がオーバーフローしました", reg)),
+                }
+            }
+            Self::StackPointer => Ok(emu.stack_pointer),
+            Self::StackPointerOffset(offset) => {
+                let adr = emu.stack_pointer as u16;
+                match adr.checked_add(*offset) {
+                    Some(adr) => Ok(adr as usize),
+                    None => Err(format!("@SP:#{:04X}がオーバーフローしました", offset)),
+                }
+            }
+            Self::StackPointerOffsetRegister(reg) => {
+                let adr = emu.stack_pointer as u16;
+                let offset = emu.general_registers[*reg as usize];
+                match adr.checked_add(offset) {
+                    Some(adr) => Ok(adr as usize),
+                    None => Err(format!("@SP:{}がオーバーフローしました", reg)),
+                }
+            }
         }
     }
 }
@@ -1115,7 +1218,22 @@ fn set_reg(emu: &mut Emulator, param: Option<&str>) -> String {
         Ok(reg) => {
             let mut tokenizer = casl2::Tokenizer::new(value);
             match get_single_value(emu, &mut tokenizer) {
-                Err(msg) => msg,
+                Err(msg) => {
+                    let value = value.to_ascii_uppercase();
+                    let mut tokenizer = casl2::Tokenizer::new(&value);
+                    match get_single_value(emu, &mut tokenizer) {
+                        Ok(Value::Int(value)) => {
+                            if tokenizer.rest().trim().is_empty() {
+                                emu.general_registers[reg as usize] = value;
+                                format!("{}に#{:04X}を設定しました", reg, value)
+                            } else {
+                                "引数が不正です".to_string()
+                            }
+                        }
+                        Ok(_) => msg,
+                        Err(msg) => msg,
+                    }
+                }
                 Ok(Value::Int(value)) => {
                     if tokenizer.rest().trim().is_empty() {
                         emu.general_registers[reg as usize] = value;
@@ -1140,18 +1258,64 @@ fn set_reg(emu: &mut Emulator, param: Option<&str>) -> String {
             }
         }
         Err(_) => {
-            let flag = match *value {
-                "0" => false,
-                "1" => true,
-                _ => return "引数が不正です".to_string(),
-            };
-            if "OF".eq_ignore_ascii_case(*reg) {
+            if "PR".eq_ignore_ascii_case(*reg) {
+                let mut tokenizer = casl2::Tokenizer::new(value);
+                if let Some(adr) = tokenizer.hex() {
+                    emu.program_register = adr as usize;
+                    format!("PRに#{:04X}を設定しました", adr)
+                } else {
+                    match tokenizer.extended_label() {
+                        Ok(Some(label)) => match label.get_address(emu) {
+                            Ok(adr) => {
+                                emu.program_register = adr;
+                                format!("PRに#{:04X}を設定しました", adr)
+                            }
+                            Err(msg) => msg,
+                        },
+                        Ok(None) => "引数が不正です".to_string(),
+                        Err(msg) => msg.to_string(),
+                    }
+                }
+            } else if "SP".eq_ignore_ascii_case(*reg) {
+                let mut tokenizer = casl2::Tokenizer::new(value);
+                if let Some(adr) = tokenizer.hex() {
+                    emu.stack_pointer = adr as usize;
+                    format!("SPに#{:04X}を設定しました", adr)
+                } else {
+                    match tokenizer.extended_label() {
+                        Ok(Some(label)) => match label.get_address(emu) {
+                            Ok(adr) => {
+                                emu.stack_pointer = adr;
+                                format!("SPに#{:04X}を設定しました", adr)
+                            }
+                            Err(msg) => msg,
+                        },
+                        Ok(None) => "引数が不正です".to_string(),
+                        Err(msg) => msg.to_string(),
+                    }
+                }
+            } else if "OF".eq_ignore_ascii_case(*reg) {
+                let flag = match *value {
+                    "0" => false,
+                    "1" => true,
+                    _ => return "引数が不正です".to_string(),
+                };
                 emu.overflow_flag = flag;
                 format!("OFに{}を設定しました", value)
             } else if "SF".eq_ignore_ascii_case(*reg) {
+                let flag = match *value {
+                    "0" => false,
+                    "1" => true,
+                    _ => return "引数が不正です".to_string(),
+                };
                 emu.sign_flag = flag;
                 format!("SFに{}を設定しました", value)
             } else if "ZF".eq_ignore_ascii_case(*reg) {
+                let flag = match *value {
+                    "0" => false,
+                    "1" => true,
+                    _ => return "引数が不正です".to_string(),
+                };
                 emu.zero_flag = flag;
                 format!("ZFに{}を設定しました", value)
             } else {
@@ -1205,10 +1369,7 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
         }
     };
 
-    let mut explain_consts = false;
-
     if "set-reg".eq_ignore_ascii_case(cmd) {
-        explain_consts = true;
         writeln!(
             stdout,
             r#"
@@ -1216,13 +1377,18 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 値をレジスタに設定する
                     REGISTER .. GR0～GR7
                     VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル
+
                     REGISTER .. OF,SF,ZF
-                    VALUE    .. 0,1"#
+                    VALUE    .. 0,1
+
+                    REGISTER .. PR,SP
+                    VALUE    .. 16進定数,アドレス定数
+
+                ※各種定数については help constat で説明"#
         )?;
     }
 
     if "set-mem".eq_ignore_ascii_case(cmd) {
-        explain_consts = true;
         writeln!(
             stdout,
             r#"
@@ -1231,12 +1397,13 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 値を複数列挙した場合はアドレスから連続した領域に書き込まれる
                 値が文字定数の場合は文字数分の連続した領域に書き込まれる
                     ADDRESS  .. 16進定数,アドレス定数
-                    VALUE*   .. 10進定数,16進定数,文字定数,アドレス定数,リテラル"#
+                    VALUE*   .. 10進定数,16進定数,文字定数,アドレス定数,リテラル
+
+                ※各種定数については help constat で説明"#
         )?;
     }
 
     if "set-mem-fill".eq_ignore_ascii_case(cmd) {
-        explain_consts = true;
         writeln!(
             stdout,
             r#"
@@ -1244,7 +1411,9 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 メモリの指定アドレスから指定の長さ分を指定の値で埋める
                     ADDRESS  .. 16進定数,アドレス定数
                     LENGTH   .. 正の10進定数,16進定数
-                    VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル"#
+                    VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル
+
+                ※各種定数については help constat で説明"#
         )?;
     }
 
@@ -1292,7 +1461,7 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
         todo!();
     }
 
-    if explain_consts {
+    if "constant".eq_ignore_ascii_case(cmd) {
         writeln!(
             stdout,
             r#"
@@ -1321,6 +1490,15 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
         ラベル:ラベル:GR*
                         ローカルラベルの位置からGRレジスタの値分の相対位置のアドレスを返す
                             例: MAIN:MEM:GR5
+        @レジスタ
+                        レジスタ(GR*,PR,SP)の値をアドレス値として返す
+                            例: @SP
+        @レジスタ:16進定数
+                        レジスタ(GR*,PR,SP)の値に16進定数を足した値をアドレス値として返す
+                            例: @RP:#0010
+        @レジスタ:GR*
+                        レジスタ(GR*,PR,SP)の値にGRレジスタの値を足した値をアドレス値として返す
+                            例: @GR3:GR5
     リテラル
                 10進定数、16進定数、文字定数の頭に=を付けて指定
                 定数格納の領域を確保しそのアドレスを返す
@@ -1650,10 +1828,6 @@ impl Emulator {
     fn enough_remain(&self, len: usize) -> bool {
         len < self.mem.len() - CALLSTACK_MAX_SIZE - self.compile_pos
     }
-
-    fn has_asccess_permission(&self, pos: usize) -> bool {
-        (BEGIN_OF_PROGRAM..self.mem.len() - CALLSTACK_MAX_SIZE).contains(&pos)
-    }
 }
 
 fn edit_distance(str1: &str, str2: &str) -> usize {
@@ -1806,6 +1980,11 @@ enum RuntimeError {
         op_code: String,
         address: usize,
     },
+    MemoryAccessOutOfBounds {
+        position: usize,
+        op_code: String,
+        address: usize,
+    },
     InvalidOpCode {
         position: usize,
         op_code: String,
@@ -1835,7 +2014,7 @@ impl Emulator {
         W: io::Write,
     {
         let pr = self.program_register;
-        if !self.has_asccess_permission(pr) {
+        if pr >= 0xFFFF {
             return Err(RuntimeError::ExecutePermissionDenied { position: pr });
         }
         self.step_count += 1;
@@ -1985,13 +2164,6 @@ impl Emulator {
                                 op_code: get_op_code_form(op_code, None),
                             });
                         }
-                    }
-                    if !self.has_asccess_permission(adr) {
-                        return Err(RuntimeError::AccessPermissionDenied {
-                            position: pr,
-                            op_code: get_op_code_form(op_code, None),
-                            address: adr,
-                        });
                     }
                 }
                 0x00 if r1 == 0 && r2 == 0 => {
@@ -2152,13 +2324,6 @@ impl Emulator {
                     // IN
                     let pos = self.general_registers[1] as usize;
                     let len = self.general_registers[2] as usize;
-                    if !self.has_asccess_permission(len) {
-                        return Err(RuntimeError::AccessPermissionDenied {
-                            position: pr,
-                            op_code: get_op_code_form(op_code, Some(adr)),
-                            address: len,
-                        });
-                    }
                     write!(stdout, "[IN] ? ")?;
                     stdout.flush()?;
                     let mut line = String::new();
@@ -2169,14 +2334,14 @@ impl Emulator {
                             let line = jis_x_201::convert_kana_wide_full_to_half(&line);
                             self.mem[len] = line.chars().count().min(256) as u16;
                             for (i, ch) in line.chars().enumerate().take(256) {
-                                let ch = jis_x_201::convert_from_char(ch) as u16;
-                                if !self.has_asccess_permission(pos + i) {
-                                    return Err(RuntimeError::AccessPermissionDenied {
+                                if pos + i > 0xFFFF {
+                                    return Err(RuntimeError::MemoryAccessOutOfBounds {
                                         position: pr,
                                         op_code: get_op_code_form(op_code, Some(adr)),
                                         address: pos + i,
                                     });
                                 }
+                                let ch = jis_x_201::convert_from_char(ch) as u16;
                                 self.mem[pos + i] = ch;
                             }
                         }
@@ -2185,21 +2350,14 @@ impl Emulator {
                     // OUT
                     let pos = self.general_registers[1] as usize;
                     let len = self.general_registers[2] as usize;
-                    if !self.has_asccess_permission(len) {
-                        return Err(RuntimeError::AccessPermissionDenied {
-                            position: pr,
-                            op_code: get_op_code_form(op_code, Some(adr)),
-                            address: len,
-                        });
-                    }
                     let len = self.mem[len] as usize;
                     let mut line = String::new();
                     for i in 0..len {
-                        if !self.has_asccess_permission(pos + i) {
-                            return Err(RuntimeError::AccessPermissionDenied {
+                        if pos + i > 0xFFFF {
+                            return Err(RuntimeError::MemoryAccessOutOfBounds {
                                 position: pr,
                                 op_code: get_op_code_form(op_code, Some(adr)),
-                                address: pos + i,
+                                address: len,
                             });
                         }
                         let ch = (self.mem[pos + i] & 0xFF) as u8;
@@ -2252,8 +2410,8 @@ impl Emulator {
                 self.general_registers[r2] as usize
             };
 
-        if !self.has_asccess_permission(access) {
-            return Err(RuntimeError::AccessPermissionDenied {
+        if access > 0xFFFF {
+            return Err(RuntimeError::MemoryAccessOutOfBounds {
                 position: pr,
                 op_code: get_op_code_form(op_code, Some(adr)),
                 address: access,
