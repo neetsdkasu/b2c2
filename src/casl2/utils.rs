@@ -1,6 +1,25 @@
 use super::*;
+use std::collections::HashSet;
 
-pub fn is_program(statements: &[Statement]) -> bool {
+// 手書きCASL2ソースかもしれないやつの検知可能な範囲のエラーを見つける
+// 検出できないもの
+//    ENDの位置までコードが実行されるケース(下記のようなケースがあるため静的検知は厳しい)
+//    動的にコードが書き変えられ実行されるケース
+//    ジャンプ系命令で外部プログラムと行き来するようなケース
+//    無限ループが存在するケース(バグの場合も意図的な場合もある)
+pub fn find_syntax_error(statements: &[Statement]) -> Option<String> {
+    let mut set = HashSet::new();
+    for stmt in statements.iter() {
+        if let Statement::Code {
+            label: Some(label), ..
+        } = stmt
+        {
+            if !set.insert(label.as_str()) {
+                return Some(format!("ラベル{}が重複しています", label.as_str()));
+            }
+        }
+    }
+
     let mut iter = statements.iter().filter(|stmt| stmt.is_code());
 
     match iter.next() {
@@ -9,30 +28,30 @@ pub fn is_program(statements: &[Statement]) -> bool {
             command: Command::Start { .. },
             ..
         }) => {}
-        _ => return false,
+        _ => return Some("STARTから始まっていません".to_string()),
     }
-
-    let mut has_ret = false;
 
     while let Some(stmt) = iter.next() {
         match stmt {
             Statement::Code {
                 command: Command::Start { .. },
                 ..
-            } => return false,
+            } => return Some("STARTが重複しています".to_string()),
             Statement::Code {
                 command: Command::End,
                 ..
-            } => return has_ret && iter.next().is_none(),
-            Statement::Code {
-                command: Command::Ret,
-                ..
-            } => has_ret = true,
+            } => {
+                if iter.next().is_none() {
+                    return None;
+                } else {
+                    return Some("END以降にも命令があります".to_string());
+                }
+            }
             _ => {}
         }
     }
 
-    false
+    Some("ENDがありません".to_string())
 }
 
 pub fn get_program_name(statements: &[Statement]) -> Option<&str> {

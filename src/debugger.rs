@@ -59,6 +59,33 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
 
     loop {
         writeln!(stdout, "Steps: {}", emu.step_count)?;
+
+        write!(stdout, "Call:")?;
+        for (pos, _) in emu.program_stack.iter() {
+            match emu.all_label_list.binary_search_by_key(pos, |(_, p)| *p) {
+                Ok(mut index) => {
+                    while index > 0 {
+                        if emu
+                            .all_label_list
+                            .get(index - 1)
+                            .filter(|(_, p)| p == pos)
+                            .is_some()
+                        {
+                            index -= 1;
+                            continue;
+                        }
+                        break;
+                    }
+                    let (label, _) = emu.all_label_list.get(index).unwrap();
+                    write!(stdout, " > {}", label)?;
+                }
+                Err(_) => {
+                    write!(stdout, " > #{:04X}", pos)?;
+                }
+            }
+        }
+        writeln!(stdout)?;
+
         writeln!(stdout, "Last Code")?;
         let lp = emu.last_run_position;
         let op_code = emu.mem[lp];
@@ -73,6 +100,7 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
                 writeln!(stdout, " #{:04X}: {}", lp, s)?;
             }
         }
+
         if let Some(err) = err_status.as_ref() {
             writeln!(stdout, "Program Status")?;
             writeln!(stdout, " {:?}", err)?;
@@ -1697,10 +1725,10 @@ const INITIAL_PROGRAM_REGISTER: usize = 0x0234; // 564
 
 struct Emulator {
     // COMET2のメモリ
-    mem: [u16; MEMORY_SIZE],
+    mem: Vec<u16>,
 
     // レジスタ GR0～GR7
-    general_registers: [u16; 8],
+    general_registers: Vec<u16>,
 
     // スタックポインタ SP
     // (CASL2からのアクセス手段はないため利便性からu16ではなくusizeで管理)
@@ -1728,22 +1756,38 @@ struct Emulator {
     last_run_position: usize,
 
     // CASL2ステップ数(step_through_code呼び出し回数)
-    step_count: usize,
+    step_count: u64,
+
+    // 各メモリ位置のコードとしての実行回数
+    execute_count: Vec<u64>,
+    // 各メモリ位置の参照回数 (LDやADDLやCPAやOUTなどの命令による)
+    access_count: Vec<u64>,
+    // 各メモリ位置の更新回数 (STやINの命令による)
+    update_count: Vec<u64>,
+
+    // サブルーチンのネストの追跡用スタック(呼び出し先アドレス、戻りアドレス)
+    // RETでCOMET2のスタックメモリから取り出す値がこのスタックの値と同値だったら正常とみなす(?)
+    program_stack: Vec<(usize, usize)>,
+    // 異常RETの記録  (RET命令自体のメモリ位置、RET呼び出し時点のstep_count、スタックから取り出した戻りアドレス)
+    invalid_ret: Vec<(usize, u64, usize)>,
 
     // BASICステップ (DebugBasicStepのid)
-    basic_step: Option<usize>,
+    basic_step: Option<u16>,
     // BASICステップ数 (DebugBasicStepの呼び出し回数)
-    basic_step_count: usize,
+    basic_step_count: u32,
 
     // プログラムの開始点のエントリラベル
     // (START命令に引数があるとBEGIN_OF_PROGRAMにはならないこともあるため)
     start_point: Option<String>,
 
-    // デバッガコマンドから設定したラベル
+    // デバッガコマンドから設定したラベル (ラベル、(メモリ位置、ラベル生成コード))
     labels_for_debug: HashMap<String, (usize, casl2::Statement)>,
 
-    // デバッガコマンドで生成したリテラル
+    // デバッガコマンドで生成したリテラル (ラベル、(メモリ位置、値))
     literals_for_debug: HashMap<String, (usize, Value)>,
+
+    // 全ラベルのリスト
+    all_label_list: Vec<(String, usize)>,
 
     // 挿入するプログラムの埋め込み開始位置
     compile_pos: usize,
@@ -1770,8 +1814,8 @@ struct Emulator {
 impl Emulator {
     fn new() -> Self {
         Self {
-            mem: [0; MEMORY_SIZE],
-            general_registers: [0; 8],
+            mem: vec![0; MEMORY_SIZE],
+            general_registers: vec![0; 8],
             stack_pointer: CALLSTACK_START_POSITION,
             program_register: INITIAL_PROGRAM_REGISTER,
             overflow_flag: false,
@@ -1784,7 +1828,13 @@ impl Emulator {
             basic_step_count: 0,
             labels_for_debug: HashMap::new(),
             literals_for_debug: HashMap::new(),
+            program_stack: Vec::new(),
+            invalid_ret: Vec::new(),
+            execute_count: vec![0; MEMORY_SIZE],
+            access_count: vec![0; MEMORY_SIZE],
+            update_count: vec![0; MEMORY_SIZE],
 
+            all_label_list: Vec::new(),
             start_point: None,
             basic_info: HashMap::new(),
             compile_pos: BEGIN_OF_PROGRAM,
@@ -1821,6 +1871,15 @@ impl Emulator {
         self.step_count = 0;
         self.basic_step = None;
         self.basic_step_count = 0;
+
+        self.program_stack.clear();
+        self.program_stack
+            .push((position, INITIAL_PROGRAM_REGISTER));
+        self.invalid_ret.clear();
+
+        self.execute_count.fill(0);
+        self.access_count.fill(0);
+        self.update_count.fill(0);
 
         // GRとFRは不定
     }
@@ -2017,6 +2076,7 @@ impl Emulator {
         if pr >= 0xFFFF {
             return Err(RuntimeError::ExecutePermissionDenied { position: pr });
         }
+        self.execute_count[pr] += 1;
         self.step_count += 1;
         self.basic_step = None;
         self.last_run_position = pr;
@@ -2153,6 +2213,16 @@ impl Emulator {
                         });
                     }
                     let adr = self.mem[self.stack_pointer] as usize;
+                    if self
+                        .program_stack
+                        .last()
+                        .filter(|(_, r)| *r == adr)
+                        .is_some()
+                    {
+                        self.program_stack.pop();
+                    } else {
+                        self.invalid_ret.push((pr, self.step_count, adr));
+                    }
                     self.stack_pointer += 1;
                     self.program_register = adr;
                     if adr == INITIAL_PROGRAM_REGISTER {
@@ -2326,6 +2396,7 @@ impl Emulator {
                     let len = self.general_registers[2] as usize;
                     write!(stdout, "[IN] ? ")?;
                     stdout.flush()?;
+                    self.update_count[len] += 1;
                     let mut line = String::new();
                     match stdin.read_line(&mut line)? {
                         0 => self.mem[len] = (-1_i16) as u16,
@@ -2343,6 +2414,7 @@ impl Emulator {
                                 }
                                 let ch = jis_x_201::convert_from_char(ch) as u16;
                                 self.mem[pos + i] = ch;
+                                self.update_count[pos + i] += 1;
                             }
                         }
                     }
@@ -2351,6 +2423,7 @@ impl Emulator {
                     let pos = self.general_registers[1] as usize;
                     let len = self.general_registers[2] as usize;
                     let len = self.mem[len] as usize;
+                    self.access_count[len] += 1;
                     let mut line = String::new();
                     for i in 0..len {
                         if pos + i > 0xFFFF {
@@ -2362,6 +2435,7 @@ impl Emulator {
                         }
                         let ch = (self.mem[pos + i] & 0xFF) as u8;
                         line.push(jis_x_201::convert_to_char(ch, true));
+                        self.access_count[pos + i] += 1;
                     }
                     writeln!(stdout, "[OUT] {}", line)?;
                     stdout.flush()?;
@@ -2396,7 +2470,7 @@ impl Emulator {
                         op_code: get_op_code_form(op_code, Some(adr)),
                     });
                 }
-                self.basic_step = Some(adr as usize);
+                self.basic_step = Some(adr);
                 self.basic_step_count += 1;
                 return Ok(());
             }
@@ -2426,12 +2500,14 @@ impl Emulator {
                 self.overflow_flag = false;
                 self.sign_flag = (value as i16) < 0;
                 self.zero_flag = value == 0;
+                self.access_count[access] += 1;
                 return Ok(());
             }
             0x11 => {
                 // ST r,adr,x
                 let r1_value = self.general_registers[r1];
                 self.mem[access] = r1_value;
+                self.update_count[access] += 1;
                 return Ok(());
             }
             0x20 => {
@@ -2442,6 +2518,7 @@ impl Emulator {
                 self.overflow_flag = overflow;
                 self.sign_flag = value < 0;
                 self.zero_flag = value == 0;
+                self.access_count[access] += 1;
                 return Ok(());
             }
             0x22 => {
@@ -2452,6 +2529,7 @@ impl Emulator {
                 self.overflow_flag = overflow;
                 self.sign_flag = (value as i16) < 0;
                 self.zero_flag = value == 0;
+                self.access_count[access] += 1;
                 return Ok(());
             }
             0x21 => {
@@ -2462,6 +2540,7 @@ impl Emulator {
                 self.overflow_flag = overflow;
                 self.sign_flag = value < 0;
                 self.zero_flag = value == 0;
+                self.access_count[access] += 1;
                 return Ok(());
             }
             0x23 => {
@@ -2472,6 +2551,7 @@ impl Emulator {
                 self.overflow_flag = overflow;
                 self.sign_flag = (value as i16) < 0;
                 self.zero_flag = value == 0;
+                self.access_count[access] += 1;
                 return Ok(());
             }
             0x30 => {
@@ -2481,6 +2561,7 @@ impl Emulator {
                 self.overflow_flag = false;
                 self.sign_flag = (value as i16) < 0;
                 self.zero_flag = value == 0;
+                self.access_count[access] += 1;
                 return Ok(());
             }
             0x31 => {
@@ -2490,6 +2571,7 @@ impl Emulator {
                 self.overflow_flag = false;
                 self.sign_flag = (value as i16) < 0;
                 self.zero_flag = value == 0;
+                self.access_count[access] += 1;
                 return Ok(());
             }
             0x32 => {
@@ -2499,6 +2581,7 @@ impl Emulator {
                 self.overflow_flag = false;
                 self.sign_flag = (value as i16) < 0;
                 self.zero_flag = value == 0;
+                self.access_count[access] += 1;
                 return Ok(());
             }
             0x40 => {
@@ -2508,6 +2591,7 @@ impl Emulator {
                 self.overflow_flag = false;
                 self.sign_flag = r1_value < value;
                 self.zero_flag = r1_value == value;
+                self.access_count[access] += 1;
                 return Ok(());
             }
             0x41 => {
@@ -2517,6 +2601,7 @@ impl Emulator {
                 self.overflow_flag = false;
                 self.sign_flag = r1_value < value;
                 self.zero_flag = r1_value == value;
+                self.access_count[access] += 1;
                 return Ok(());
             }
             _ => {}
@@ -2578,6 +2663,7 @@ impl Emulator {
                 let pr = self.program_register;
                 self.mem[sp] = pr as u16;
                 self.program_register = access;
+                self.program_stack.push((access, pr));
             }
             _ => {
                 // UNKNOWN CODE
@@ -2748,8 +2834,8 @@ impl Emulator {
             }
         };
 
-        if !casl2::utils::is_program(&casl2_src) {
-            eprintln!("ERROR: 不明な理由によりこのソースコーを取り扱うことができませんでした");
+        if let Some(msg) = casl2::utils::find_syntax_error(&casl2_src) {
+            eprintln!("SyntaxError{{ {} }}", msg);
             return Ok(7);
         }
 
@@ -2828,6 +2914,7 @@ impl Emulator {
         let mut code = Vec::with_capacity(src.len());
         let mut labels = HashMap::new();
         let mut literals = HashMap::new();
+        let mut label_list = Vec::new();
 
         for stmt in src {
             let pos = self.compile_pos;
@@ -2840,6 +2927,7 @@ impl Emulator {
                 if let Some(label) = label {
                     if !matches!(command, casl2::Command::Start { .. }) {
                         labels.insert(label.as_string().clone(), pos);
+                        label_list.push((format!("{}:{}", name, label.as_str()), pos));
                     }
                 }
                 match command {
@@ -2996,10 +3084,28 @@ impl Emulator {
             }
         }
 
+        let program_pos = *self.program_labels.get(&name).expect("BUG");
+
         if let Some(pos_list) = self.unknown_labels.remove(&name) {
-            let label_pos = *self.program_labels.get(&name).expect("BUG");
             for pos in pos_list {
-                self.mem[pos] = label_pos as u16;
+                self.mem[pos] = program_pos as u16;
+            }
+        }
+
+        // 分かりにくい条件式…
+        if label_list
+            .first()
+            .filter(|(_, pos)| *pos < program_pos)
+            .is_none()
+        {
+            self.all_label_list.push((name.clone(), program_pos));
+            self.all_label_list.extend(label_list);
+        } else {
+            for (label, pos) in label_list {
+                if program_pos == pos {
+                    self.all_label_list.push((name.clone(), program_pos));
+                }
+                self.all_label_list.push((label, pos));
             }
         }
 

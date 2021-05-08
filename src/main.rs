@@ -171,8 +171,8 @@ fn process_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
         }
     };
 
-    if !casl2::utils::is_program(&casl2_src) {
-        eprintln!("ERROR: 不明な理由によりこのソースコーを取り扱うことができませんでした");
+    if let Some(msg) = casl2::utils::find_syntax_error(&casl2_src) {
+        eprintln!("SyntaxError{{ {} }}", msg);
         return Ok(7);
     }
 
