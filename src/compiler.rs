@@ -839,7 +839,7 @@ impl Compiler {
     // コンパイル最終工程
     fn finish(mut self) -> Vec<casl2::Statement> {
         // 初期化用のサブルーチンのロード
-        if self.var_total_size > 1 {
+        if self.var_total_size > 1 && self.option_initialize_variables {
             self.load_subroutine(subroutine::Id::UtilFill);
         }
         // Allocatorのサブルーチンを取得
