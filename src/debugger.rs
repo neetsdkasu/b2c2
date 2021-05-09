@@ -197,14 +197,20 @@ fn show_status<W: Write>(emu: &Emulator, stdout: &mut W, status: &Status) -> io:
         if last_op_code == RET_OP_CODE && next_pos >= 2 {
             writeln!(stdout, "Prev Code:")?;
             let prev_pos = next_pos - 2;
-            let prev_disp = emu.get_code_display(prev_pos as u16);
+            let (prev_disp, prev_src) = emu.get_code_display(prev_pos as u16);
+            if let Some(src) = prev_src {
+                writeln!(stdout, "{}", src)?;
+            }
             writeln!(stdout, "{}", prev_disp)?;
         }
     }
 
     writeln!(stdout, "Last Code:")?;
     let last_pos = emu.last_run_position;
-    let last_disp = emu.get_code_display(last_pos as u16);
+    let (last_disp, last_src) = emu.get_code_display(last_pos as u16);
+    if let Some(src) = last_src {
+        writeln!(stdout, "{}", src)?;
+    }
     writeln!(stdout, "{}", last_disp)?;
 
     if let Some(err) = status.err.as_ref() {
@@ -213,15 +219,52 @@ fn show_status<W: Write>(emu: &Emulator, stdout: &mut W, status: &Status) -> io:
     } else {
         writeln!(stdout, "Next Code:")?;
         let next_pos = emu.program_register;
-        let next_disp = emu.get_code_display(next_pos as u16);
+        let (next_disp, next_src) = emu.get_code_display(next_pos as u16);
+        if let Some(src) = next_src {
+            writeln!(stdout, "{}", src)?;
+        }
         writeln!(stdout, "{}", next_disp)?;
     }
     Ok(())
 }
 
 impl Emulator {
-    fn get_code_display(&self, pos: u16) -> String {
+    fn get_code_display(&self, pos: u16) -> (String, Option<String>) {
         let pos = pos as usize;
+        let mut src: Option<String> = None;
+        for (_file, _label, stmt) in self.program_list.iter() {
+            if stmt.is_empty() {
+                continue;
+            }
+            let (pos1, _) = stmt.first().unwrap();
+            let (pos2, _) = stmt.last().unwrap();
+            if pos < *pos1 || *pos2 < pos {
+                continue;
+            }
+            if let Ok(mut index) = stmt.binary_search_by_key(&pos, |(p, _)| *p) {
+                while index > 0 {
+                    let (p, _) = &stmt[index - 1];
+                    if *p == pos {
+                        index -= 1;
+                    } else {
+                        break;
+                    }
+                }
+                for (_, code) in stmt.iter().skip(index).take_while(|(p, _)| *p == pos) {
+                    match code {
+                        casl2::Statement::Comment { .. } => {}
+                        casl2::Statement::Code { command, .. } => match command {
+                            casl2::Command::Start { .. } | casl2::Command::End => {}
+                            _ => {
+                                src = Some(code.to_string());
+                                break;
+                            }
+                        },
+                    }
+                }
+            }
+            break;
+        }
         let op_code = self.mem[pos];
         match get_op_code_size(op_code) {
             2 => {
@@ -232,17 +275,17 @@ impl Emulator {
                         " "
                     };
                     let s = get_op_code_form(op_code, Some(adr));
-                    format!(" #{:04X}: {} {}", pos, bp, s)
+                    (format!(" #{:04X}: {} {}", pos, bp, s), src)
                 } else {
                     let bp = if self.break_points[pos] { "*" } else { " " };
                     let s = get_op_code_form(op_code, None);
-                    format!(" #{:04X}: {} {}", pos, bp, s)
+                    (format!(" #{:04X}: {} {}", pos, bp, s), src)
                 }
             }
             _ => {
                 let bp = if self.break_points[pos] { "*" } else { " " };
                 let s = get_op_code_form(op_code, None);
-                format!(" #{:04X}: {} {}", pos, bp, s)
+                (format!(" #{:04X}: {} {}", pos, bp, s), src)
             }
         }
     }
@@ -568,7 +611,10 @@ fn set_breakpoint<W: Write>(
             writeln!(stdout, "#{:04X}にブレークポイントは設定されていません", adr)?;
         }
 
-        let disp = emu.get_code_display(adr as u16);
+        let (disp, src) = emu.get_code_display(adr as u16);
+        if let Some(src) = src {
+            writeln!(stdout, "{}", src)?;
+        }
         writeln!(stdout, "{}", disp)?;
     }
 
@@ -773,7 +819,7 @@ fn dump_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> i
     };
     let mut pos = adr;
     while pos < adr + size && pos < 0x10000 {
-        let disp = emu.get_code_display(pos as u16);
+        let (disp, _) = emu.get_code_display(pos as u16);
         writeln!(stdout, "{}", disp)?;
         pos += get_op_code_size(emu.mem[pos]).max(1);
     }
