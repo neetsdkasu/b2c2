@@ -11,9 +11,7 @@ use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 
 const RET_OP_CODE: u16 = 0x8100;
-const SKIP_MODE: i32 = 0x100_0000;
-const RUN_MODE: i32 = 0x200_0000;
-const RESTART_MODE: i32 = 0x300_0000;
+const REQUEST_RESTART: i32 = 0x300_0000;
 const QUIT_TEST: i32 = 99;
 
 pub fn run_nonstep(src_file: String, flags: Flags) -> io::Result<i32> {
@@ -72,9 +70,16 @@ pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
     todo!()
 }
 
-#[derive(Default)]
-struct Status {
+#[derive(Clone, Copy)]
+enum RunMode {
+    Step(u64),
+    GoToBreakPoint(u64),
+    SkipSubroutine(u64),
+}
+
+struct State {
     err: Option<RuntimeError>,
+    run_mode: RunMode,
 }
 
 pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
@@ -112,44 +117,40 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
 
     emu.init_to_start();
 
-    let mut status = Status::default();
+    let mut state = State {
+        err: None,
+        run_mode: RunMode::Step(1),
+    };
 
     loop {
         writeln!(stdout)?;
-        show_status(&emu, &mut stdout, &status)?;
+        show_state(&emu, &mut stdout, &state)?;
         show_reg(&emu, &mut stdout)?;
 
-        let mut skip_mode = false;
-        let mut run_mode = false;
-
-        match interactive(&mut emu, &mut stdin, &mut stdout) {
+        match interactive(&mut emu, &mut stdin, &mut stdout, &mut state) {
             Ok(0) => {}
-            Ok(SKIP_MODE) => skip_mode = true,
-            Ok(RUN_MODE) => run_mode = true,
-            Ok(RESTART_MODE) => {
-                status.err = None;
-                continue;
-            }
+            Ok(REQUEST_RESTART) => continue,
             Ok(QUIT_TEST) => return Ok(0),
             result => return result,
         }
 
         writeln!(stdout)?;
 
-        if status.err.is_some() {
+        if state.err.is_some() {
             writeln!(stdout, "プログラムは終了状態です")?;
-        } else if skip_mode {
-            match do_skip(&mut emu, &mut stdin, &mut stdout, &mut status) {
-                Ok(0) => {}
-                result => return result,
-            }
-        } else if run_mode {
-            match do_run_to_break(&mut emu, &mut stdin, &mut stdout, &mut status) {
-                Ok(0) => {}
-                result => return result,
-            }
         } else {
-            match do_step(&mut emu, &mut stdin, &mut stdout, &mut status) {
+            let result = match state.run_mode {
+                RunMode::SkipSubroutine(limit) => {
+                    do_skip_subroutine(&mut emu, &mut stdin, &mut stdout, &mut state, limit)
+                }
+                RunMode::GoToBreakPoint(limit) => {
+                    do_go_to_breakpoint(&mut emu, &mut stdin, &mut stdout, &mut state, limit)
+                }
+                RunMode::Step(count) => {
+                    do_step(&mut emu, &mut stdin, &mut stdout, &mut state, count)
+                }
+            };
+            match result {
                 Ok(0) => {}
                 result => return result,
             }
@@ -157,7 +158,7 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
     }
 }
 
-fn show_status<W: Write>(emu: &Emulator, stdout: &mut W, status: &Status) -> io::Result<()> {
+fn show_state<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> io::Result<()> {
     writeln!(stdout, "Step Count: {}", emu.step_count)?;
 
     write!(stdout, "Call State:")?;
@@ -190,7 +191,7 @@ fn show_status<W: Write>(emu: &Emulator, stdout: &mut W, status: &Status) -> io:
         writeln!(stdout, "Wrong RET: {}", emu.wrong_ret.len())?;
     }
 
-    if status.err.is_none() {
+    if state.err.is_none() {
         let last_pos = emu.last_run_position;
         let last_op_code = emu.mem[last_pos];
         let next_pos = emu.program_register;
@@ -213,8 +214,8 @@ fn show_status<W: Write>(emu: &Emulator, stdout: &mut W, status: &Status) -> io:
     }
     writeln!(stdout, "{}", last_disp)?;
 
-    if let Some(err) = status.err.as_ref() {
-        writeln!(stdout, "Program Status:")?;
+    if let Some(err) = state.err.as_ref() {
+        writeln!(stdout, "Program State:")?;
         writeln!(stdout, " {:?}", err)?;
     } else {
         writeln!(stdout, "Next Code:")?;
@@ -306,22 +307,22 @@ fn do_step<R: BufRead, W: Write>(
     emu: &mut Emulator,
     stdin: &mut R,
     stdout: &mut W,
-    status: &mut Status,
+    state: &mut State,
+    mut limit: u64,
 ) -> io::Result<i32> {
-    let mut limit = emu.step_limit;
     while limit > 0 {
         limit -= 1;
         match emu.step_through_code(stdin, stdout) {
             Ok(_) => {}
             Err(RuntimeError::IoError(error)) => return Err(error),
             Err(error) => {
-                status.err = Some(error);
+                state.err = Some(error);
                 break;
             }
         }
     }
-    if status.err.is_some() && limit != 0 {
-        if matches!(status.err, Some(RuntimeError::NormalTermination { .. })) {
+    if state.err.is_some() && limit != 0 {
+        if matches!(state.err, Some(RuntimeError::NormalTermination { .. })) {
             writeln!(stdout, "指定ステップ数が終わる前にプログラムが終了しました")?;
         } else {
             writeln!(stdout, "指定ステップ数が終わる前にエラーで停止しました")?;
@@ -330,13 +331,14 @@ fn do_step<R: BufRead, W: Write>(
     Ok(0)
 }
 
-fn do_run_to_break<R: BufRead, W: Write>(
+fn do_go_to_breakpoint<R: BufRead, W: Write>(
     emu: &mut Emulator,
     stdin: &mut R,
     stdout: &mut W,
-    status: &mut Status,
+    state: &mut State,
+    step_limit: u64,
 ) -> io::Result<i32> {
-    let mut limit = emu.step_limit;
+    let mut limit = step_limit;
     let mut reach = false;
     while limit > 0 {
         limit -= 1;
@@ -360,7 +362,7 @@ fn do_run_to_break<R: BufRead, W: Write>(
                 } else if get_op_code_size(last_op_code) == 2 {
                     reach = emu.break_points[last_pos + 1];
                 }
-                status.err = Some(error);
+                state.err = Some(error);
                 break;
             }
         }
@@ -368,8 +370,8 @@ fn do_run_to_break<R: BufRead, W: Write>(
     writeln!(stdout)?;
     if reach {
         writeln!(stdout, "ブレークポイントに到達しました")?;
-    } else if status.err.is_some() {
-        if matches!(status.err, Some(RuntimeError::NormalTermination { .. })) {
+    } else if state.err.is_some() {
+        if matches!(state.err, Some(RuntimeError::NormalTermination { .. })) {
             writeln!(stdout, "ブレークポイント到達前にプログラムが終了しました")?;
         } else {
             writeln!(stdout, "実行はエラーで停止しました")?;
@@ -378,20 +380,21 @@ fn do_run_to_break<R: BufRead, W: Write>(
         writeln!(
             stdout,
             "実行はステップ制限数({})に到達で停止しました",
-            emu.step_limit
+            step_limit
         )?;
     }
     Ok(0)
 }
 
-fn do_skip<R: BufRead, W: Write>(
+fn do_skip_subroutine<R: BufRead, W: Write>(
     emu: &mut Emulator,
     stdin: &mut R,
     stdout: &mut W,
-    status: &mut Status,
+    state: &mut State,
+    step_limit: u64,
 ) -> io::Result<i32> {
     let nest = emu.program_stack.len();
-    let mut limit = emu.step_limit;
+    let mut limit = step_limit;
     let mut reach = false;
     while limit > 0 {
         limit -= 1;
@@ -409,7 +412,7 @@ fn do_skip<R: BufRead, W: Write>(
                 let last_pos = emu.last_run_position;
                 let last_op_code = emu.mem[last_pos];
                 reach = last_op_code == RET_OP_CODE && nest == emu.program_stack.len() + 1;
-                status.err = Some(error);
+                state.err = Some(error);
                 break;
             }
         }
@@ -417,13 +420,13 @@ fn do_skip<R: BufRead, W: Write>(
     writeln!(stdout)?;
     if reach {
         writeln!(stdout, "スキップ実行はRETに到達し停止しました")?;
-    } else if status.err.is_some() {
+    } else if state.err.is_some() {
         writeln!(stdout, "スキップ実行はエラーで停止しました")?;
     } else if limit == 0 {
         writeln!(
             stdout,
             "スキップ実行はステップ制限数({})に到達で停止しました",
-            emu.step_limit
+            step_limit
         )?;
     }
     Ok(0)
@@ -433,6 +436,7 @@ fn interactive<R: BufRead, W: Write>(
     emu: &mut Emulator,
     stdin: &mut R,
     stdout: &mut W,
+    state: &mut State,
 ) -> io::Result<i32> {
     let mut line = String::new();
 
@@ -443,18 +447,22 @@ fn interactive<R: BufRead, W: Write>(
         "show-mem",
         "show-labels",
         "show-var",
+        "show-state",
         "list-files",
         "dump-code",
         "dump-mem",
+        "add-dc",
+        "add-ds",
         "set-reg",
         "set-mem",
         "set-mem-fill",
         "set-breakpoint",
         "remove-breakpoint",
+        "set-label",
         "load-reg",
         "copy-mem",
-        "add-dc",
-        "add-ds",
+        "reload",
+        "reset",
         "restart",
         "run",
         "skip",
@@ -482,48 +490,49 @@ fn interactive<R: BufRead, W: Write>(
             "s" | "step" => {
                 if let Some(s) = cmd_and_param.next() {
                     match s.parse::<u64>() {
-                        Ok(v) if v > 0 => emu.step_limit = v,
+                        Ok(v) if v > 0 => state.run_mode = RunMode::Step(v),
                         _ => {
                             writeln!(stdout, "引数が不正です")?;
                             continue;
                         }
                     }
                 } else {
-                    emu.step_limit = 1;
+                    state.run_mode = RunMode::Step(1);
                 }
                 return Ok(0);
             }
             "run" => {
                 if let Some(s) = cmd_and_param.next() {
                     match s.parse::<u64>() {
-                        Ok(v) if v > 0 => emu.step_limit = v,
+                        Ok(v) if v > 0 => state.run_mode = RunMode::GoToBreakPoint(v),
                         _ => {
                             writeln!(stdout, "引数が不正です")?;
                             continue;
                         }
                     }
                 } else {
-                    emu.step_limit = 10000;
+                    state.run_mode = RunMode::GoToBreakPoint(10000);
                 }
-                return Ok(RUN_MODE);
+                return Ok(0);
             }
             "skip" => {
                 if let Some(s) = cmd_and_param.next() {
                     match s.parse::<u64>() {
-                        Ok(v) if v > 0 => emu.step_limit = v,
+                        Ok(v) if v > 0 => state.run_mode = RunMode::SkipSubroutine(v),
                         _ => {
                             writeln!(stdout, "引数が不正です")?;
                             continue;
                         }
                     }
                 } else {
-                    emu.step_limit = 10000;
+                    state.run_mode = RunMode::SkipSubroutine(10000);
                 }
-                return Ok(SKIP_MODE);
+                return Ok(0);
             }
             "restart" => {
                 emu.init_to_start();
-                return Ok(RESTART_MODE);
+                state.err = None;
+                return Ok(REQUEST_RESTART);
             }
             "reload" => todo!(),
             "reset" => todo!(),
@@ -534,10 +543,12 @@ fn interactive<R: BufRead, W: Write>(
                 writeln!(stdout, "テスト実行を中止します")?;
                 return Ok(QUIT_TEST);
             }
+            "set-label" => todo!(),
             "show-reg" => show_reg(emu, stdout)?,
             "show-mem" => todo!(),
             "show-labels" => show_label(emu, stdout, cmd_and_param.next())?,
             "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
+            "show-state" => show_state(emu, stdout, state)?,
             "list-files" => list_files(emu, stdout)?,
             "set-reg" => {
                 let msg = set_reg(emu, cmd_and_param.next());
@@ -882,7 +893,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
                 .iter()
                 .collect::<BTreeMap<_, _>>()
             {
-                print_str_label(emu, stdout, key, name, label)?;
+                print_str_label(emu, stdout, key, name, label, true)?;
             }
             for (name, (label, _)) in info
                 .label_set
@@ -890,7 +901,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
                 .iter()
                 .collect::<BTreeMap<_, _>>()
             {
-                print_arr_label(emu, stdout, key, name, label)?;
+                print_arr_label(emu, stdout, key, name, label, true)?;
             }
             for (name, label) in info
                 .label_set
@@ -914,7 +925,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
                 .iter()
                 .collect::<BTreeMap<_, _>>()
             {
-                print_str_label(emu, stdout, key, name, label)?;
+                print_str_label(emu, stdout, key, name, label, true)?;
             }
             for (name, label) in info
                 .label_set
@@ -922,7 +933,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
                 .iter()
                 .collect::<BTreeMap<_, _>>()
             {
-                print_arr_label(emu, stdout, key, name, label)?;
+                print_arr_label(emu, stdout, key, name, label, true)?;
             }
             for (name, label) in info
                 .label_set
@@ -930,7 +941,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
                 .iter()
                 .collect::<BTreeMap<_, _>>()
             {
-                print_arr_label(emu, stdout, key, name, label)?;
+                print_arr_label(emu, stdout, key, name, label, true)?;
             }
         }
     }
@@ -943,6 +954,7 @@ fn print_arr_label<W: Write>(
     key: &str,
     name: &str,
     label: &compiler::ArrayLabel,
+    omit: bool,
 ) -> io::Result<()> {
     let map = emu.local_labels.get(key).expect("BUG");
     use compiler::ArrayLabel::*;
@@ -957,38 +969,34 @@ fn print_arr_label<W: Write>(
             let mut broken = false;
             for i in 0..size {
                 let v = emu.mem[adr + i];
-                if i < 8 {
-                    match v {
-                        0x0000 => s.push_str("False "),
-                        0xFFFF => s.push_str("True "),
-                        _ => s.push_str("???? "),
-                    }
-                    t.push_str(&format!("#{:04X} ", v));
+                match v {
+                    0x0000 => s.push_str("False "),
+                    0xFFFF => s.push_str("True "),
+                    _ => s.push_str("???? "),
                 }
+                t.push_str(&format!("#{:04X} ", v));
                 if !is_valid_boolean(v) {
                     broken = true;
                 }
             }
-            if size <= 8 {
+            if omit {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} {:<8}             Val: (省略){}"#,
+                    name,
+                    adr,
+                    label,
+                    if broken { " (異常値)" } else { "" }
+                )?;
+            } else {
                 writeln!(
                     stdout,
                     r#" {:20} #{:04X} {:<8}             Val: [{}] [{}]{}"#,
                     name,
                     adr,
                     label,
-                    s,
-                    t,
-                    if broken { " (異常値)" } else { "" }
-                )?;
-            } else {
-                writeln!(
-                    stdout,
-                    r#" {:20} #{:04X} {:<8}             Val: [{} .. [{} ..{}"#,
-                    name,
-                    adr,
-                    label,
-                    s,
-                    t,
+                    s.trim(),
+                    t.trim(),
                     if broken { " (異常値)" } else { "" }
                 )?;
             }
@@ -998,30 +1006,247 @@ fn print_arr_label<W: Write>(
             let adr = *map.get(label).expect("BUG");
             let mut s = String::new();
             let mut t = String::new();
-            for i in 0..size.min(8) {
+            for i in 0..size {
                 s.push_str(&format!("{} ", emu.mem[adr + i] as i16));
                 t.push_str(&format!("#{:04X} ", emu.mem[adr + i]));
             }
-            if size <= 8 {
+            if omit {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}             Val: [{}] [{}]"#,
-                    name, adr, label, s, t
+                    r#" {:20} #{:04X} {:<8}             Val: (省略)"#,
+                    name, adr, label
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}             Val: [{} .. [{} .."#,
-                    name, adr, label, s, t
+                    r#" {:20} #{:04X} {:<8}             Val: [{}] [{}]"#,
+                    name,
+                    adr,
+                    label,
+                    s.trim(),
+                    t.trim()
                 )?;
             }
         }
-        VarRefArrayOfBoolean(_label, _size) => todo!(),
-        VarRefArrayOfInteger(_label, _size) => todo!(),
-        MemArrayOfBoolean { offset: _, size: _ } => todo!(),
-        MemArrayOfInteger { offset: _, size: _ } => todo!(),
-        MemRefArrayOfBoolean { offset: _, size: _ } => todo!(),
-        MemRefArrayOfInteger { offset: _, size: _ } => todo!(),
+        VarRefArrayOfBoolean(label, size) => {
+            let size = *size;
+            let refer = *map.get(label).expect("BUG");
+            let adr = emu.mem[refer] as usize;
+            let mut s = String::new();
+            let mut t = String::new();
+            let mut broken = false;
+            for i in 0..size {
+                let v = emu.mem[adr + i];
+                match v {
+                    0x0000 => s.push_str("False "),
+                    0xFFFF => s.push_str("True "),
+                    _ => s.push_str("???? "),
+                }
+                t.push_str(&format!("#{:04X} ", v));
+                if !is_valid_boolean(v) {
+                    broken = true;
+                }
+            }
+            if omit {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} {:<8}  Ref: #{:04X} Val: (省略){}"#,
+                    name,
+                    refer,
+                    label,
+                    adr,
+                    if broken { " (異常値)" } else { "" }
+                )?;
+            } else {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} {:<8}  Ref: #{:04X} Val: [{}] [{}]{}"#,
+                    name,
+                    refer,
+                    label,
+                    adr,
+                    s.trim(),
+                    t.trim(),
+                    if broken { " (異常値)" } else { "" }
+                )?;
+            }
+        }
+        VarRefArrayOfInteger(label, size) => {
+            let size = *size;
+            let refer = *map.get(label).expect("BUG");
+            let adr = emu.mem[refer] as usize;
+            let mut s = String::new();
+            let mut t = String::new();
+            for i in 0..size {
+                s.push_str(&format!("{} ", emu.mem[adr + i] as i16));
+                t.push_str(&format!("#{:04X} ", emu.mem[adr + i]));
+            }
+            if omit {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} {:<8}  Ref: #{:04X} Val: (省略)"#,
+                    name, refer, label, adr
+                )?;
+            } else {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} {:<8}  Ref: #{:04X} Val: [{}] [{}]"#,
+                    name,
+                    refer,
+                    label,
+                    adr,
+                    s.trim(),
+                    t.trim()
+                )?;
+            }
+        }
+        MemArrayOfBoolean { offset, size } => {
+            let mem_pos = *map.get("MEM").expect("BUG");
+            let base_adr = emu.mem[mem_pos] as usize;
+            let size = *size;
+            let adr = base_adr + *offset;
+            let mut s = String::new();
+            let mut t = String::new();
+            let mut broken = false;
+            for i in 0..size {
+                let v = emu.mem[adr + i];
+                match v {
+                    0x0000 => s.push_str("False "),
+                    0xFFFF => s.push_str("True "),
+                    _ => s.push_str("???? "),
+                }
+                t.push_str(&format!("#{:04X} ", v));
+                if !is_valid_boolean(v) {
+                    broken = true;
+                }
+            }
+            if omit {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} MEM:#{:04X}            Val: (省略){}"#,
+                    name,
+                    adr,
+                    offset,
+                    if broken { " (異常値)" } else { "" }
+                )?;
+            } else {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} MEM:#{:04X}            Val: [{}] [{}]{}"#,
+                    name,
+                    adr,
+                    offset,
+                    s.trim(),
+                    t.trim(),
+                    if broken { " (異常値)" } else { "" }
+                )?;
+            }
+        }
+        MemArrayOfInteger { offset, size } => {
+            let mem_pos = *map.get("MEM").expect("BUG");
+            let base_adr = emu.mem[mem_pos] as usize;
+            let size = *size;
+            let adr = base_adr + *offset;
+            let mut s = String::new();
+            let mut t = String::new();
+            for i in 0..size {
+                s.push_str(&format!("{} ", emu.mem[adr + i] as i16));
+                t.push_str(&format!("#{:04X} ", emu.mem[adr + i]));
+            }
+            if omit {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} MEM:#{:04X}            Val: (省略)"#,
+                    name, adr, offset
+                )?;
+            } else {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} MEM:#{:04X}             Val: [{}] [{}]"#,
+                    name,
+                    adr,
+                    offset,
+                    s.trim(),
+                    t.trim()
+                )?;
+            }
+        }
+        MemRefArrayOfBoolean { offset, size } => {
+            let mem_pos = *map.get("MEM").expect("BUG");
+            let base_adr = emu.mem[mem_pos] as usize;
+            let size = *size;
+            let refer = base_adr + *offset;
+            let adr = emu.mem[refer as usize] as usize;
+            let mut s = String::new();
+            let mut t = String::new();
+            let mut broken = false;
+            for i in 0..size {
+                let v = emu.mem[adr + i];
+                match v {
+                    0x0000 => s.push_str("False "),
+                    0xFFFF => s.push_str("True "),
+                    _ => s.push_str("???? "),
+                }
+                t.push_str(&format!("#{:04X} ", v));
+                if !is_valid_boolean(v) {
+                    broken = true;
+                }
+            }
+            if omit {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: (省略){}"#,
+                    name,
+                    refer,
+                    offset,
+                    adr,
+                    if broken { " (異常値)" } else { "" }
+                )?;
+            } else {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: [{}] [{}]{}"#,
+                    name,
+                    refer,
+                    offset,
+                    adr,
+                    s.trim(),
+                    t.trim(),
+                    if broken { " (異常値)" } else { "" }
+                )?;
+            }
+        }
+        MemRefArrayOfInteger { offset, size } => {
+            let mem_pos = *map.get("MEM").expect("BUG");
+            let base_adr = emu.mem[mem_pos] as usize;
+            let size = *size;
+            let refer = base_adr + *offset;
+            let adr = emu.mem[refer] as usize;
+            let mut s = String::new();
+            let mut t = String::new();
+            for i in 0..size {
+                s.push_str(&format!("{} ", emu.mem[adr + i] as i16));
+                t.push_str(&format!("#{:04X} ", emu.mem[adr + i]));
+            }
+            if omit {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: (省略)"#,
+                    name, refer, offset, adr
+                )?;
+            } else {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: [{}] [{}]"#,
+                    name,
+                    refer,
+                    offset,
+                    adr,
+                    s.trim(),
+                    t.trim()
+                )?;
+            }
+        }
     }
     Ok(())
 }
@@ -1032,6 +1257,7 @@ fn print_str_label<W: Write>(
     key: &str,
     name: &str,
     label: &compiler::StrLabels,
+    omit: bool,
 ) -> io::Result<()> {
     let map = emu.local_labels.get(key).expect("BUG");
     use compiler::StrLabelType::*;
@@ -1067,27 +1293,27 @@ fn print_str_label<W: Write>(
             let adr = *map.get(&label.pos).expect("BUG");
             let mut s = String::new();
             let mut t = String::new();
-            for i in 0..len.min(8) as usize {
+            for i in 0..len.min(256) as usize {
                 let ch = emu.mem[adr + i];
                 t.push_str(&format!("#{:04X} ", ch));
                 let ch = jis_x_201::convert_to_char(ch as u8, true);
                 s.push(ch);
             }
-            if len <= 8 {
+            if omit {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}             Val: {:6} [{}]"#,
-                    "",
-                    adr,
-                    label.pos,
-                    format!(r#""{}""#, s),
-                    t
+                    r#" {:20} #{:04X} {:<8}             Val: (省略)"#,
+                    "", adr, label.pos
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}             Val: "{}.. [{} .."#,
-                    "", adr, label.pos, s, t
+                    r#" {:20} #{:04X} {:<8}             Val: "{}" [{}]"#,
+                    "",
+                    adr,
+                    label.pos,
+                    s.replace('"', r#""""#),
+                    t.trim()
                 )?;
             }
         }
@@ -1103,9 +1329,52 @@ fn print_str_label<W: Write>(
             // メモリ(MEMからのオフセット)
             todo!()
         }
-        MemVal(_offset) => {
+        MemVal(offset) => {
             // メモリ(MEMからのオフセット)
-            todo!()
+            let mem_pos = *map.get("MEM").expect("BUG");
+            let base_adr = emu.mem[mem_pos] as usize;
+            let adr = base_adr + offset;
+            let len = emu.mem[adr];
+            let value = len as i16;
+            let broken = len > 256;
+            writeln!(
+                stdout,
+                " {:<20} #{:04X} MEM:#{:04X}            Val: {:6} [#{:04X}]{}",
+                name,
+                adr,
+                offset,
+                value,
+                len,
+                if broken { " (異常値)" } else { "" }
+            )?;
+            let adr = base_adr + offset + 1;
+            let mut s = String::new();
+            let mut t = String::new();
+            for i in 0..len.min(256) as usize {
+                let ch = emu.mem[adr + i];
+                t.push_str(&format!("#{:04X} ", ch));
+                let ch = jis_x_201::convert_to_char(ch as u8, true);
+                s.push(ch);
+            }
+            if omit {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} MEM:#{:04X}            Val: (省略)"#,
+                    "",
+                    adr,
+                    offset + 1
+                )?;
+            } else {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} MEM:#{:04X}            Val: "{}" [{}]"#,
+                    "",
+                    adr,
+                    offset + 1,
+                    s.replace('"', r#""""#),
+                    t.trim()
+                )?;
+            }
         }
     }
     Ok(())
@@ -2243,10 +2512,10 @@ fn resolve_files<R: BufRead, W: Write>(
 type Program = (String, String, Vec<(usize, casl2::Statement)>);
 
 // コールスタック用に確保する最大サイズ　(1呼び出しにつき、RPUSHで7語、MEMで1語、合計8語として、再帰呼び出しの深さ200とすると2000語分程度あればよいか？)
-const CALLSTACK_MAX_SIZE: usize = 0x0800; /* 2048 */
+const CALLSTACK_MAX_SIZE: usize = 0x2000; /* 8192語 */
 
 // プログラムコードを埋め込みを開始する位置 (0はダメ)
-const BEGIN_OF_PROGRAM: usize = 0x2000; /* 8192 */
+const BEGIN_OF_PROGRAM: usize = 0x0100; /* 256 */
 
 // COMET2の容量(語数)
 const MEMORY_SIZE: usize = 0x10000;
@@ -2266,7 +2535,7 @@ const CALLSTACK_START_POSITION: usize = 0xFFFF;
 // RET命令でこの値が取り出されたら、プログラム終了だがSP値が適切ではない場合はOSが暴走する(笑)
 // 今回OSは作らないため、OSのコード実体はないため、RETでこの値が来たらエミュレータ終了である
 // BEGIN_OF_PROGRAMより手前のメモリ帯にOSのコードがあると想定してる
-const INITIAL_PROGRAM_REGISTER: usize = 0x0234; // 564
+const INITIAL_PROGRAM_REGISTER: usize = 0x0040; // 64
 
 struct Emulator {
     debug_mode: bool,
@@ -2305,8 +2574,7 @@ struct Emulator {
     // CASL2ステップ数(step_through_code呼び出し回数)
     step_count: u64,
 
-    // エミュレータ自身では使わない、外から使う
-    step_limit: u64,
+    // ブレークポイント
     break_points: Vec<bool>,
 
     // 各メモリ位置のコードとしての実行回数
@@ -2374,7 +2642,6 @@ impl Emulator {
             sign_flag: false,
             zero_flag: false,
 
-            step_limit: 1000,
             break_points: vec![false; MEMORY_SIZE],
 
             last_run_position: INITIAL_PROGRAM_REGISTER - 2,
