@@ -909,6 +909,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             }
         }
     } else {
+        let mut omit_name = None;
         for (name, (label, _)) in info
             .label_set
             .argument_labels
@@ -924,6 +925,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             .collect::<BTreeMap<_, _>>()
         {
             print_str_label(emu, stdout, key, name, label, true)?;
+            omit_name = Some(name);
         }
         for (name, (label, _)) in info
             .label_set
@@ -932,6 +934,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             .collect::<BTreeMap<_, _>>()
         {
             print_arr_label(emu, stdout, key, name, label, true)?;
+            omit_name = Some(name);
         }
         for (name, label) in info
             .label_set
@@ -956,6 +959,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             .collect::<BTreeMap<_, _>>()
         {
             print_str_label(emu, stdout, key, name, label, true)?;
+            omit_name = Some(name);
         }
         for (name, label) in info
             .label_set
@@ -964,6 +968,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             .collect::<BTreeMap<_, _>>()
         {
             print_arr_label(emu, stdout, key, name, label, true)?;
+            omit_name = Some(name);
         }
         for (name, label) in info
             .label_set
@@ -972,6 +977,15 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             .collect::<BTreeMap<_, _>>()
         {
             print_arr_label(emu, stdout, key, name, label, true)?;
+            omit_name = Some(name);
+        }
+        if let Some(name) = omit_name {
+            writeln!(stdout)?;
+            writeln!(
+                stdout,
+                "※省略された値を確認するには変数名を指定した実行が必要です　( 例: show-reg {} {} )",
+                file, name
+            )?;
         }
     }
     Ok(())
@@ -1011,7 +1025,7 @@ fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}             Val: (省略){}"#,
+                    r#" {:18} #{:04X} {:<8}             Val: (省略){}"#,
                     name,
                     adr,
                     label,
@@ -1020,7 +1034,7 @@ fn print_arr_label<W: Write>(
             } else {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}             Val: [{}] [{}]{}"#,
+                    r#" {:18} #{:04X} {:<8}             Val: [{}] [{}]{}"#,
                     name,
                     adr,
                     label,
@@ -1042,13 +1056,13 @@ fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}             Val: (省略)"#,
+                    r#" {:18} #{:04X} {:<8}             Val: (省略)"#,
                     name, adr, label
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}             Val: [{}] [{}]"#,
+                    r#" {:18} #{:04X} {:<8}             Val: [{}] [{}]"#,
                     name,
                     adr,
                     label,
@@ -1079,7 +1093,7 @@ fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}  Ref: #{:04X} Val: (省略){}"#,
+                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} Val: (省略){}"#,
                     name,
                     refer,
                     label,
@@ -1089,7 +1103,7 @@ fn print_arr_label<W: Write>(
             } else {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}  Ref: #{:04X} Val: [{}] [{}]{}"#,
+                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} Val: [{}] [{}]{}"#,
                     name,
                     refer,
                     label,
@@ -1113,13 +1127,13 @@ fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}  Ref: #{:04X} Val: (省略)"#,
+                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} Val: (省略)"#,
                     name, refer, label, adr
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}  Ref: #{:04X} Val: [{}] [{}]"#,
+                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} Val: [{}] [{}]"#,
                     name,
                     refer,
                     label,
@@ -1152,7 +1166,7 @@ fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} MEM:#{:04X}            Val: (省略){}"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            Val: (省略){}"#,
                     name,
                     adr,
                     offset,
@@ -1161,7 +1175,7 @@ fn print_arr_label<W: Write>(
             } else {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} MEM:#{:04X}            Val: [{}] [{}]{}"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            Val: [{}] [{}]{}"#,
                     name,
                     adr,
                     offset,
@@ -1185,13 +1199,13 @@ fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} MEM:#{:04X}            Val: (省略)"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            Val: (省略)"#,
                     name, adr, offset
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} MEM:#{:04X}             Val: [{}] [{}]"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}             Val: [{}] [{}]"#,
                     name,
                     adr,
                     offset,
@@ -1224,7 +1238,7 @@ fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: (省略){}"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: (省略){}"#,
                     name,
                     refer,
                     offset,
@@ -1234,7 +1248,7 @@ fn print_arr_label<W: Write>(
             } else {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: [{}] [{}]{}"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: [{}] [{}]{}"#,
                     name,
                     refer,
                     offset,
@@ -1260,13 +1274,13 @@ fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: (省略)"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: (省略)"#,
                     name, refer, offset, adr
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: [{}] [{}]"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: [{}] [{}]"#,
                     name,
                     refer,
                     offset,
@@ -1312,7 +1326,7 @@ fn print_str_label<W: Write>(
             let broken = len > 256;
             writeln!(
                 stdout,
-                " {:<20} #{:04X} {:<8}             Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} {:<8}             Val: {:6} [#{:04X}]{}",
                 name,
                 adr,
                 label.len,
@@ -1332,13 +1346,13 @@ fn print_str_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}             Val: (省略)"#,
+                    r#" {:18} #{:04X} {:<8}             Val: (省略)"#,
                     "", adr, label.pos
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}             Val: "{}" [{}]"#,
+                    r#" {:18} #{:04X} {:<8}             Val: "{}" [{}]"#,
                     "",
                     adr,
                     label.pos,
@@ -1356,7 +1370,7 @@ fn print_str_label<W: Write>(
             let broken = len > 256;
             writeln!(
                 stdout,
-                " {:<20} #{:04X} {:<8}  Ref: #{:04X} Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} {:<8}  Ref: #{:04X} Val: {:6} [#{:04X}]{}",
                 name,
                 adr,
                 label.len,
@@ -1378,13 +1392,13 @@ fn print_str_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}  Ref: #{:04X} Val: (省略)"#,
+                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} Val: (省略)"#,
                     "", adr, label.pos, refer
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} {:<8}  Ref: #{:04X} Val: "{}" [{}]"#,
+                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} Val: "{}" [{}]"#,
                     "",
                     adr,
                     label.pos,
@@ -1405,7 +1419,7 @@ fn print_str_label<W: Write>(
             let broken = len > 256;
             writeln!(
                 stdout,
-                " {:<20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: {:6} [#{:04X}]{}",
                 name,
                 refer,
                 offset,
@@ -1427,7 +1441,7 @@ fn print_str_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: (省略)"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: (省略)"#,
                     "",
                     refer,
                     offset + 1,
@@ -1436,7 +1450,7 @@ fn print_str_label<W: Write>(
             } else {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: "{}" [{}]"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: "{}" [{}]"#,
                     "",
                     refer,
                     offset + 1,
@@ -1456,7 +1470,7 @@ fn print_str_label<W: Write>(
             let broken = len > 256;
             writeln!(
                 stdout,
-                " {:<20} #{:04X} MEM:#{:04X}            Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} (MEM)+#{:04X}            Val: {:6} [#{:04X}]{}",
                 name,
                 adr,
                 offset,
@@ -1476,7 +1490,7 @@ fn print_str_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} MEM:#{:04X}            Val: (省略)"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            Val: (省略)"#,
                     "",
                     adr,
                     offset + 1
@@ -1484,7 +1498,7 @@ fn print_str_label<W: Write>(
             } else {
                 writeln!(
                     stdout,
-                    r#" {:20} #{:04X} MEM:#{:04X}            Val: "{}" [{}]"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            Val: "{}" [{}]"#,
                     "",
                     adr,
                     offset + 1,
@@ -1519,7 +1533,7 @@ fn print_value_label<W: Write>(
             };
             writeln!(
                 stdout,
-                " {:<20} #{:04X} {:<8}             Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} {:<8}             Val: {:6} [#{:04X}]{}",
                 name,
                 adr,
                 s,
@@ -1538,7 +1552,7 @@ fn print_value_label<W: Write>(
             let value = raw as i16;
             writeln!(
                 stdout,
-                " {:<20} #{:04X} {:<8}             Val: {:6} [#{:04X}]",
+                " {:<18} #{:04X} {:<8}             Val: {:6} [#{:04X}]",
                 name, adr, s, value, raw
             )?;
         }
@@ -1555,7 +1569,7 @@ fn print_value_label<W: Write>(
             };
             writeln!(
                 stdout,
-                " {:<20} #{:04X} {:<8}  Ref: #{:04X} Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} {:<8}  Ref: #{:04X} Val: {:6} [#{:04X}]{}",
                 name,
                 adr,
                 s,
@@ -1576,7 +1590,7 @@ fn print_value_label<W: Write>(
             let value = raw as i16;
             writeln!(
                 stdout,
-                " {:<20} #{:04X} {:<8}  Ref: #{:04X} Val: {:6} [#{:04X}]",
+                " {:<18} #{:04X} {:<8}  Ref: #{:04X} Val: {:6} [#{:04X}]",
                 name, adr, s, refer, value, raw
             )?;
         }
@@ -1593,7 +1607,7 @@ fn print_value_label<W: Write>(
             };
             writeln!(
                 stdout,
-                " {:<20} #{:04X} MEM:#{:04X}            Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} (MEM)+#{:04X}            Val: {:6} [#{:04X}]{}",
                 name,
                 adr,
                 offset,
@@ -1613,7 +1627,7 @@ fn print_value_label<W: Write>(
             let value = raw as i16;
             writeln!(
                 stdout,
-                " {:<20} #{:04X} MEM:#{:04X}            Val: {:6} [#{:04X}]",
+                " {:<18} #{:04X} (MEM)+#{:04X}            Val: {:6} [#{:04X}]",
                 name, adr, offset, value, raw
             )?;
         }
@@ -1631,7 +1645,7 @@ fn print_value_label<W: Write>(
             };
             writeln!(
                 stdout,
-                " {:<20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: {:6} [#{:04X}]{}",
                 name,
                 adr,
                 offset,
@@ -1653,7 +1667,7 @@ fn print_value_label<W: Write>(
             let value = raw as i16;
             writeln!(
                 stdout,
-                " {:<20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: {:6} [#{:04X}]",
+                " {:<18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: {:6} [#{:04X}]",
                 name, adr, offset, refer, value, raw
             )?;
         }
