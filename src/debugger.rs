@@ -17,8 +17,54 @@ const RESTART_MODE: i32 = 0x300_0000;
 const QUIT_TEST: i32 = 99;
 
 pub fn run_nonstep(src_file: String, flags: Flags) -> io::Result<i32> {
-    let _ = (src_file, flags);
-    todo!()
+    let stdin = io::stdin();
+    let mut stdin = stdin.lock();
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+    let mut emu = Emulator::new();
+
+    emu.debug_mode = false;
+
+    match if src_file.to_ascii_lowercase().ends_with(".cas") {
+        emu.compile_casl2(&src_file, &flags, false)
+    } else {
+        emu.compile_basic(&src_file, &flags, false)
+    } {
+        Ok(0) => {}
+        result => return result,
+    }
+
+    if emu.start_point.is_none() {
+        eprintln!("入力ファイルが正しくありません");
+        return Ok(101);
+    }
+
+    if !emu.unknown_labels.is_empty() {
+        // 未解決ラベルを解決する処理を入れる
+        let src_dir = Path::new(&src_file).parent().unwrap();
+        match auto_resolve_files(&mut emu, &mut stdin, &mut stdout, &src_dir, &flags) {
+            Ok(0) => {}
+            Ok(QUIT_TEST) => return Ok(0),
+            result => return result,
+        }
+    }
+
+    emu.init_to_start();
+
+    loop {
+        match emu.step_through_code(&mut stdin, &mut stdout) {
+            Ok(_) => {}
+            Err(RuntimeError::IoError(error)) => return Err(error),
+            Err(error) => {
+                eprintln!("{:?}", error);
+                if matches!(error, RuntimeError::NormalTermination { .. }) {
+                    return Ok(0);
+                } else {
+                    return Ok(QUIT_TEST);
+                }
+            }
+        }
+    }
 }
 
 pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
@@ -1893,6 +1939,108 @@ fn get_program_name(file: &str) -> io::Result<Option<String>> {
     }
 }
 
+fn auto_resolve_files<R: BufRead, W: Write>(
+    emu: &mut Emulator,
+    stdin: &mut R,
+    stdout: &mut W,
+    src_dir: &Path,
+    flags: &Flags,
+) -> io::Result<i32> {
+    let mut label_cache = HashMap::new();
+    let dst_dir = flags.create_dst_dir()?;
+    let casl2_flags = {
+        let mut flags = flags.clone();
+        flags.compiler = Default::default();
+        flags
+    };
+    while let Some((label, files)) = emu.suggest_load_file(&dst_dir, src_dir)? {
+        let file = {
+            let mut found = None;
+            for file in files.iter() {
+                if let Some(name) = label_cache.get(file) {
+                    if name == &label {
+                        found = Some(file.clone());
+                        break;
+                    } else {
+                        continue;
+                    }
+                }
+                match get_program_name(&file)? {
+                    Some(name) if name == label => {
+                        found = Some(file.clone());
+                        break;
+                    }
+                    Some(name) => {
+                        label_cache.insert(file.clone(), name);
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(file) = found {
+                file
+            } else {
+                writeln!(
+                    stdout,
+                    "ラベル{}を解決できるファイルのパスを入力してください",
+                    label
+                )?;
+                writeln!(
+                    stdout,
+                    "-1を入力するとテスト実行を中止します。0を入力するとRETのみのダミーコードで解決されます。"
+                )?;
+                writeln!(stdout)?;
+                write!(stdout, "> ")?;
+                stdout.flush()?;
+                let mut line = String::new();
+                if stdin.read_line(&mut line)? == 0 {
+                    eprintln!("入力がキャンセルされました");
+                    io::stderr().flush()?;
+                    writeln!(stdout, "テスト実行を中止します")?;
+                    return Ok(QUIT_TEST);
+                }
+                let line = line.trim();
+                match line.parse::<i32>() {
+                    Ok(0) => {
+                        writeln!(
+                            stdout,
+                            "ラベル{}にはRETのみのダミーコードを割り当てます",
+                            label
+                        )?;
+                        if let Err(msg) = emu.resolve_dummy_code(label) {
+                            eprintln!("CompileError{{ {} }}", msg);
+                            return Ok(20);
+                        }
+                        continue;
+                    }
+                    Ok(-1) => {
+                        writeln!(stdout, "テスト実行を中止します")?;
+                        return Ok(QUIT_TEST);
+                    }
+                    _ => {
+                        let path = Path::new(line);
+                        if path.exists() && path.is_file() {
+                            line.to_string()
+                        } else {
+                            writeln!(stdout, "{}が見つかりません", line)?;
+                            continue;
+                        }
+                    }
+                }
+            }
+        };
+        match if file.to_ascii_lowercase().ends_with(".cas") {
+            emu.compile_casl2(&file, &casl2_flags, false)
+        } else {
+            emu.compile_basic(&file, &flags, false)
+        } {
+            Ok(0) => {}
+            result => return result,
+        }
+        eprintln!("{}を読み込みました", file);
+    }
+    Ok(0)
+}
+
 fn resolve_files<R: BufRead, W: Write>(
     emu: &mut Emulator,
     stdin: &mut R,
@@ -1944,7 +2092,7 @@ fn resolve_files<R: BufRead, W: Write>(
             eprintln!("入力がキャンセルされました");
             io::stderr().flush()?;
             writeln!(stdout, "テスト実行を中止します")?;
-            return Ok(99);
+            return Ok(QUIT_TEST);
         }
         let line = line.trim();
         let file = if line.is_empty() {
@@ -1958,6 +2106,8 @@ fn resolve_files<R: BufRead, W: Write>(
                     if name == &label {
                         found = Some(file.clone());
                         break;
+                    } else {
+                        continue;
                     }
                 }
                 match get_program_name(&file)? {
@@ -1976,7 +2126,7 @@ fn resolve_files<R: BufRead, W: Write>(
             } else {
                 writeln!(stdout, "解決できるファイルを見つけられませんでした")?;
                 writeln!(stdout, "テスト実行を中止します")?;
-                return Ok(99);
+                return Ok(QUIT_TEST);
             }
         } else {
             let count = files.len().min(LIST_UP_SIZE) as i32;
@@ -1995,12 +2145,12 @@ fn resolve_files<R: BufRead, W: Write>(
                 }
                 Ok(-1) => {
                     writeln!(stdout, "テスト実行を中止します")?;
-                    return Ok(99);
+                    return Ok(QUIT_TEST);
                 }
                 Ok(num) if num >= 1 && num <= count => files[num as usize - 1].clone(),
                 _ => {
                     let path = Path::new(line);
-                    if path.is_file() && path.exists() {
+                    if path.exists() && path.is_file() {
                         line.to_string()
                     } else {
                         writeln!(stdout, "{}が見つかりません", line)?;
@@ -2059,6 +2209,8 @@ const CALLSTACK_START_POSITION: usize = 0xFFFF;
 const INITIAL_PROGRAM_REGISTER: usize = 0x0234; // 564
 
 struct Emulator {
+    debug_mode: bool,
+
     // COMET2のメモリ
     mem: Vec<u16>,
 
@@ -2153,6 +2305,7 @@ struct Emulator {
 impl Emulator {
     fn new() -> Self {
         Self {
+            debug_mode: true,
             mem: vec![0; MEMORY_SIZE],
             general_registers: vec![0; 8],
             stack_pointer: CALLSTACK_START_POSITION,
@@ -2442,7 +2595,7 @@ impl Emulator {
                     op_code: get_op_code_form(op_code, None),
                 });
             }
-            match (op_code >> 8) & 0xFF {
+            match ((op_code >> 8) & 0xFF) as u8 {
                 0x14 => {
                     // LD r1,r2  (OF=0,SF,ZF)
                     let r2_value = self.general_registers[r2];
@@ -2603,7 +2756,7 @@ impl Emulator {
             });
         }
 
-        match (op_code >> 8) & 0xFF {
+        match ((op_code >> 8) & 0xFF) as u8 {
             0x12 => {
                 // LAD r,adr,x
                 let value = adr.wrapping_add(if r2 == 0 {
@@ -2736,7 +2889,11 @@ impl Emulator {
                     // IN
                     let pos = self.general_registers[1] as usize;
                     let len = self.general_registers[2] as usize;
-                    write!(stdout, "[IN] ? ")?;
+                    if self.debug_mode {
+                        write!(stdout, "[IN] ? ")?;
+                    } else {
+                        write!(stdout, "? ")?;
+                    }
                     stdout.flush()?;
                     self.update_count[len] += 1;
                     let mut line = String::new();
@@ -2779,7 +2936,11 @@ impl Emulator {
                         line.push(jis_x_201::convert_to_char(ch, true));
                         self.access_count[pos + i] += 1;
                     }
-                    writeln!(stdout, "[OUT] {}", line)?;
+                    if self.debug_mode {
+                        writeln!(stdout, "[OUT] {}", line)?;
+                    } else {
+                        writeln!(stdout, "{}", line)?;
+                    }
                     stdout.flush()?;
                 }
                 // SVC後のGR,FRは不定なので、値を保持しないという仕様にした(雑)
@@ -2834,7 +2995,7 @@ impl Emulator {
             });
         }
 
-        match (op_code >> 8) & 0xFF {
+        match ((op_code >> 8) & 0xFF) as u8 {
             0x10 => {
                 // LD r,adr,x (OF=0,SF,ZF)
                 let value = self.mem[access];
@@ -2956,7 +3117,7 @@ impl Emulator {
             });
         }
 
-        match (op_code >> 8) & 0xFF {
+        match ((op_code >> 8) & 0xFF) as u8 {
             0x65 => {
                 // JPL adr,x
                 if !self.sign_flag && !self.zero_flag {
