@@ -241,26 +241,37 @@ impl Emulator {
             if pos < *pos1 || *pos2 < pos {
                 continue;
             }
-            if let Ok(mut index) = stmt.binary_search_by_key(&pos, |(p, _)| *p) {
-                while index > 0 {
-                    let (p, _) = &stmt[index - 1];
-                    if *p == pos {
-                        index -= 1;
-                    } else {
-                        break;
-                    }
+            let mut tmp = "";
+            let mut index = match stmt.binary_search_by_key(&pos, |(p, _)| *p) {
+                Ok(index) => index,
+                Err(0) => {
+                    tmp = "+ ";
+                    0
                 }
-                for (_, code) in stmt.iter().skip(index).take_while(|(p, _)| *p == pos) {
-                    match code {
-                        casl2::Statement::Comment { .. } => {}
-                        casl2::Statement::Code { command, .. } => match command {
-                            casl2::Command::Start { .. } | casl2::Command::End => {}
-                            _ => {
-                                src = Some(code.to_string());
-                                break;
-                            }
-                        },
-                    }
+                Err(index) => {
+                    tmp = "+ ";
+                    index - 1
+                }
+            };
+            let (pos, _) = &stmt[index];
+            while index > 0 {
+                let (p, _) = &stmt[index - 1];
+                if p == pos {
+                    index -= 1;
+                } else {
+                    break;
+                }
+            }
+            for (_, code) in stmt.iter().skip(index).take_while(|(p, _)| p == pos) {
+                match code {
+                    casl2::Statement::Comment { .. } => {}
+                    casl2::Statement::Code { command, .. } => match command {
+                        casl2::Command::Start { .. } | casl2::Command::End => {}
+                        _ => {
+                            src = Some(format!("{}{}", tmp, code));
+                            break;
+                        }
+                    },
                 }
             }
             break;
