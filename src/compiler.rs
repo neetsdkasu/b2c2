@@ -1307,9 +1307,9 @@ impl Compiler {
                     let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
                     if option_use_allocator {
                         temp_statements.code(format!(
-                            r#" LD    GR1,MEM
-                                LAD   GR1,{offset},GR1
-                                LAD   GR2,1,GR1
+                            r#" LD    GR2,MEM
+                                LAD   GR2,{offset},GR2
+                                LAD   GR1,1,GR2
                                 LD    GR3,0,GR1
                                 LD    GR4,0,GR2
                                 CALL  {copy}"#,
