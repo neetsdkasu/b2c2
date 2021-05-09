@@ -461,7 +461,6 @@ fn interactive<R: BufRead, W: Write>(
         "set-label",
         "load-reg",
         "copy-mem",
-        "reload",
         "reset",
         "restart",
         "run",
@@ -534,7 +533,6 @@ fn interactive<R: BufRead, W: Write>(
                 state.err = None;
                 return Ok(REQUEST_RESTART);
             }
-            "reload" => todo!(),
             "reset" => todo!(),
             "help" => {
                 show_command_help_before_start(cmd_and_param.next(), stdout)?;
@@ -867,82 +865,113 @@ fn list_files<W: Write>(emu: &Emulator, stdout: &mut W) -> io::Result<()> {
 }
 
 fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
-    let file = match param {
-        Some(file) => emu.basic_info.get(&file.to_string()),
+    let (file, info, var_list) = match param {
         None => {
             let (file, _, _) = emu.program_list.first().expect("BUG");
-            emu.basic_info.get(file)
+            (file.as_str(), emu.basic_info.get(file), None)
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ');
+            let file = iter.next().unwrap();
+            let var_list = iter.next().map(|s| s.split(',').collect::<Vec<_>>());
+            (file, emu.basic_info.get(&file.to_string()), var_list)
         }
     };
-    match file {
+
+    let (key, info) = match info {
         None => {
             writeln!(stdout, "変数情報が見つかりませんでした")?;
+            return Ok(());
         }
-        Some((key, info)) => {
-            for (name, (label, _)) in info
-                .label_set
-                .argument_labels
-                .iter()
-                .collect::<BTreeMap<_, _>>()
-            {
+        Some((key, info)) => (key, info),
+    };
+
+    if let Some(var_list) = var_list {
+        for name in var_list {
+            if let Some((label, _)) = info.label_set.argument_labels.get(name) {
                 print_value_label(emu, stdout, key, name, label)?;
-            }
-            for (name, (label, _)) in info
-                .label_set
-                .str_argument_labels
-                .iter()
-                .collect::<BTreeMap<_, _>>()
-            {
-                print_str_label(emu, stdout, key, name, label, true)?;
-            }
-            for (name, (label, _)) in info
-                .label_set
-                .arr_argument_labels
-                .iter()
-                .collect::<BTreeMap<_, _>>()
-            {
-                print_arr_label(emu, stdout, key, name, label, true)?;
-            }
-            for (name, label) in info
-                .label_set
-                .bool_var_labels
-                .iter()
-                .collect::<BTreeMap<_, _>>()
-            {
+            } else if let Some((label, _)) = info.label_set.arr_argument_labels.get(name) {
+                print_arr_label(emu, stdout, key, name, label, false)?;
+            } else if let Some((label, _)) = info.label_set.str_argument_labels.get(name) {
+                print_str_label(emu, stdout, key, name, label, false)?;
+            } else if let Some(label) = info.label_set.bool_var_labels.get(name) {
                 print_value_label(emu, stdout, key, name, label)?;
-            }
-            for (name, label) in info
-                .label_set
-                .int_var_labels
-                .iter()
-                .collect::<BTreeMap<_, _>>()
-            {
+            } else if let Some(label) = info.label_set.int_var_labels.get(name) {
                 print_value_label(emu, stdout, key, name, label)?;
+            } else if let Some(label) = info.label_set.str_var_labels.get(name) {
+                print_str_label(emu, stdout, key, name, label, false)?;
+            } else if let Some(label) = info.label_set.bool_arr_labels.get(name) {
+                print_arr_label(emu, stdout, key, name, label, false)?;
+            } else if let Some(label) = info.label_set.int_arr_labels.get(name) {
+                print_arr_label(emu, stdout, key, name, label, false)?;
+            } else {
+                writeln!(stdout, "{}に変数{}は存在しません", file, name)?;
             }
-            for (name, label) in info
-                .label_set
-                .str_var_labels
-                .iter()
-                .collect::<BTreeMap<_, _>>()
-            {
-                print_str_label(emu, stdout, key, name, label, true)?;
-            }
-            for (name, label) in info
-                .label_set
-                .bool_arr_labels
-                .iter()
-                .collect::<BTreeMap<_, _>>()
-            {
-                print_arr_label(emu, stdout, key, name, label, true)?;
-            }
-            for (name, label) in info
-                .label_set
-                .int_arr_labels
-                .iter()
-                .collect::<BTreeMap<_, _>>()
-            {
-                print_arr_label(emu, stdout, key, name, label, true)?;
-            }
+        }
+    } else {
+        for (name, (label, _)) in info
+            .label_set
+            .argument_labels
+            .iter()
+            .collect::<BTreeMap<_, _>>()
+        {
+            print_value_label(emu, stdout, key, name, label)?;
+        }
+        for (name, (label, _)) in info
+            .label_set
+            .str_argument_labels
+            .iter()
+            .collect::<BTreeMap<_, _>>()
+        {
+            print_str_label(emu, stdout, key, name, label, true)?;
+        }
+        for (name, (label, _)) in info
+            .label_set
+            .arr_argument_labels
+            .iter()
+            .collect::<BTreeMap<_, _>>()
+        {
+            print_arr_label(emu, stdout, key, name, label, true)?;
+        }
+        for (name, label) in info
+            .label_set
+            .bool_var_labels
+            .iter()
+            .collect::<BTreeMap<_, _>>()
+        {
+            print_value_label(emu, stdout, key, name, label)?;
+        }
+        for (name, label) in info
+            .label_set
+            .int_var_labels
+            .iter()
+            .collect::<BTreeMap<_, _>>()
+        {
+            print_value_label(emu, stdout, key, name, label)?;
+        }
+        for (name, label) in info
+            .label_set
+            .str_var_labels
+            .iter()
+            .collect::<BTreeMap<_, _>>()
+        {
+            print_str_label(emu, stdout, key, name, label, true)?;
+        }
+        for (name, label) in info
+            .label_set
+            .bool_arr_labels
+            .iter()
+            .collect::<BTreeMap<_, _>>()
+        {
+            print_arr_label(emu, stdout, key, name, label, true)?;
+        }
+        for (name, label) in info
+            .label_set
+            .int_arr_labels
+            .iter()
+            .collect::<BTreeMap<_, _>>()
+        {
+            print_arr_label(emu, stdout, key, name, label, true)?;
         }
     }
     Ok(())
@@ -959,8 +988,8 @@ fn print_arr_label<W: Write>(
     let map = emu.local_labels.get(key).expect("BUG");
     use compiler::ArrayLabel::*;
     match label {
-        TempArrayOfBoolean(_str_labels, _size) => todo!(),
-        TempArrayOfInteger(_str_labels, _size) => todo!(),
+        TempArrayOfBoolean(_str_labels, _size) => unreachable!("たぶん来ない"),
+        TempArrayOfInteger(_str_labels, _size) => unreachable!("たぶん来ない"),
         VarArrayOfBoolean(label, size) => {
             let size = *size;
             let adr = *map.get(label).expect("BUG");
@@ -1264,18 +1293,19 @@ fn print_str_label<W: Write>(
     match &label.label_type {
         Const(_str) => {
             // IN/OUTの定数 LB**/LL**
-            todo!()
+            unreachable!("たぶん来ない")
         }
         Lit(_str) => {
             // リテラル ='abc'/=3
-            todo!()
+            unreachable!("たぶん来ない")
         }
         Temp => {
             // 一時変数 TB**/TL**
-            todo!()
+            unreachable!("たぶん来ない")
         }
-        Var => {
+        Var | ArgVal => {
             // 文字列変数 SB**/SL**
+            // 引数 ARG*/ARG*
             let adr = *map.get(&label.len).expect("BUG");
             let len = emu.mem[adr];
             let value = len as i16;
@@ -1319,15 +1349,102 @@ fn print_str_label<W: Write>(
         }
         ArgRef => {
             // 引数(参照型) ARG*/ARG*
-            todo!()
+            let adr = *map.get(&label.len).expect("BUG");
+            let refer = emu.mem[adr] as usize;
+            let len = emu.mem[refer];
+            let value = len as i16;
+            let broken = len > 256;
+            writeln!(
+                stdout,
+                " {:<20} #{:04X} {:<8}  Ref: #{:04X} Val: {:6} [#{:04X}]{}",
+                name,
+                adr,
+                label.len,
+                refer,
+                value,
+                len,
+                if broken { " (異常値)" } else { "" }
+            )?;
+            let adr = *map.get(&label.pos).expect("BUG");
+            let refer = emu.mem[adr] as usize;
+            let mut s = String::new();
+            let mut t = String::new();
+            for i in 0..len.min(256) as usize {
+                let ch = emu.mem[refer + i];
+                t.push_str(&format!("#{:04X} ", ch));
+                let ch = jis_x_201::convert_to_char(ch as u8, true);
+                s.push(ch);
+            }
+            if omit {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} {:<8}  Ref: #{:04X} Val: (省略)"#,
+                    "", adr, label.pos, refer
+                )?;
+            } else {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} {:<8}  Ref: #{:04X} Val: "{}" [{}]"#,
+                    "",
+                    adr,
+                    label.pos,
+                    refer,
+                    s.replace('"', r#""""#),
+                    t.trim()
+                )?;
+            }
         }
-        ArgVal => {
-            // 引数 ARG*/ARG*
-            todo!()
-        }
-        MemRef(_offset) => {
+        MemRef(offset) => {
             // メモリ(MEMからのオフセット)
-            todo!()
+            let mem_pos = *map.get("MEM").expect("BUG");
+            let base_adr = emu.mem[mem_pos] as usize;
+            let refer = base_adr + offset;
+            let adr = emu.mem[refer] as usize;
+            let len = emu.mem[adr];
+            let value = len as i16;
+            let broken = len > 256;
+            writeln!(
+                stdout,
+                " {:<20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: {:6} [#{:04X}]{}",
+                name,
+                refer,
+                offset,
+                adr,
+                value,
+                len,
+                if broken { " (異常値)" } else { "" }
+            )?;
+            let refer = base_adr + offset + 1;
+            let adr = emu.mem[refer] as usize;
+            let mut s = String::new();
+            let mut t = String::new();
+            for i in 0..len.min(256) as usize {
+                let ch = emu.mem[adr + i];
+                t.push_str(&format!("#{:04X} ", ch));
+                let ch = jis_x_201::convert_to_char(ch as u8, true);
+                s.push(ch);
+            }
+            if omit {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: (省略)"#,
+                    "",
+                    refer,
+                    offset + 1,
+                    adr
+                )?;
+            } else {
+                writeln!(
+                    stdout,
+                    r#" {:20} #{:04X} MEM:#{:04X} Ref: #{:04X} Val: "{}" [{}]"#,
+                    "",
+                    refer,
+                    offset + 1,
+                    adr,
+                    s.replace('"', r#""""#),
+                    t.trim()
+                )?;
+            }
         }
         MemVal(offset) => {
             // メモリ(MEMからのオフセット)
@@ -2042,14 +2159,12 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 メモリの指定アドレスから指定の長さ分の領域の各値を列挙する
     show-labels [<PROGRAM_ENTRY>]
                 ラベルの一覧とアドレスを表示する。PROGRAM_ENTRYを指定した場合はローカルラベルを表示する
-    show-var [<BASIC_SRC_FILE>]
+    show-var [<BASIC_SRC_FILE> [<VAR_NAME1>[,<VAR_NAME2>..]]]
                 指定したBASICプログラムの変数名と対応するラベルとアドレスと値を表示する
     list-files
                 読み込んだソースファイルの一覧を表示する
-    reload
-                プログラムを最初から実行しなおします。プログラムをファイルから読み込みなおし配置されます。
     reset
-                プログラムを最初から実行しなおします。読み込み済みのプログラムがメモリに再配置されます。
+                プログラムを最初から実行しなおします。プログラムをファイルから読み込みなおし配置されます。
     restart
                 プログラムを最初の位置から実行しなおします。メモリやGRやFRは終了時点の状態が維持されます
     set-reg <REGISTER> <VALUE>
