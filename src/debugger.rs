@@ -72,6 +72,11 @@ pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
     todo!()
 }
 
+#[derive(Default)]
+struct Status {
+    err: Option<RuntimeError>,
+}
+
 pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
@@ -107,129 +112,22 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
 
     emu.init_to_start();
 
-    let mut err_status: Option<RuntimeError> = None;
+    let mut status = Status::default();
 
     loop {
         writeln!(stdout)?;
-        writeln!(stdout, "Step Count: {}", emu.step_count)?;
-
-        write!(stdout, "Call State:")?;
-        for (pos, _) in emu.program_stack.iter() {
-            match emu.all_label_list.binary_search_by_key(pos, |(_, p)| *p) {
-                Ok(mut index) => {
-                    while index > 0 {
-                        if emu
-                            .all_label_list
-                            .get(index - 1)
-                            .filter(|(_, p)| p == pos)
-                            .is_some()
-                        {
-                            index -= 1;
-                            continue;
-                        }
-                        break;
-                    }
-                    let (label, _) = emu.all_label_list.get(index).unwrap();
-                    write!(stdout, " > {}", label)?;
-                }
-                Err(_) => {
-                    write!(stdout, " > #{:04X}", pos)?;
-                }
-            }
-        }
-        writeln!(stdout)?;
-
-        if !emu.wrong_ret.is_empty() {
-            writeln!(stdout, "Wrong RET: {}", emu.wrong_ret.len())?;
-        }
-
-        if err_status.is_none() {
-            let last_pos = emu.last_run_position;
-            let last_op_code = emu.mem[last_pos];
-            let next_pos = emu.program_register;
-            if last_op_code == RET_OP_CODE && next_pos >= 2 {
-                writeln!(stdout, "Prev Code:")?;
-                let prev_pos = next_pos - 2;
-                let prev_op_code = emu.mem[prev_pos];
-                match get_op_code_size(prev_op_code) {
-                    2 => {
-                        let bp = if emu.break_points[prev_pos] || emu.break_points[prev_pos + 1] {
-                            "*"
-                        } else {
-                            " "
-                        };
-                        let adr = emu.mem[prev_pos + 1];
-                        let s = get_op_code_form(prev_op_code, Some(adr));
-                        writeln!(stdout, " #{:04X}: {} {}", prev_pos, bp, s)?;
-                    }
-                    _ => {
-                        let bp = if emu.break_points[prev_pos] { "*" } else { " " };
-                        let s = get_op_code_form(prev_op_code, None);
-                        writeln!(stdout, " #{:04X}: {} {}", prev_pos, bp, s)?;
-                    }
-                }
-            }
-        }
-
-        writeln!(stdout, "Last Code:")?;
-        let last_pos = emu.last_run_position;
-        let last_op_code = emu.mem[last_pos];
-        match get_op_code_size(last_op_code) {
-            2 => {
-                let bp = if emu.break_points[last_pos] || emu.break_points[last_pos + 1] {
-                    "*"
-                } else {
-                    " "
-                };
-                let adr = emu.mem[last_pos + 1];
-                let s = get_op_code_form(last_op_code, Some(adr));
-                writeln!(stdout, " #{:04X}: {} {}", last_pos, bp, s)?;
-            }
-            _ => {
-                let bp = if emu.break_points[last_pos] { "*" } else { " " };
-                let s = get_op_code_form(last_op_code, None);
-                writeln!(stdout, " #{:04X}: {} {}", last_pos, bp, s)?;
-            }
-        }
-
-        if let Some(err) = err_status.as_ref() {
-            writeln!(stdout, "Program Status:")?;
-            writeln!(stdout, " {:?}", err)?;
-        } else {
-            writeln!(stdout, "Next Code:")?;
-            let next_pos = emu.program_register;
-            let next_op_code = emu.mem[next_pos];
-            match get_op_code_size(next_op_code) {
-                2 => {
-                    let bp = if emu.break_points[next_pos] || emu.break_points[next_pos + 1] {
-                        "*"
-                    } else {
-                        " "
-                    };
-                    let adr = emu.mem[next_pos + 1];
-                    let s = get_op_code_form(next_op_code, Some(adr));
-                    writeln!(stdout, " #{:04X}: {} {}", next_pos, bp, s)?;
-                }
-                _ => {
-                    let bp = if emu.break_points[next_pos] { "*" } else { " " };
-                    let s = get_op_code_form(next_op_code, None);
-                    writeln!(stdout, " #{:04X}: {} {}", next_pos, bp, s)?;
-                }
-            }
-        }
-
+        show_status(&emu, &mut stdout, &status)?;
         show_reg(&emu, &mut stdout)?;
 
         let mut skip_mode = false;
         let mut run_mode = false;
-        let nest = emu.program_stack.len();
 
         match interactive(&mut emu, &mut stdin, &mut stdout) {
             Ok(0) => {}
             Ok(SKIP_MODE) => skip_mode = true,
             Ok(RUN_MODE) => run_mode = true,
             Ok(RESTART_MODE) => {
-                err_status = None;
+                status.err = None;
                 continue;
             }
             Ok(QUIT_TEST) => return Ok(0),
@@ -238,113 +136,243 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
 
         writeln!(stdout)?;
 
-        if err_status.is_some() {
+        if status.err.is_some() {
             writeln!(stdout, "プログラムは終了状態です")?;
         } else if skip_mode {
-            let mut limit = emu.step_limit;
-            let mut reach = false;
-            while limit > 0 {
-                limit -= 1;
-                match emu.step_through_code(&mut stdin, &mut stdout) {
-                    Ok(_) => {
-                        let last_pos = emu.last_run_position;
-                        let last_op_code = emu.mem[last_pos];
-                        if last_op_code == RET_OP_CODE && nest == emu.program_stack.len() + 1 {
-                            reach = true;
-                            break;
-                        }
-                    }
-                    Err(RuntimeError::IoError(error)) => return Err(error),
-                    Err(error) => {
-                        let last_pos = emu.last_run_position;
-                        let last_op_code = emu.mem[last_pos];
-                        reach = last_op_code == RET_OP_CODE && nest == emu.program_stack.len() + 1;
-                        err_status = Some(error);
-                        break;
-                    }
-                }
-            }
-            writeln!(stdout)?;
-            if reach {
-                writeln!(stdout, "スキップ実行はRETに到達し停止しました")?;
-            } else if err_status.is_some() {
-                writeln!(stdout, "スキップ実行はエラーで停止しました")?;
-            } else if limit == 0 {
-                writeln!(
-                    stdout,
-                    "スキップ実行はステップ制限数({})に到達で停止しました",
-                    emu.step_limit
-                )?;
+            match do_skip(&mut emu, &mut stdin, &mut stdout, &mut status) {
+                Ok(0) => {}
+                result => return result,
             }
         } else if run_mode {
-            let mut limit = emu.step_limit;
-            let mut reach = false;
-            while limit > 0 {
-                limit -= 1;
-                match emu.step_through_code(&mut stdin, &mut stdout) {
-                    Ok(_) => {
-                        let last_pos = emu.last_run_position;
-                        let last_op_code = emu.mem[last_pos];
-                        if emu.break_points[last_pos]
-                            || (get_op_code_size(last_op_code) == 2
-                                && emu.break_points[last_pos + 1])
-                        {
-                            reach = true;
-                            break;
-                        }
-                    }
-                    Err(RuntimeError::IoError(error)) => return Err(error),
-                    Err(error) => {
-                        let last_pos = emu.last_run_position;
-                        let last_op_code = emu.mem[last_pos];
-                        if emu.break_points[last_pos] {
-                            reach = true;
-                        } else if get_op_code_size(last_op_code) == 2 {
-                            reach = emu.break_points[last_pos + 1];
-                        }
-                        err_status = Some(error);
-                        break;
-                    }
-                }
-            }
-            writeln!(stdout)?;
-            if reach {
-                writeln!(stdout, "ブレークポイントに到達しました")?;
-            } else if err_status.is_some() {
-                if matches!(err_status, Some(RuntimeError::NormalTermination { .. })) {
-                    writeln!(stdout, "ブレークポイント到達前にプログラムが終了しました")?;
-                } else {
-                    writeln!(stdout, "実行はエラーで停止しました")?;
-                }
-            } else if limit == 0 {
-                writeln!(
-                    stdout,
-                    "実行はステップ制限数({})に到達で停止しました",
-                    emu.step_limit
-                )?;
+            match do_run_to_break(&mut emu, &mut stdin, &mut stdout, &mut status) {
+                Ok(0) => {}
+                result => return result,
             }
         } else {
-            let mut limit = emu.step_limit;
-            while limit > 0 {
-                limit -= 1;
-                match emu.step_through_code(&mut stdin, &mut stdout) {
-                    Ok(_) => {}
-                    Err(RuntimeError::IoError(error)) => return Err(error),
-                    Err(error) => {
-                        err_status = Some(error);
-                        break;
-                    }
-                }
-            }
-            if err_status.is_some() && limit != 0 {
-                if matches!(err_status, Some(RuntimeError::NormalTermination { .. })) {
-                    writeln!(stdout, "指定ステップ数が終わる前にプログラムが終了しました")?;
-                } else {
-                    writeln!(stdout, "指定ステップ数が終わる前にエラーで停止しました")?;
-                }
+            match do_step(&mut emu, &mut stdin, &mut stdout, &mut status) {
+                Ok(0) => {}
+                result => return result,
             }
         }
     }
+}
+
+fn show_status<W: Write>(emu: &Emulator, stdout: &mut W, status: &Status) -> io::Result<()> {
+    writeln!(stdout, "Step Count: {}", emu.step_count)?;
+
+    write!(stdout, "Call State:")?;
+    for (pos, _) in emu.program_stack.iter() {
+        match emu.all_label_list.binary_search_by_key(pos, |(_, p)| *p) {
+            Ok(mut index) => {
+                while index > 0 {
+                    if emu
+                        .all_label_list
+                        .get(index - 1)
+                        .filter(|(_, p)| p == pos)
+                        .is_some()
+                    {
+                        index -= 1;
+                        continue;
+                    }
+                    break;
+                }
+                let (label, _) = emu.all_label_list.get(index).unwrap();
+                write!(stdout, " > {}", label)?;
+            }
+            Err(_) => {
+                write!(stdout, " > #{:04X}", pos)?;
+            }
+        }
+    }
+    writeln!(stdout)?;
+
+    if !emu.wrong_ret.is_empty() {
+        writeln!(stdout, "Wrong RET: {}", emu.wrong_ret.len())?;
+    }
+
+    if status.err.is_none() {
+        let last_pos = emu.last_run_position;
+        let last_op_code = emu.mem[last_pos];
+        let next_pos = emu.program_register;
+        if last_op_code == RET_OP_CODE && next_pos >= 2 {
+            writeln!(stdout, "Prev Code:")?;
+            let prev_pos = next_pos - 2;
+            let prev_disp = emu.get_code_display(prev_pos as u16);
+            writeln!(stdout, "{}", prev_disp)?;
+        }
+    }
+
+    writeln!(stdout, "Last Code:")?;
+    let last_pos = emu.last_run_position;
+    let last_disp = emu.get_code_display(last_pos as u16);
+    writeln!(stdout, "{}", last_disp)?;
+
+    if let Some(err) = status.err.as_ref() {
+        writeln!(stdout, "Program Status:")?;
+        writeln!(stdout, " {:?}", err)?;
+    } else {
+        writeln!(stdout, "Next Code:")?;
+        let next_pos = emu.program_register;
+        let next_disp = emu.get_code_display(next_pos as u16);
+        writeln!(stdout, "{}", next_disp)?;
+    }
+    Ok(())
+}
+
+impl Emulator {
+    fn get_code_display(&self, pos: u16) -> String {
+        let pos = pos as usize;
+        let op_code = self.mem[pos];
+        match get_op_code_size(op_code) {
+            2 => {
+                if let Some(adr) = self.mem.get(pos + 1).cloned() {
+                    let bp = if self.break_points[pos] || self.break_points[pos + 1] {
+                        "*"
+                    } else {
+                        " "
+                    };
+                    let s = get_op_code_form(op_code, Some(adr));
+                    format!(" #{:04X}: {} {}", pos, bp, s)
+                } else {
+                    let bp = if self.break_points[pos] { "*" } else { " " };
+                    let s = get_op_code_form(op_code, None);
+                    format!(" #{:04X}: {} {}", pos, bp, s)
+                }
+            }
+            _ => {
+                let bp = if self.break_points[pos] { "*" } else { " " };
+                let s = get_op_code_form(op_code, None);
+                format!(" #{:04X}: {} {}", pos, bp, s)
+            }
+        }
+    }
+}
+
+fn do_step<R: BufRead, W: Write>(
+    emu: &mut Emulator,
+    stdin: &mut R,
+    stdout: &mut W,
+    status: &mut Status,
+) -> io::Result<i32> {
+    let mut limit = emu.step_limit;
+    while limit > 0 {
+        limit -= 1;
+        match emu.step_through_code(stdin, stdout) {
+            Ok(_) => {}
+            Err(RuntimeError::IoError(error)) => return Err(error),
+            Err(error) => {
+                status.err = Some(error);
+                break;
+            }
+        }
+    }
+    if status.err.is_some() && limit != 0 {
+        if matches!(status.err, Some(RuntimeError::NormalTermination { .. })) {
+            writeln!(stdout, "指定ステップ数が終わる前にプログラムが終了しました")?;
+        } else {
+            writeln!(stdout, "指定ステップ数が終わる前にエラーで停止しました")?;
+        }
+    }
+    Ok(0)
+}
+
+fn do_run_to_break<R: BufRead, W: Write>(
+    emu: &mut Emulator,
+    stdin: &mut R,
+    stdout: &mut W,
+    status: &mut Status,
+) -> io::Result<i32> {
+    let mut limit = emu.step_limit;
+    let mut reach = false;
+    while limit > 0 {
+        limit -= 1;
+        match emu.step_through_code(stdin, stdout) {
+            Ok(_) => {
+                let last_pos = emu.last_run_position;
+                let last_op_code = emu.mem[last_pos];
+                if emu.break_points[last_pos]
+                    || (get_op_code_size(last_op_code) == 2 && emu.break_points[last_pos + 1])
+                {
+                    reach = true;
+                    break;
+                }
+            }
+            Err(RuntimeError::IoError(error)) => return Err(error),
+            Err(error) => {
+                let last_pos = emu.last_run_position;
+                let last_op_code = emu.mem[last_pos];
+                if emu.break_points[last_pos] {
+                    reach = true;
+                } else if get_op_code_size(last_op_code) == 2 {
+                    reach = emu.break_points[last_pos + 1];
+                }
+                status.err = Some(error);
+                break;
+            }
+        }
+    }
+    writeln!(stdout)?;
+    if reach {
+        writeln!(stdout, "ブレークポイントに到達しました")?;
+    } else if status.err.is_some() {
+        if matches!(status.err, Some(RuntimeError::NormalTermination { .. })) {
+            writeln!(stdout, "ブレークポイント到達前にプログラムが終了しました")?;
+        } else {
+            writeln!(stdout, "実行はエラーで停止しました")?;
+        }
+    } else if limit == 0 {
+        writeln!(
+            stdout,
+            "実行はステップ制限数({})に到達で停止しました",
+            emu.step_limit
+        )?;
+    }
+    Ok(0)
+}
+
+fn do_skip<R: BufRead, W: Write>(
+    emu: &mut Emulator,
+    stdin: &mut R,
+    stdout: &mut W,
+    status: &mut Status,
+) -> io::Result<i32> {
+    let nest = emu.program_stack.len();
+    let mut limit = emu.step_limit;
+    let mut reach = false;
+    while limit > 0 {
+        limit -= 1;
+        match emu.step_through_code(stdin, stdout) {
+            Ok(_) => {
+                let last_pos = emu.last_run_position;
+                let last_op_code = emu.mem[last_pos];
+                if last_op_code == RET_OP_CODE && nest == emu.program_stack.len() + 1 {
+                    reach = true;
+                    break;
+                }
+            }
+            Err(RuntimeError::IoError(error)) => return Err(error),
+            Err(error) => {
+                let last_pos = emu.last_run_position;
+                let last_op_code = emu.mem[last_pos];
+                reach = last_op_code == RET_OP_CODE && nest == emu.program_stack.len() + 1;
+                status.err = Some(error);
+                break;
+            }
+        }
+    }
+    writeln!(stdout)?;
+    if reach {
+        writeln!(stdout, "スキップ実行はRETに到達し停止しました")?;
+    } else if status.err.is_some() {
+        writeln!(stdout, "スキップ実行はエラーで停止しました")?;
+    } else if limit == 0 {
+        writeln!(
+            stdout,
+            "スキップ実行はステップ制限数({})に到達で停止しました",
+            emu.step_limit
+        )?;
+    }
+    Ok(0)
 }
 
 fn interactive<R: BufRead, W: Write>(
@@ -371,6 +399,8 @@ fn interactive<R: BufRead, W: Write>(
         "remove-breakpoint",
         "load-reg",
         "copy-mem",
+        "add-dc",
+        "add-ds",
         "restart",
         "run",
         "skip",
@@ -467,6 +497,8 @@ fn interactive<R: BufRead, W: Write>(
             "copy-mem" => todo!(),
             "dump-code" => dump_code(emu, stdout, cmd_and_param.next())?,
             "dump-mem" => dump_mem(emu, stdout, cmd_and_param.next())?,
+            "add-dc" => todo!(),
+            "add-ds" => todo!(),
             _ => {
                 writeln!(stdout, "コマンドが正しくありません")?;
             }
@@ -484,72 +516,60 @@ fn set_breakpoint<W: Write>(
     param: Option<&str>,
     value: bool,
 ) -> io::Result<()> {
-    let adr = match param.map(|s| s.to_ascii_uppercase()) {
-        None => emu.program_register,
+    let adr_list = match param.map(|s| s.to_ascii_uppercase()) {
+        None => vec![emu.program_register],
         Some(param) => {
+            let mut vs = vec![];
             let mut tokenizer = casl2::Tokenizer::new(&param);
-            if let Some(adr) = tokenizer.hex() {
-                if tokenizer.rest().is_empty() {
-                    adr as usize
+            loop {
+                if let Some(adr) = tokenizer.hex() {
+                    vs.push(adr as usize);
                 } else {
-                    writeln!(stdout, "引数の指定が不正です")?;
-                    return Ok(());
+                    let label = match tokenizer.extended_label() {
+                        Ok(Some(label)) => label,
+                        Ok(None) => {
+                            writeln!(stdout, "引数が不正です")?;
+                            return Ok(());
+                        }
+                        Err(msg) => {
+                            writeln!(stdout, "{}", msg)?;
+                            return Ok(());
+                        }
+                    };
+                    match label.get_address(emu) {
+                        Ok(adr) => vs.push(adr),
+                        Err(msg) => {
+                            writeln!(stdout, "{}", msg)?;
+                            return Ok(());
+                        }
+                    }
                 }
-            } else {
-                let label = match tokenizer.extended_label() {
-                    Ok(Some(label)) => label,
-                    Ok(None) => {
+                if !tokenizer.comma() {
+                    if tokenizer.rest().is_empty() {
+                        break;
+                    } else {
                         writeln!(stdout, "引数が不正です")?;
-                        return Ok(());
-                    }
-                    Err(msg) => {
-                        writeln!(stdout, "{}", msg)?;
-                        return Ok(());
-                    }
-                };
-                if !tokenizer.rest().is_empty() {
-                    writeln!(stdout, "引数が不正です")?;
-                    return Ok(());
-                }
-                match label.get_address(emu) {
-                    Ok(adr) => adr,
-                    Err(msg) => {
-                        writeln!(stdout, "{}", msg)?;
                         return Ok(());
                     }
                 }
             }
+            vs
         }
     };
 
-    if value {
-        emu.break_points[adr] = true;
-        writeln!(stdout, "#{:04X}にブレークポイントを設定しました", adr)?;
-    } else if emu.break_points[adr] {
-        emu.break_points[adr] = false;
-        writeln!(stdout, "#{:04X}のブレークポイントを解除しました", adr)?;
-    } else {
-        writeln!(stdout, "#{:04X}にブレークポイントは設定されていません", adr)?;
-    }
+    for adr in adr_list {
+        if value {
+            emu.break_points[adr] = true;
+            writeln!(stdout, "#{:04X}にブレークポイントを設定しました", adr)?;
+        } else if emu.break_points[adr] {
+            emu.break_points[adr] = false;
+            writeln!(stdout, "#{:04X}のブレークポイントを解除しました", adr)?;
+        } else {
+            writeln!(stdout, "#{:04X}にブレークポイントは設定されていません", adr)?;
+        }
 
-    let pos = adr;
-    let op_code = emu.mem[pos];
-    match get_op_code_size(op_code) {
-        2 => {
-            let bp = if emu.break_points[pos] || emu.break_points[pos + 1] {
-                "*"
-            } else {
-                " "
-            };
-            let adr = emu.mem[pos + 1];
-            let s = get_op_code_form(op_code, Some(adr));
-            writeln!(stdout, "#{:04X}: {} {}", pos, bp, s)?;
-        }
-        _ => {
-            let bp = if emu.break_points[pos] { "*" } else { " " };
-            let s = get_op_code_form(op_code, None);
-            writeln!(stdout, "#{:04X}: {} {}", pos, bp, s)?;
-        }
+        let disp = emu.get_code_display(adr as u16);
+        writeln!(stdout, "{}", disp)?;
     }
 
     Ok(())
@@ -753,26 +773,9 @@ fn dump_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> i
     };
     let mut pos = adr;
     while pos < adr + size && pos < 0x10000 {
-        let op_code = emu.mem[pos];
-        match get_op_code_size(op_code) {
-            2 => {
-                let bp = if emu.break_points[pos] || emu.break_points[pos + 1] {
-                    "*"
-                } else {
-                    " "
-                };
-                let adr = emu.mem[pos + 1];
-                let s = get_op_code_form(op_code, Some(adr));
-                writeln!(stdout, "#{:04X}: {} {}", pos, bp, s)?;
-                pos += 2;
-            }
-            _ => {
-                let bp = if emu.break_points[pos] { "*" } else { " " };
-                let s = get_op_code_form(op_code, None);
-                writeln!(stdout, "#{:04X}: {} {}", pos, bp, s)?;
-                pos += 1;
-            }
-        }
+        let disp = emu.get_code_display(pos as u16);
+        writeln!(stdout, "{}", disp)?;
+        pos += get_op_code_size(emu.mem[pos]).max(1);
     }
     Ok(())
 }
@@ -1707,20 +1710,6 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
             writeln!(
                 stdout,
                 r#"
-    set-breakpoint [<ADDRESS>]
-                指定アドレスにブレークポイントを設定する。アドレス省略時はPRの示すアドレス
-    remove-breakpoint [<ADDRESS>]
-                指定アドレスのブレークポイントを解除する。アドレス省略時はPRの示すアドレス
-    set-reg <REGISTER> <VALUE>
-                値をレジスタに設定する
-    set-mem <ADDRESS> <VALUE1>[,<VALUE2>..]
-                値をメモリの指定アドレスに書き込む
-    set-mem-fill <ADDRESS> <LENGTH> <VALUE>
-                メモリの指定アドレスから指定の長さ分を指定の値で埋める
-    load-reg <REGISTER> <ADDRESS>
-                メモリの指定アドレスにある値をレジスタに設定する
-    copy-mem <ADDRESS_FROM> <ADDRESS_TO> <LENGTH>
-                メモリのデータをコピーする
     show-reg
                 各レジスタの現在の値を表示する
     show-mem <ADDRESS> <LENGTH>
@@ -1731,16 +1720,30 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 指定したBASICプログラムの変数名と対応するラベルとアドレスと値を表示する
     list-files
                 読み込んだソースファイルの一覧を表示する
-    dump-mem [<ADDRESS> [<SIZE>]]
-                メモリダンプする
-    dump-code [<ADDRESS> [<SIZE>]]
-                メモリをコード表示する
     reload
                 プログラムを最初から実行しなおします。プログラムをファイルから読み込みなおし配置されます。
     reset
                 プログラムを最初から実行しなおします。読み込み済みのプログラムがメモリに再配置されます。
     restart
                 プログラムを最初の位置から実行しなおします。メモリやGRやFRは終了時点の状態が維持されます
+    set-reg <REGISTER> <VALUE>
+                値をレジスタに設定する
+    set-mem <ADDRESS> <VALUE1>[,<VALUE2>..]
+                値をメモリの指定アドレスに書き込む
+    set-mem-fill <ADDRESS> <LENGTH> <VALUE>
+                メモリの指定アドレスから指定の長さ分を指定の値で埋める
+    load-reg <REGISTER> <ADDRESS>
+                メモリの指定アドレスにある値をレジスタに設定する
+    copy-mem <ADDRESS_FROM> <ADDRESS_TO> <LENGTH>
+                メモリのデータをコピーする
+    set-breakpoint [<ADDRESS1>[,<ADDRESS2>..]]
+                指定アドレスにブレークポイントを設定する。アドレス省略時はPRの示すアドレス
+    remove-breakpoint [<ADDRESS1>[,<ADDRESS2>..]]
+                指定アドレスのブレークポイントを解除する。アドレス省略時はPRの示すアドレス
+    dump-mem [<ADDRESS> [<SIZE>]]
+                メモリダンプする
+    dump-code [<ADDRESS> [<SIZE>]]
+                メモリをコード表示する
     skip [<STEP_LIMIT>]
                 現在のサブルーチンのRETまで実行する。ステップ制限数までにRETに到達しない場合はそこで停止する
     run [<STEP_LIMIT>]
