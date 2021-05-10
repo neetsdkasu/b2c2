@@ -6,6 +6,7 @@ use crate::stat;
 use crate::Flags;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
+use std::fmt;
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -1772,108 +1773,133 @@ fn show_reg<W: Write>(emu: &Emulator, stdout: &mut W) -> io::Result<()> {
 enum ExtendedLabel {
     GlobalLabel(String),
     LocalLabel(String, String),
-    GlobalLabelOffset(String, u16),
-    LocalLabelOffset(String, String, u16),
-    GlobalLabelOffsetRegister(String, casl2::Register),
-    LocalLabelOffsetRegister(String, String, casl2::Register),
     GeneralRegister(casl2::Register),
-    GeneralRegisterOffset(casl2::Register, u16),
-    GeneralRegisterOffsetRegister(casl2::Register, casl2::Register),
     ProgramRegister,
-    ProgramRegisterOffset(u16),
-    ProgramRegisterOffsetRegister(casl2::Register),
     StackPointer,
-    StackPointerOffset(u16),
-    StackPointerOffsetRegister(casl2::Register),
+    HexConst(u16),
+    Load(Box<ExtendedLabel>),
+    Sum(Box<ExtendedLabel>, Box<ExtendedLabel>),
+    Diff(Box<ExtendedLabel>, Box<ExtendedLabel>),
 }
 
 impl<'a> casl2::Tokenizer<'a> {
     fn extended_label(&mut self) -> Result<Option<ExtendedLabel>, &'static str> {
-        if self.atmark() {
-            let reg = match self.word() {
-                Some(s) => s,
-                None => return Err("引数が不正です"),
-            };
-            let temp = match casl2::Register::try_from(reg.as_str()) {
-                Ok(reg) => ExtendedLabel::GeneralRegister(reg),
-                _ if reg == "PR" => ExtendedLabel::ProgramRegister,
-                _ if reg == "SP" => ExtendedLabel::StackPointer,
-                _ => return Err("引数が不正です"),
-            };
-            if !self.colon() {
-                return Ok(Some(temp));
-            }
-            if let Some(offset) = self.hex() {
-                return Ok(Some(match temp {
-                    ExtendedLabel::GeneralRegister(reg) => {
-                        ExtendedLabel::GeneralRegisterOffset(reg, offset)
+        // MAIN
+        // MAIN:MEM
+        // @GR1 @PR @SP
+        // #0123
+        // + - ( )
+
+        let mut value_stack = vec![];
+        let mut op_stack = vec![];
+
+        loop {
+            // first char:  A-Z @ ( #
+            if let Some(glabel) = self.word() {
+                if self.colon() {
+                    if let Some(llabel) = self.word() {
+                        value_stack.push(ExtendedLabel::LocalLabel(glabel, llabel));
+                    } else {
+                        return Err("引数が不正です");
                     }
-                    ExtendedLabel::ProgramRegister => ExtendedLabel::ProgramRegisterOffset(offset),
-                    ExtendedLabel::StackPointer => ExtendedLabel::StackPointerOffset(offset),
-                    _ => unreachable!("BUG"),
-                }));
-            }
-            if let Some(greg) = self.word() {
-                match casl2::Register::try_from(greg.as_str()) {
-                    Err(_) => return Err("引数が不正です"),
-                    Ok(greg) => {
-                        return Ok(Some(match temp {
-                            ExtendedLabel::GeneralRegister(reg) => {
-                                ExtendedLabel::GeneralRegisterOffsetRegister(reg, greg)
-                            }
-                            ExtendedLabel::ProgramRegister => {
-                                ExtendedLabel::ProgramRegisterOffsetRegister(greg)
-                            }
-                            ExtendedLabel::StackPointer => {
-                                ExtendedLabel::StackPointerOffsetRegister(greg)
-                            }
-                            _ => unreachable!("BUG"),
-                        }))
-                    }
+                } else {
+                    value_stack.push(ExtendedLabel::GlobalLabel(glabel));
                 }
+            } else if let Some(hex) = self.hex() {
+                value_stack.push(ExtendedLabel::HexConst(hex));
+            } else if self.atmark() {
+                if let Some(reg) = self.word() {
+                    if "PR" == reg {
+                        value_stack.push(ExtendedLabel::ProgramRegister);
+                    } else if "SP" == reg {
+                        value_stack.push(ExtendedLabel::StackPointer);
+                    } else if let Ok(reg) = casl2::Register::try_from(reg.as_str()) {
+                        value_stack.push(ExtendedLabel::GeneralRegister(reg));
+                    } else {
+                        return Err("引数が不正です");
+                    }
+                } else {
+                    return Err("引数が不正です");
+                }
+            } else if self.open_bracket() {
+                op_stack.push(0);
+                continue;
             } else {
-                return Err("引数が不正です");
+                // 初回到達のみ別のTokenのケース、それ以外はエラー
+                return if value_stack.is_empty() && op_stack.is_empty() {
+                    Ok(None)
+                } else {
+                    Err("引数が不正です")
+                };
+            }
+            while let Some(op) = op_stack.pop() {
+                match op {
+                    0 => {
+                        // (
+                        op_stack.push(0);
+                        break;
+                    }
+                    1 => {
+                        if value_stack.len() < 2 {
+                            return Err("引数が不正です");
+                        }
+                        // +
+                        let v2 = value_stack.pop().unwrap();
+                        let v1 = value_stack.pop().unwrap();
+                        value_stack.push(ExtendedLabel::Sum(Box::new(v1), Box::new(v2)));
+                    }
+                    2 => {
+                        if value_stack.len() < 2 {
+                            return Err("引数が不正です");
+                        }
+                        // -
+                        let v2 = value_stack.pop().unwrap();
+                        let v1 = value_stack.pop().unwrap();
+                        value_stack.push(ExtendedLabel::Diff(Box::new(v1), Box::new(v2)));
+                    }
+                    _ => unreachable!("BUG"),
+                }
+            }
+            // after char: + - ) Token
+            while self.close_bracket() {
+                if let Some(0) = op_stack.pop() {
+                    if let Some(v) = value_stack.pop() {
+                        value_stack.push(ExtendedLabel::Load(Box::new(v)));
+                    } else {
+                        return Err("引数が不正です");
+                    }
+                } else {
+                    return Err("引数が不正です");
+                }
+            }
+            if self.plus() {
+                op_stack.push(1);
+            } else if self.minus() {
+                op_stack.push(2);
+            } else {
+                // ExtendedLabelが完結してればOK(以降に別Tokenが続くなど)、それ以外はErr
+                return if value_stack.len() == 1 && op_stack.is_empty() {
+                    Ok(value_stack.pop())
+                } else {
+                    Err("引数が不正です")
+                };
             }
         }
-        let global_label = match self.word() {
-            Some(s) => s,
-            None => return Ok(None),
-        };
-        if !self.colon() {
-            return Ok(Some(ExtendedLabel::GlobalLabel(global_label)));
-        }
-        if let Some(offset) = self.hex() {
-            return Ok(Some(ExtendedLabel::GlobalLabelOffset(global_label, offset)));
-        }
-        let local_label = match self.word() {
-            Some(s) => s,
-            None => return Err("引数が不正です"),
-        };
-        if !self.colon() {
-            let ex = match casl2::Register::try_from(local_label.as_str()) {
-                Ok(reg) => ExtendedLabel::GlobalLabelOffsetRegister(global_label, reg),
-                Err(_) => ExtendedLabel::LocalLabel(global_label, local_label),
-            };
-            return Ok(Some(ex));
-        }
-        if let Some(s) = self.word() {
-            return match casl2::Register::try_from(s.as_str()) {
-                Ok(reg) => Ok(Some(ExtendedLabel::LocalLabelOffsetRegister(
-                    global_label,
-                    local_label,
-                    reg,
-                ))),
-                Err(_) => Err("引数が不正です"),
-            };
-        }
-        if let Some(offset) = self.hex() {
-            Ok(Some(ExtendedLabel::LocalLabelOffset(
-                global_label,
-                local_label,
-                offset,
-            )))
-        } else {
-            Err("引数が不正です")
+    }
+}
+
+impl fmt::Display for ExtendedLabel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GlobalLabel(label) => label.fmt(f),
+            Self::LocalLabel(gl, ll) => format!("{}:{}", gl, ll).fmt(f),
+            Self::GeneralRegister(reg) => format!("@{}", reg).fmt(f),
+            Self::ProgramRegister => "@PR".fmt(f),
+            Self::StackPointer => "@SP".fmt(f),
+            Self::HexConst(h) => format!("#{:04X}", h).fmt(f),
+            Self::Load(adr) => format!("({})", adr.to_string()).fmt(f),
+            Self::Sum(adr1, adr2) => format!("{}+{}", adr1.to_string(), adr2.to_string()).fmt(f),
+            Self::Diff(adr1, adr2) => format!("{}-{}", adr1.to_string(), adr2.to_string()).fmt(f),
         }
     }
 }
@@ -1885,105 +1911,52 @@ impl ExtendedLabel {
                 Some(adr) => Ok(*adr),
                 None => Err(format!("ラベル{}が見つかりません", label)),
             },
-            Self::GlobalLabelOffset(label, offset) => match emu.program_labels.get(label) {
-                Some(adr) => match (*adr as u16).checked_add(*offset) {
-                    Some(adr) => Ok(adr as usize),
-                    None => Err(format!("{}:#{:04X}がオーバーフローしました", label, offset)),
-                },
-                None => Err(format!("ラベル{}が見つかりません", label)),
-            },
-            Self::GlobalLabelOffsetRegister(label, reg) => {
-                let offset = emu.general_registers[*reg as usize];
-                match emu.program_labels.get(label) {
-                    Some(adr) => match (*adr as u16).checked_add(offset) {
-                        Some(adr) => Ok(adr as usize),
-                        None => Err(format!("{}:{}がオーバーフローしました", label, reg)),
-                    },
-                    None => Err(format!("ラベル{}が見つかりません", label)),
-                }
-            }
             Self::LocalLabel(glabel, llabel) => match emu.local_labels.get(glabel) {
                 Some(label_map) => match label_map.get(llabel) {
                     Some(adr) => Ok(*adr),
-                    None => Err(format!("ラベル{}が見つかりません", llabel)),
+                    None => Err(format!(
+                        "プログラム{}にラベル{}が見つかりません",
+                        glabel, llabel
+                    )),
                 },
                 None => Err(format!("ラベル{}が見つかりません", glabel)),
             },
-            Self::LocalLabelOffset(glabel, llabel, offset) => match emu.local_labels.get(glabel) {
-                Some(label_map) => match label_map.get(llabel) {
-                    Some(adr) => match (*adr as u16).checked_add(*offset) {
-                        Some(adr) => Ok(adr as usize),
-                        None => Err(format!(
-                            "{}:{}:#{:04X}がオーバーフローしました",
-                            glabel, llabel, offset
-                        )),
-                    },
-                    None => Err(format!("ラベル{}が見つかりません", llabel)),
-                },
-                None => Err(format!("ラベル{}が見つかりません", glabel)),
-            },
-            Self::LocalLabelOffsetRegister(glabel, llabel, reg) => {
-                let offset = emu.general_registers[*reg as usize];
-                match emu.local_labels.get(glabel) {
-                    Some(label_map) => match label_map.get(llabel) {
-                        Some(adr) => match (*adr as u16).checked_add(offset) {
-                            Some(adr) => Ok(adr as usize),
-                            None => Err(format!(
-                                "{}:{}:{}がオーバーフローしました",
-                                glabel, llabel, reg
-                            )),
-                        },
-                        None => Err(format!("ラベル{}が見つかりません", llabel)),
-                    },
-                    None => Err(format!("ラベル{}が見つかりません", glabel)),
-                }
-            }
             Self::GeneralRegister(reg) => Ok(emu.general_registers[*reg as usize] as usize),
-            Self::GeneralRegisterOffset(reg, offset) => {
-                let gr = emu.general_registers[*reg as usize];
-                match gr.checked_add(*offset) {
-                    Some(adr) => Ok(adr as usize),
-                    None => Err(format!("@{}:#{:04X}がオーバーフローしました", reg, offset)),
-                }
-            }
-            Self::GeneralRegisterOffsetRegister(reg, greg) => {
-                let gr = emu.general_registers[*reg as usize];
-                let offset = emu.general_registers[*greg as usize];
-                match gr.checked_add(offset) {
-                    Some(adr) => Ok(adr as usize),
-                    None => Err(format!("@{}:{}がオーバーフローしました", reg, greg)),
-                }
-            }
             Self::ProgramRegister => Ok(emu.program_register),
-            Self::ProgramRegisterOffset(offset) => {
-                let adr = emu.program_register as u16;
-                match adr.checked_add(*offset) {
-                    Some(adr) => Ok(adr as usize),
-                    None => Err(format!("@PR:#{:04X}がオーバーフローしました", offset)),
-                }
-            }
-            Self::ProgramRegisterOffsetRegister(reg) => {
-                let adr = emu.program_register as u16;
-                let offset = emu.general_registers[*reg as usize];
-                match adr.checked_add(offset) {
-                    Some(adr) => Ok(adr as usize),
-                    None => Err(format!("@PR:{}がオーバーフローしました", reg)),
-                }
-            }
             Self::StackPointer => Ok(emu.stack_pointer),
-            Self::StackPointerOffset(offset) => {
-                let adr = emu.stack_pointer as u16;
-                match adr.checked_add(*offset) {
-                    Some(adr) => Ok(adr as usize),
-                    None => Err(format!("@SP:#{:04X}がオーバーフローしました", offset)),
+            Self::HexConst(h) => Ok(*h as usize),
+            Self::Load(exlabel) => {
+                let adr = exlabel.get_address(emu)?;
+                if let Some(v) = emu.mem.get(adr) {
+                    Ok(*v as usize)
+                } else {
+                    Err(format!("{}はオーバーフローしました", exlabel))
                 }
             }
-            Self::StackPointerOffsetRegister(reg) => {
-                let adr = emu.stack_pointer as u16;
-                let offset = emu.general_registers[*reg as usize];
-                match adr.checked_add(offset) {
-                    Some(adr) => Ok(adr as usize),
-                    None => Err(format!("@SP:{}がオーバーフローしました", reg)),
+            Self::Sum(ex_adr1, ex_adr2) => {
+                let adr1 = ex_adr1.get_address(emu)?;
+                let adr2 = ex_adr2.get_address(emu)?;
+                if let Some(adr) = adr1.checked_add(adr2) {
+                    if adr < emu.mem.len() {
+                        Ok(adr)
+                    } else {
+                        Err(format!("{}はオーバーフローしました", self))
+                    }
+                } else {
+                    Err(format!("{}はオーバーフローしました", self))
+                }
+            }
+            Self::Diff(ex_adr1, ex_adr2) => {
+                let adr1 = ex_adr1.get_address(emu)?;
+                let adr2 = ex_adr2.get_address(emu)?;
+                if let Some(adr) = adr1.checked_sub(adr2) {
+                    if adr < emu.mem.len() {
+                        Ok(adr)
+                    } else {
+                        Err(format!("{}はオーバーフローしました", self))
+                    }
+                } else {
+                    Err(format!("{}はオーバーフローしました", self))
                 }
             }
         }
@@ -2337,39 +2310,45 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
     16進定数
                 #0000 ～ #FFFF
     文字定数
-                'X' 'Abc123' 'Let''s go' などの文字・文字列を引用符で囲ったもの
+                文字・文字列を引用符で囲ったもの(引用符を2つ続けると引用符1文字の文字として扱う)
+                    例: 'X'
+                        'Abc123'
+                        'Let''s go!'
     アドレス定数
         ラベル
                         グローバルラベル (各プログラムのエントリラベル、デバッガコマンドで定義したラベル)
                             例: MAIN
         ラベル:ラベル
                         ローカルラベル (各プログラムの内部のラベル)。 プログラムのエントリラベル:内部ラベル　で表記
-                            例: MAIN:I1
-        ラベル:16進定数
-                        グローバルラベルの位置から16進定数分の相対位置のアドレスを返す
-                            例: MYMEM:#0012
-        ラベル:ラベル:16進定数
-                        ローカルラベルの位置から16進定数分の相対位置のアドレスを返す
-                            例: MAIN:MEM:#0015
-        ラベル:GR*
-                        グローバルラベルの位置からGRレジスタの値分の相対位置のアドレスを返す
-                            例: MYMEM:GR2
-        ラベル:ラベル:GR*
-                        ローカルラベルの位置からGRレジスタの値分の相対位置のアドレスを返す
-                            例: MAIN:MEM:GR5
+                            例: MAIN:I001
+                                LIB:MEM
         @レジスタ
-                        レジスタ(GR*,PR,SP)の値をアドレス値として返す
-                            例: @SP
-        @レジスタ:16進定数
-                        レジスタ(GR*,PR,SP)の値に16進定数を足した値をアドレス値として返す
-                            例: @RP:#0010
-        @レジスタ:GR*
-                        レジスタ(GR*,PR,SP)の値にGRレジスタの値を足した値をアドレス値として返す
-                            例: @GR3:GR5
+                        レジスタ(GR*,PR,SP)の値をアドレスとする
+                            例: @GR3
+                                @PR
+        (アドレス定数)
+        (16進定数)
+                        アドレス定数または16進定数の示すアドレスから読み込んだ値をアドレスとする
+                            例: (MAIN:MEM)
+                                (#1234)
+        アドレス定数+アドレス定数
+        アドレス定数+16進定数
+                        2つのアドレス定数または16進定数の和をアドレスとする(オーバーフローに注意)
+                            例: MAIN+@GR1
+                                (MAIN:MEM)+#0101
+        アドレス定数-アドレス定数
+        アドレス定数-16進定数
+        16進定数-アドレス定数
+                        2つのアドレス定数または16進定数の差をアドレスとする(オーバーフローに注意)
+                            例: LIB:S005-LIB:B001
+                                MAIN:J004-#0010
+                                #FFFF-@SP
     リテラル
                 10進定数、16進定数、文字定数の頭に=を付けて指定
                 定数格納の領域を確保しそのアドレスを返す
-                    例: =123 =#ABCD ='XYZ'"#
+                    例: =123
+                        =#ABCD 
+                        ='XYZ'"#
         )?;
     }
 

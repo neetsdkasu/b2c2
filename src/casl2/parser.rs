@@ -679,4 +679,44 @@ impl<'a> Tokenizer<'a> {
             false
         }
     }
+
+    pub fn plus(&mut self) -> bool {
+        if matches!(self.next(), Some('+')) {
+            self.clear();
+            true
+        } else {
+            self.recover();
+            false
+        }
+    }
+
+    pub fn minus(&mut self) -> bool {
+        if matches!(self.next(), Some('-')) {
+            self.clear();
+            true
+        } else {
+            self.recover();
+            false
+        }
+    }
+
+    pub fn open_bracket(&mut self) -> bool {
+        if matches!(self.next(), Some('(')) {
+            self.clear();
+            true
+        } else {
+            self.recover();
+            false
+        }
+    }
+
+    pub fn close_bracket(&mut self) -> bool {
+        if matches!(self.next(), Some(')')) {
+            self.clear();
+            true
+        } else {
+            self.recover();
+            false
+        }
+    }
 }
