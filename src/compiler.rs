@@ -843,11 +843,9 @@ impl Compiler {
             self.load_subroutine(subroutine::Id::UtilFill);
         }
         // Allocatorのサブルーチンを取得
-        let allocator_code = if let Some(size) = self.option_local_allocation_size {
-            Some(subroutine::get_util_allocator_code(&mut self, size))
-        } else {
-            None
-        };
+        let allocator_code = self
+            .option_local_allocation_size
+            .map(|size| subroutine::get_util_allocator_code(&mut self, size));
         self.show_debugger_hint();
         let Self {
             program_name,
