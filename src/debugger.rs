@@ -55,7 +55,7 @@ pub fn run_nonstep(src_file: String, flags: Flags) -> io::Result<i32> {
             Ok(_) => {}
             Err(RuntimeError::IoError(error)) => return Err(error),
             Err(error) => {
-                eprintln!("{:?}", error);
+                eprintln!("{}", error);
                 if matches!(error, RuntimeError::NormalTermination { .. }) {
                     return Ok(0);
                 } else {
@@ -217,7 +217,7 @@ fn show_state<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> io::Re
 
     if let Some(err) = state.err.as_ref() {
         writeln!(stdout, "Program State:")?;
-        writeln!(stdout, " {:?}", err)?;
+        writeln!(stdout, " {}", err)?;
     } else {
         writeln!(stdout, "Next Code:")?;
         let next_pos = emu.program_register;
@@ -886,6 +886,8 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
         }
         Some((key, info)) => (key, info),
     };
+
+    writeln!(stdout, "{}の変数 (エントリラベルは{})", file, key)?;
 
     if let Some(var_list) = var_list {
         for name in var_list {
@@ -2993,6 +2995,62 @@ enum RuntimeError {
 impl From<io::Error> for RuntimeError {
     fn from(error: io::Error) -> Self {
         Self::IoError(error)
+    }
+}
+
+impl fmt::Display for RuntimeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NormalTermination { position } => {
+                format!("正常終了(終了位置: #{:04X})", position).fmt(f)
+            }
+            Self::AbnormalTermination { position, op_code } => {
+                format!("異常終了(終了位置: #{:04X} コード: {})", position, op_code).fmt(f)
+            }
+            Self::ExecutePermissionDenied { position } => format!(
+                "許可されてない領域の実行が発生 (発生位置: #{:04X})",
+                position
+            )
+            .fmt(f),
+            Self::AccessPermissionDenied {
+                position,
+                op_code,
+                address,
+            } => format!(
+                "許可されてないアドレスへのアクセスが発生 (発生位置: #{:04X} コード: {} 参照先: {})",
+                position, op_code, address
+            )
+            .fmt(f),
+            Self::MemoryAccessOutOfBounds {
+                position,
+                op_code,
+                address,
+            } => format!(
+                "メモリの範囲外のアドレスへのアクセスが発生 (発生位置: #{:04X} コード: {} 参照先: {})",
+                position, op_code, address
+            )
+            .fmt(f),
+            Self::InvalidOpCode { position, op_code } => format!(
+                "命令の割り当てがない値を命令として実行が発生 (発生位置: #{:04X} コード: {})",
+                position, op_code
+            )
+            .fmt(f),
+            Self::StackOverflow {
+                position,
+                op_code,
+                stack_pointer,
+            } => format!(
+                "スタックのオーバーフローが発生 (発生位置: #{:04X} コード: {} スタック位置: {})",
+                position, op_code, stack_pointer
+            )
+            .fmt(f),
+            Self::StackEmpty { position, op_code } => format!(
+                "スタックが空の状態でのPOPが発生 (発生位置: #{:04X} コード: {})",
+                position, op_code
+            )
+            .fmt(f),
+            Self::IoError(error) => format!("IOエラーが発生 ({})", error).fmt(f),
+        }
     }
 }
 
