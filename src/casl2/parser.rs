@@ -719,4 +719,95 @@ impl<'a> Tokenizer<'a> {
             false
         }
     }
+
+    pub fn ignore_case_word(&mut self) -> Option<String> {
+        if !matches!(self.next(), Some(ch) if ch.is_ascii_alphabetic()) {
+            self.recover();
+            return None;
+        }
+        while let Some(ch) = self.next() {
+            if !ch.is_ascii_alphanumeric() {
+                self.back();
+                break;
+            }
+        }
+        Some(self.take())
+    }
+
+    pub fn ignore_case_lit_hex(&mut self) -> Option<u16> {
+        if !matches!(self.next(), Some('=')) {
+            self.recover();
+            return None;
+        }
+        if !matches!(self.next(), Some('#')) {
+            self.recover();
+            return None;
+        }
+        for _ in 0..4 {
+            if !matches!(
+                self.next(),
+                Some(ch) if ch.is_ascii_hexdigit()
+            ) {
+                self.recover();
+                return None;
+            }
+        }
+        let h: String = self.temp.chars().skip(2).collect();
+        if let Ok(value) = u16::from_str_radix(&h, 16) {
+            self.clear();
+            Some(value)
+        } else {
+            self.recover();
+            None
+        }
+    }
+
+    pub fn ignore_case_hex(&mut self) -> Option<u16> {
+        if !matches!(self.next(), Some('#')) {
+            self.recover();
+            return None;
+        }
+        for _ in 0..4 {
+            if !matches!(
+                self.next(),
+                Some(ch) if ch.is_ascii_hexdigit()
+            ) {
+                self.recover();
+                return None;
+            }
+        }
+        let h: String = self.temp.chars().skip(1).collect();
+        if let Ok(value) = u16::from_str_radix(&h, 16) {
+            self.clear();
+            Some(value)
+        } else {
+            self.recover();
+            None
+        }
+    }
+
+    pub fn ignore_case_value(&mut self) -> Option<Token> {
+        if let Some(w) = self.ignore_case_word() {
+            return Some(Token::Word(w));
+        }
+        if let Some(i) = self.integer() {
+            return Some(Token::Dec(i));
+        }
+        if let Some(h) = self.ignore_case_hex() {
+            return Some(Token::Hex(h));
+        }
+        if let Some(s) = self.string() {
+            return Some(Token::Str(s));
+        }
+        if let Some(i) = self.lit_integer() {
+            return Some(Token::LitDec(i));
+        }
+        if let Some(h) = self.ignore_case_lit_hex() {
+            return Some(Token::LitHex(h));
+        }
+        if let Some(s) = self.lit_string() {
+            return Some(Token::LitStr(s));
+        }
+        None
+    }
 }

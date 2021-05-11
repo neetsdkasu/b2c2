@@ -48,7 +48,7 @@ pub fn run_nonstep(src_file: String, flags: Flags) -> io::Result<i32> {
         }
     }
 
-    emu.init_to_start();
+    emu.init_to_start(None);
 
     loop {
         match emu.step_through_code(&mut stdin, &mut stdout) {
@@ -81,6 +81,7 @@ enum RunMode {
 struct State {
     err: Option<RuntimeError>,
     run_mode: RunMode,
+    start_point: Option<usize>,
 }
 
 pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
@@ -116,11 +117,12 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
         }
     }
 
-    emu.init_to_start();
+    emu.init_to_start(None);
 
     let mut state = State {
         err: None,
         run_mode: RunMode::Step(1),
+        start_point: None,
     };
 
     loop {
@@ -529,8 +531,35 @@ fn interactive<R: BufRead, W: Write>(
                 }
                 return Ok(0);
             }
+            "set-start" => {
+                if let Some(s) = cmd_and_param.next() {
+                    let s = s.to_ascii_uppercase();
+                    let mut tokenizer = casl2::Tokenizer::new(s.as_str());
+                    match tokenizer.extended_label() {
+                        Ok(Some(lb)) => {
+                            if !tokenizer.rest().is_empty() {
+                                writeln!(stdout, "引数が不正です")?;
+                            } else {
+                                match lb.get_address(emu) {
+                                    Ok(adr) => {
+                                        state.start_point = Some(adr);
+                                        writeln!(stdout, "スタートポイントを{}に設定しました", lb)?;
+                                    }
+                                    Err(msg) => writeln!(stdout, "{}", msg)?,
+                                }
+                            }
+                        }
+                        Ok(_) => writeln!(stdout, "引数が不正です")?,
+                        Err(msg) => writeln!(stdout, "{}", msg)?,
+                    }
+                } else {
+                    state.start_point = None;
+                    let name = emu.start_point.as_ref().expect("BUG");
+                    writeln!(stdout, "スタートポイントを{}に戻しました", name)?;
+                }
+            }
             "restart" => {
-                emu.init_to_start();
+                emu.init_to_start(state.start_point);
                 state.err = None;
                 return Ok(REQUEST_RESTART);
             }
@@ -553,7 +582,7 @@ fn interactive<R: BufRead, W: Write>(
                 let msg = set_reg(emu, cmd_and_param.next());
                 writeln!(stdout, "{}", msg)?;
             }
-            "set-mem" => todo!(),
+            "set-mem" => set_mem(emu, stdout, cmd_and_param.next())?,
             "set-mem-fill" => todo!(),
             "set-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), true)?,
             "remove-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), false)?,
@@ -574,6 +603,98 @@ fn is_valid_boolean(v: u16) -> bool {
     v == 0 || v == 0xFFFF
 }
 
+fn set_mem<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let (adr, values) = match param {
+        None => {
+            writeln!(stdout, "引数が不正です")?;
+            return Ok(());
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let adr = iter.next().unwrap();
+            match iter.next() {
+                None => {
+                    writeln!(stdout, "引数が不正です")?;
+                    return Ok(());
+                }
+                Some(values) => (adr, values),
+            }
+        }
+    };
+
+    let adr = adr.to_ascii_uppercase();
+    let mut tokenizer = casl2::Tokenizer::new(adr.as_str());
+    let adr = match tokenizer.extended_label() {
+        Err(msg) => {
+            writeln!(stdout, "{}", msg)?;
+            return Ok(());
+        }
+        Ok(None) => {
+            writeln!(stdout, "引数が不正です")?;
+            return Ok(());
+        }
+        Ok(Some(lb)) => {
+            if !tokenizer.rest().is_empty() {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+            match lb.get_address(emu) {
+                Ok(adr) => adr,
+                Err(msg) => {
+                    writeln!(stdout, "{}", msg)?;
+                    return Ok(());
+                }
+            }
+        }
+    };
+
+    let mut tokenizer = casl2::Tokenizer::new(values);
+    let values = match Value::take_all_values(emu, &mut tokenizer) {
+        Ok(values) => values,
+        Err(msg) => {
+            writeln!(stdout, "{}", msg)?;
+            return Ok(());
+        }
+    };
+
+    let len = values
+        .iter()
+        .map(|v| match v {
+            Value::Int(_) => 1,
+            Value::Str(s) => s.chars().count(),
+        })
+        .sum::<usize>();
+
+    if adr + len > emu.mem.len() {
+        writeln!(stdout, "十分な領域がありません")?;
+        return Ok(());
+    }
+
+    let mut pos = adr;
+    let mut msg = format!("#{:04X}に", pos);
+    for v in values {
+        match v {
+            Value::Int(v) => {
+                emu.mem[pos] = v;
+                pos += 1;
+                msg.push_str(&format!("#{:04X},", v));
+            }
+            Value::Str(s) => {
+                for ch in s.chars() {
+                    let v = jis_x_201::convert_from_char(ch) as u16;
+                    emu.mem[pos] = v;
+                    pos += 1;
+                    msg.push_str(&format!("#{:04X},", v));
+                }
+            }
+        }
+    }
+
+    writeln!(stdout, "{}を設定しました", msg)?;
+
+    Ok(())
+}
+
 fn set_breakpoint<W: Write>(
     emu: &mut Emulator,
     stdout: &mut W,
@@ -586,7 +707,7 @@ fn set_breakpoint<W: Write>(
             let mut vs = vec![];
             let mut tokenizer = casl2::Tokenizer::new(&param);
             loop {
-                if let Some(adr) = tokenizer.hex() {
+                if let Some(adr) = tokenizer.ignore_case_hex() {
                     vs.push(adr as usize);
                 } else {
                     let label = match tokenizer.extended_label() {
@@ -654,7 +775,7 @@ fn dump_mem<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             let adr = iter.next().unwrap();
             let size = iter.next();
             let mut tokenizer = casl2::Tokenizer::new(adr);
-            let adr = if let Some(adr) = tokenizer.hex() {
+            let adr = if let Some(adr) = tokenizer.ignore_case_hex() {
                 if !tokenizer.rest().trim().is_empty() {
                     writeln!(stdout, "引数が不正です")?;
                     return Ok(());
@@ -689,7 +810,7 @@ fn dump_mem<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
                 None => 0x80,
                 Some(s) => {
                     let mut tokenizer = casl2::Tokenizer::new(s);
-                    if let Some(v) = tokenizer.hex() {
+                    if let Some(v) = tokenizer.ignore_case_hex() {
                         if !tokenizer.rest().trim().is_empty() {
                             writeln!(stdout, "引数が不正です")?;
                             return Ok(());
@@ -773,7 +894,7 @@ fn dump_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> i
             let adr = iter.next().unwrap();
             let size = iter.next();
             let mut tokenizer = casl2::Tokenizer::new(adr);
-            let adr = if let Some(adr) = tokenizer.hex() {
+            let adr = if let Some(adr) = tokenizer.ignore_case_hex() {
                 if !tokenizer.rest().trim().is_empty() {
                     writeln!(stdout, "引数が不正です")?;
                     return Ok(());
@@ -808,7 +929,7 @@ fn dump_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> i
                 None => 0x20,
                 Some(s) => {
                     let mut tokenizer = casl2::Tokenizer::new(s);
-                    if let Some(v) = tokenizer.hex() {
+                    if let Some(v) = tokenizer.ignore_case_hex() {
                         if !tokenizer.rest().trim().is_empty() {
                             writeln!(stdout, "引数が不正です")?;
                             return Ok(());
@@ -1010,6 +1131,14 @@ fn print_arr_label<W: Write>(
         VarArrayOfBoolean(label, size) => {
             let size = *size;
             let adr = *map.get(label).expect("BUG");
+            if adr + size > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    r#" {:18} #{:04X} {:<8}             (不正なアドレス)"#,
+                    name, adr, label,
+                )?;
+                return Ok(());
+            }
             let mut s = String::new();
             let mut t = String::new();
             let mut broken = false;
@@ -1050,6 +1179,14 @@ fn print_arr_label<W: Write>(
         VarArrayOfInteger(label, size) => {
             let size = *size;
             let adr = *map.get(label).expect("BUG");
+            if adr + size > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    r#" {:18} #{:04X} {:<8}             (不正なアドレス)"#,
+                    name, adr, label,
+                )?;
+                return Ok(());
+            }
             let mut s = String::new();
             let mut t = String::new();
             for i in 0..size {
@@ -1078,6 +1215,14 @@ fn print_arr_label<W: Write>(
             let size = *size;
             let refer = *map.get(label).expect("BUG");
             let adr = emu.mem[refer] as usize;
+            if adr + size > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} (不正なアドレス)"#,
+                    name, refer, label, adr
+                )?;
+                return Ok(());
+            }
             let mut s = String::new();
             let mut t = String::new();
             let mut broken = false;
@@ -1121,6 +1266,14 @@ fn print_arr_label<W: Write>(
             let size = *size;
             let refer = *map.get(label).expect("BUG");
             let adr = emu.mem[refer] as usize;
+            if adr + size > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} (不正なアドレス)"#,
+                    name, refer, label, adr
+                )?;
+                return Ok(());
+            }
             let mut s = String::new();
             let mut t = String::new();
             for i in 0..size {
@@ -1151,6 +1304,14 @@ fn print_arr_label<W: Write>(
             let base_adr = emu.mem[mem_pos] as usize;
             let size = *size;
             let adr = base_adr + *offset;
+            if adr + size > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            (不正なアドレス)"#,
+                    name, adr, offset
+                )?;
+                return Ok(());
+            }
             let mut s = String::new();
             let mut t = String::new();
             let mut broken = false;
@@ -1193,6 +1354,14 @@ fn print_arr_label<W: Write>(
             let base_adr = emu.mem[mem_pos] as usize;
             let size = *size;
             let adr = base_adr + *offset;
+            if adr + size > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            (不正なアドレス)"#,
+                    name, adr, offset
+                )?;
+                return Ok(());
+            }
             let mut s = String::new();
             let mut t = String::new();
             for i in 0..size {
@@ -1221,8 +1390,24 @@ fn print_arr_label<W: Write>(
             let mem_pos = *map.get("MEM").expect("BUG");
             let base_adr = emu.mem[mem_pos] as usize;
             let size = *size;
-            let refer = base_adr + *offset;
-            let adr = emu.mem[refer as usize] as usize;
+            let refer = base_adr as usize + *offset as usize;
+            if refer > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            (不正なアドレス)"#,
+                    name, refer, offset
+                )?;
+                return Ok(());
+            }
+            let adr = emu.mem[refer] as usize;
+            if adr + size > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} (不正なアドレス)"#,
+                    name, refer, offset, adr
+                )?;
+                return Ok(());
+            }
             let mut s = String::new();
             let mut t = String::new();
             let mut broken = false;
@@ -1266,8 +1451,24 @@ fn print_arr_label<W: Write>(
             let mem_pos = *map.get("MEM").expect("BUG");
             let base_adr = emu.mem[mem_pos] as usize;
             let size = *size;
-            let refer = base_adr + *offset;
+            let refer = base_adr as usize + *offset as usize;
+            if refer > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            (不正なアドレス)"#,
+                    name, refer, offset
+                )?;
+                return Ok(());
+            }
             let adr = emu.mem[refer] as usize;
+            if adr + size > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} (不正なアドレス)"#,
+                    name, refer, offset, adr
+                )?;
+                return Ok(());
+            }
             let mut s = String::new();
             let mut t = String::new();
             for i in 0..size {
@@ -1324,7 +1525,7 @@ fn print_str_label<W: Write>(
             // 文字列変数 SB**/SL**
             // 引数 ARG*/ARG*
             let adr = *map.get(&label.len).expect("BUG");
-            let len = emu.mem[adr];
+            let len = emu.mem[adr] as usize;
             let value = len as i16;
             let broken = len > 256;
             writeln!(
@@ -1338,9 +1539,17 @@ fn print_str_label<W: Write>(
                 if broken { " (異常値)" } else { "" }
             )?;
             let adr = *map.get(&label.pos).expect("BUG");
+            if adr + len.min(256) > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    r#" {:18} #{:04X} {:<8}             (不正なアドレス)"#,
+                    "", adr, label.pos
+                )?;
+                return Ok(());
+            }
             let mut s = String::new();
             let mut t = String::new();
-            for i in 0..len.min(256) as usize {
+            for i in 0..len.min(256) {
                 let ch = emu.mem[adr + i];
                 t.push_str(&format!("#{:04X} ", ch));
                 let ch = jis_x_201::convert_to_char(ch as u8, true);
@@ -1368,7 +1577,7 @@ fn print_str_label<W: Write>(
             // 引数(参照型) ARG*/ARG*
             let adr = *map.get(&label.len).expect("BUG");
             let refer = emu.mem[adr] as usize;
-            let len = emu.mem[refer];
+            let len = emu.mem[refer] as usize;
             let value = len as i16;
             let broken = len > 256;
             writeln!(
@@ -1384,9 +1593,17 @@ fn print_str_label<W: Write>(
             )?;
             let adr = *map.get(&label.pos).expect("BUG");
             let refer = emu.mem[adr] as usize;
+            if refer + len.min(256) > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} (不正なアドレス)"#,
+                    "", adr, label.pos, refer
+                )?;
+                return Ok(());
+            }
             let mut s = String::new();
             let mut t = String::new();
-            for i in 0..len.min(256) as usize {
+            for i in 0..len.min(256) {
                 let ch = emu.mem[refer + i];
                 t.push_str(&format!("#{:04X} ", ch));
                 let ch = jis_x_201::convert_to_char(ch as u8, true);
@@ -1416,8 +1633,16 @@ fn print_str_label<W: Write>(
             let mem_pos = *map.get("MEM").expect("BUG");
             let base_adr = emu.mem[mem_pos] as usize;
             let refer = base_adr + offset;
+            if refer > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    " {:<18} #{:04X} (MEM)+#{:04X} Ref: #---- (不正なアドレス)",
+                    name, refer, offset
+                )?;
+                return Ok(());
+            }
             let adr = emu.mem[refer] as usize;
-            let len = emu.mem[adr];
+            let len = emu.mem[adr] as usize;
             let value = len as i16;
             let broken = len > 256;
             writeln!(
@@ -1432,10 +1657,31 @@ fn print_str_label<W: Write>(
                 if broken { " (異常値)" } else { "" }
             )?;
             let refer = base_adr + offset + 1;
+            if refer > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #---- (不正なアドレス)"#,
+                    "",
+                    refer,
+                    offset + 1
+                )?;
+                return Ok(());
+            }
             let adr = emu.mem[refer] as usize;
+            if adr + len > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} (不正なアドレス)"#,
+                    "",
+                    refer,
+                    offset + 1,
+                    adr
+                )?;
+                return Ok(());
+            }
             let mut s = String::new();
             let mut t = String::new();
-            for i in 0..len.min(256) as usize {
+            for i in 0..len.min(256) {
                 let ch = emu.mem[adr + i];
                 t.push_str(&format!("#{:04X} ", ch));
                 let ch = jis_x_201::convert_to_char(ch as u8, true);
@@ -1468,7 +1714,15 @@ fn print_str_label<W: Write>(
             let mem_pos = *map.get("MEM").expect("BUG");
             let base_adr = emu.mem[mem_pos] as usize;
             let adr = base_adr + offset;
-            let len = emu.mem[adr];
+            if adr > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    " {:<18} #{:04X} (MEM)+#{:04X}            (不正なアドレス)",
+                    name, adr, offset
+                )?;
+                return Ok(());
+            }
+            let len = emu.mem[adr] as usize;
             let value = len as i16;
             let broken = len > 256;
             writeln!(
@@ -1482,9 +1736,19 @@ fn print_str_label<W: Write>(
                 if broken { " (異常値)" } else { "" }
             )?;
             let adr = base_adr + offset + 1;
+            if adr + len.min(256) > emu.mem.len() {
+                writeln!(
+                    stdout,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            (不正なアドレス)"#,
+                    "",
+                    adr,
+                    offset + 1
+                )?;
+                return Ok(());
+            }
             let mut s = String::new();
             let mut t = String::new();
-            for i in 0..len.min(256) as usize {
+            for i in 0..len.min(256) {
                 let ch = emu.mem[adr + i];
                 t.push_str(&format!("#{:04X} ", ch));
                 let ch = jis_x_201::convert_to_char(ch as u8, true);
@@ -1797,9 +2061,9 @@ impl<'a> casl2::Tokenizer<'a> {
 
         loop {
             // first char:  A-Z @ ( #
-            if let Some(glabel) = self.word() {
+            if let Some(glabel) = self.ignore_case_word() {
                 if self.colon() {
-                    if let Some(llabel) = self.word() {
+                    if let Some(llabel) = self.ignore_case_word() {
                         value_stack.push(ExtendedLabel::LocalLabel(glabel, llabel));
                     } else {
                         return Err("引数が不正です");
@@ -1807,10 +2071,10 @@ impl<'a> casl2::Tokenizer<'a> {
                 } else {
                     value_stack.push(ExtendedLabel::GlobalLabel(glabel));
                 }
-            } else if let Some(hex) = self.hex() {
+            } else if let Some(hex) = self.ignore_case_hex() {
                 value_stack.push(ExtendedLabel::HexConst(hex));
             } else if self.atmark() {
-                if let Some(reg) = self.word() {
+                if let Some(reg) = self.ignore_case_word() {
                     if "PR" == reg {
                         value_stack.push(ExtendedLabel::ProgramRegister);
                     } else if "SP" == reg {
@@ -1970,40 +2234,63 @@ enum Value {
     Str(String),
 }
 
-fn get_single_value(
-    emu: &mut Emulator,
-    tokenizer: &mut casl2::Tokenizer<'_>,
-) -> Result<Value, String> {
-    match tokenizer.extended_label()? {
-        Some(label) => label.get_address(emu).map(|adr| Value::Int(adr as u16)),
-        None => {
-            let value = match tokenizer.value() {
-                Some(value) => value,
-                None => return Err("引数が不正です".to_string()),
-            };
-            match value {
-                casl2::Token::Word(_) => unreachable!("BUG"),
-                casl2::Token::Dec(d) => Ok(Value::Int(d as u16)),
-                casl2::Token::Hex(h) => Ok(Value::Int(h)),
-                casl2::Token::Str(s) => Ok(Value::Str(
-                    jis_x_201::convert_kana_wide_full_to_half(&s)
-                        .chars()
-                        .map(jis_x_201::convert_from_char)
-                        .map(|ch| jis_x_201::convert_to_char(ch, true))
-                        .collect(),
-                )),
-                casl2::Token::LitDec(d) => match emu.make_literal_int(d as u16) {
-                    Ok(pos) => Ok(Value::Int(pos as u16)),
-                    Err(msg) => Err(msg.to_string()),
-                },
-                casl2::Token::LitHex(h) => match emu.make_literal_int(h) {
-                    Ok(pos) => Ok(Value::Int(pos as u16)),
-                    Err(msg) => Err(msg.to_string()),
-                },
-                casl2::Token::LitStr(s) => match emu.make_literal_str(&s) {
-                    Ok(pos) => Ok(Value::Int(pos as u16)),
-                    Err(msg) => Err(msg.to_string()),
-                },
+impl Value {
+    fn take_all_values(
+        emu: &mut Emulator,
+        tokenizer: &mut casl2::Tokenizer<'_>,
+    ) -> Result<Vec<Value>, String> {
+        let mut values = vec![];
+
+        loop {
+            let value = Self::take_single_value(emu, tokenizer)?;
+
+            values.push(value);
+
+            if !tokenizer.comma() {
+                if tokenizer.rest().is_empty() {
+                    return Ok(values);
+                } else {
+                    return Err("引数が不正です".to_string());
+                }
+            }
+        }
+    }
+
+    fn take_single_value(
+        emu: &mut Emulator,
+        tokenizer: &mut casl2::Tokenizer<'_>,
+    ) -> Result<Value, String> {
+        match tokenizer.extended_label()? {
+            Some(label) => label.get_address(emu).map(|adr| Value::Int(adr as u16)),
+            None => {
+                let value = match tokenizer.ignore_case_value() {
+                    Some(value) => value,
+                    None => return Err("引数が不正です".to_string()),
+                };
+                match value {
+                    casl2::Token::Word(_) => unreachable!("BUG"),
+                    casl2::Token::Dec(d) => Ok(Value::Int(d as u16)),
+                    casl2::Token::Hex(h) => Ok(Value::Int(h)),
+                    casl2::Token::Str(s) => Ok(Value::Str(
+                        jis_x_201::convert_kana_wide_full_to_half(&s)
+                            .chars()
+                            .map(jis_x_201::convert_from_char)
+                            .map(|ch| jis_x_201::convert_to_char(ch, true))
+                            .collect(),
+                    )),
+                    casl2::Token::LitDec(d) => match emu.make_literal_int(d as u16) {
+                        Ok(pos) => Ok(Value::Int(pos as u16)),
+                        Err(msg) => Err(msg.to_string()),
+                    },
+                    casl2::Token::LitHex(h) => match emu.make_literal_int(h) {
+                        Ok(pos) => Ok(Value::Int(pos as u16)),
+                        Err(msg) => Err(msg.to_string()),
+                    },
+                    casl2::Token::LitStr(s) => match emu.make_literal_str(&s) {
+                        Ok(pos) => Ok(Value::Int(pos as u16)),
+                        Err(msg) => Err(msg.to_string()),
+                    },
+                }
             }
         }
     }
@@ -2024,23 +2311,8 @@ fn set_reg(emu: &mut Emulator, param: Option<&str>) -> String {
     match casl2::Register::try_from(*reg) {
         Ok(reg) => {
             let mut tokenizer = casl2::Tokenizer::new(value);
-            match get_single_value(emu, &mut tokenizer) {
-                Err(msg) => {
-                    let value = value.to_ascii_uppercase();
-                    let mut tokenizer = casl2::Tokenizer::new(&value);
-                    match get_single_value(emu, &mut tokenizer) {
-                        Ok(Value::Int(value)) => {
-                            if tokenizer.rest().trim().is_empty() {
-                                emu.general_registers[reg as usize] = value;
-                                format!("{}に#{:04X}を設定しました", reg, value)
-                            } else {
-                                "引数が不正です".to_string()
-                            }
-                        }
-                        Ok(_) => msg,
-                        Err(msg) => msg,
-                    }
-                }
+            match Value::take_single_value(emu, &mut tokenizer) {
+                Err(msg) => msg,
                 Ok(Value::Int(value)) => {
                     if tokenizer.rest().trim().is_empty() {
                         emu.general_registers[reg as usize] = value;
@@ -2067,7 +2339,7 @@ fn set_reg(emu: &mut Emulator, param: Option<&str>) -> String {
         Err(_) => {
             if "PR".eq_ignore_ascii_case(*reg) {
                 let mut tokenizer = casl2::Tokenizer::new(value);
-                if let Some(adr) = tokenizer.hex() {
+                if let Some(adr) = tokenizer.ignore_case_hex() {
                     emu.program_register = adr as usize;
                     format!("PRに#{:04X}を設定しました", adr)
                 } else {
@@ -2085,7 +2357,7 @@ fn set_reg(emu: &mut Emulator, param: Option<&str>) -> String {
                 }
             } else if "SP".eq_ignore_ascii_case(*reg) {
                 let mut tokenizer = casl2::Tokenizer::new(value);
-                if let Some(adr) = tokenizer.hex() {
+                if let Some(adr) = tokenizer.ignore_case_hex() {
                     emu.stack_pointer = adr as usize;
                     format!("SPに#{:04X}を設定しました", adr)
                 } else {
@@ -2153,9 +2425,11 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
     list-files
                 読み込んだソースファイルの一覧を表示する
     reset
-                プログラムを最初から実行しなおします。プログラムをファイルから読み込みなおし配置されます。
+                プログラムを最初から実行しなおす。プログラムをファイルから読み込みなおし配置される
+    set-start [<ADDRESS>]
+                プログラムの開始点を変更する(restart時に影響)。省略した場合は最初の開始点に戻す
     restart
-                プログラムを最初の位置から実行しなおします。メモリやGRやFRは終了時点の状態が維持されます
+                プログラムを最初の位置から実行しなおす。メモリやGRやFRは終了時点の状態が維持される
     set-reg <REGISTER> <VALUE>
                 値をレジスタに設定する
     set-mem <ADDRESS> <VALUE1>[,<VALUE2>..]
@@ -2272,6 +2546,14 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
     }
 
     if "dump-code".eq_ignore_ascii_case(cmd) {
+        todo!();
+    }
+
+    if "reset".eq_ignore_ascii_case(cmd) {
+        todo!();
+    }
+
+    if "set-start".eq_ignore_ascii_case(cmd) {
         todo!();
     }
 
@@ -2778,13 +3060,14 @@ impl Emulator {
         }
     }
 
-    fn init_to_start(&mut self) {
-        let position = self
-            .start_point
-            .as_ref()
-            .and_then(|label| self.program_labels.get(label))
-            .copied()
-            .expect("BUG");
+    fn init_to_start(&mut self, start_point: Option<usize>) {
+        let position = start_point.unwrap_or_else(|| {
+            self.start_point
+                .as_ref()
+                .and_then(|label| self.program_labels.get(label))
+                .copied()
+                .expect("BUG")
+        });
 
         let call = casl2::Command::P {
             code: casl2::P::Call,
