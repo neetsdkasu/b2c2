@@ -444,31 +444,33 @@ fn interactive<R: BufRead, W: Write>(
     let mut line = String::new();
 
     let command_list = vec![
-        "help",
-        "step",
-        "show-reg",
-        "show-mem",
-        "show-labels",
-        "show-var",
-        "show-state",
-        "list-files",
-        "dump-code",
-        "dump-mem",
         "add-dc",
         "add-ds",
-        "set-reg",
-        "set-mem",
-        "set-mem-fill",
-        "set-breakpoint",
-        "remove-breakpoint",
-        "set-label",
-        "load-reg",
         "copy-mem",
+        "dump-code",
+        "dump-mem",
+        "help",
+        "list-files",
+        "load-reg",
+        "quit",
+        "remove-breakpoint",
         "reset",
         "restart",
         "run",
+        "set-breakpoint",
+        "set-by-file",
+        "set-label",
+        "set-mem",
+        "set-mem-fill",
+        "set-reg",
+        "set-start",
+        "show-labels",
+        "show-mem",
+        "show-reg",
+        "show-state",
+        "show-var",
         "skip",
-        "quit",
+        "step",
     ]
     .join(" ");
 
@@ -489,19 +491,24 @@ fn interactive<R: BufRead, W: Write>(
         let mut cmd_and_param = line.splitn(2, ' ').map(|s| s.trim());
         let cmd = cmd_and_param.next().unwrap();
         match cmd {
-            "s" | "step" => {
-                if let Some(s) = cmd_and_param.next() {
-                    match s.parse::<u64>() {
-                        Ok(v) if v > 0 => state.run_mode = RunMode::Step(v),
-                        _ => {
-                            writeln!(stdout, "引数が不正です")?;
-                            continue;
-                        }
-                    }
-                } else {
-                    state.run_mode = RunMode::Step(1);
-                }
-                return Ok(0);
+            "add-dc" => todo!(),
+            "add-ds" => todo!(),
+            "copy-mem" => todo!(),
+            "dump-code" => dump_code(emu, stdout, cmd_and_param.next())?,
+            "dump-mem" => dump_mem(emu, stdout, cmd_and_param.next())?,
+            "help" => show_command_help_before_start(cmd_and_param.next(), stdout)?,
+            "list-files" => list_files(emu, stdout)?,
+            "load-reg" => todo!(),
+            "quit" => {
+                writeln!(stdout, "テスト実行を中止します")?;
+                return Ok(QUIT_TEST);
+            }
+            "remove-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), false)?,
+            "reset" => todo!(),
+            "restart" => {
+                emu.init_to_start(state.start_point);
+                state.err = None;
+                return Ok(REQUEST_RESTART);
             }
             "run" => {
                 if let Some(s) = cmd_and_param.next() {
@@ -517,19 +524,14 @@ fn interactive<R: BufRead, W: Write>(
                 }
                 return Ok(0);
             }
-            "skip" => {
-                if let Some(s) = cmd_and_param.next() {
-                    match s.parse::<u64>() {
-                        Ok(v) if v > 0 => state.run_mode = RunMode::SkipSubroutine(v),
-                        _ => {
-                            writeln!(stdout, "引数が不正です")?;
-                            continue;
-                        }
-                    }
-                } else {
-                    state.run_mode = RunMode::SkipSubroutine(10000);
-                }
-                return Ok(0);
+            "set-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), true)?,
+            "set-by-file" => todo!(),
+            "set-label" => todo!(),
+            "set-mem" => set_mem(emu, stdout, cmd_and_param.next())?,
+            "set-mem-fill" => todo!(),
+            "set-reg" => {
+                let msg = set_reg(emu, cmd_and_param.next());
+                writeln!(stdout, "{}", msg)?;
             }
             "set-start" => {
                 if let Some(s) = cmd_and_param.next() {
@@ -558,40 +560,39 @@ fn interactive<R: BufRead, W: Write>(
                     writeln!(stdout, "スタートポイントを{}に戻しました", name)?;
                 }
             }
-            "restart" => {
-                emu.init_to_start(state.start_point);
-                state.err = None;
-                return Ok(REQUEST_RESTART);
-            }
-            "reset" => todo!(),
-            "help" => {
-                show_command_help_before_start(cmd_and_param.next(), stdout)?;
-            }
-            "quit" => {
-                writeln!(stdout, "テスト実行を中止します")?;
-                return Ok(QUIT_TEST);
-            }
-            "set-label" => todo!(),
-            "show-reg" => show_reg(emu, stdout)?,
-            "show-mem" => todo!(),
             "show-labels" => show_label(emu, stdout, cmd_and_param.next())?,
-            "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
+            "show-mem" => todo!(),
+            "show-reg" => show_reg(emu, stdout)?,
             "show-state" => show_state(emu, stdout, state)?,
-            "list-files" => list_files(emu, stdout)?,
-            "set-reg" => {
-                let msg = set_reg(emu, cmd_and_param.next());
-                writeln!(stdout, "{}", msg)?;
+            "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
+            "skip" => {
+                if let Some(s) = cmd_and_param.next() {
+                    match s.parse::<u64>() {
+                        Ok(v) if v > 0 => state.run_mode = RunMode::SkipSubroutine(v),
+                        _ => {
+                            writeln!(stdout, "引数が不正です")?;
+                            continue;
+                        }
+                    }
+                } else {
+                    state.run_mode = RunMode::SkipSubroutine(10000);
+                }
+                return Ok(0);
             }
-            "set-mem" => set_mem(emu, stdout, cmd_and_param.next())?,
-            "set-mem-fill" => todo!(),
-            "set-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), true)?,
-            "remove-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), false)?,
-            "load-reg" => todo!(),
-            "copy-mem" => todo!(),
-            "dump-code" => dump_code(emu, stdout, cmd_and_param.next())?,
-            "dump-mem" => dump_mem(emu, stdout, cmd_and_param.next())?,
-            "add-dc" => todo!(),
-            "add-ds" => todo!(),
+            "step" | "s" => {
+                if let Some(s) = cmd_and_param.next() {
+                    match s.parse::<u64>() {
+                        Ok(v) if v > 0 => state.run_mode = RunMode::Step(v),
+                        _ => {
+                            writeln!(stdout, "引数が不正です")?;
+                            continue;
+                        }
+                    }
+                } else {
+                    state.run_mode = RunMode::Step(1);
+                }
+                return Ok(0);
+            }
             _ => {
                 writeln!(stdout, "コマンドが正しくありません")?;
             }
@@ -2409,183 +2410,76 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
     writeln!(stdout, "コマンドヘルプ")?;
 
     let cmd = match cmd {
-        Some(cmd) => cmd,
+        Some(cmd) => cmd.to_ascii_lowercase(),
         None => {
             writeln!(
                 stdout,
                 r#"
-    show-reg
-                各レジスタの現在の値を表示する
-    show-mem <ADDRESS> <LENGTH>
-                メモリの指定アドレスから指定の長さ分の領域の各値を列挙する
-    show-labels [<PROGRAM_ENTRY>]
-                ラベルの一覧とアドレスを表示する。PROGRAM_ENTRYを指定した場合はローカルラベルを表示する
-    show-var [<BASIC_SRC_FILE> [<VAR_NAME1>[,<VAR_NAME2>..]]]
-                指定したBASICプログラムの変数名と対応するラベルとアドレスと値を表示する
+        "add-dc",
+    add-dc <LABEL> <VALUE1>[,<VALUE2>..]
+                新しく領域を作り値を格納し先頭アドレスを示すラベルも作る。CASL2のDC相当
+    add-ds <LABEL> <SIZE>
+                新しく領域を確保し先頭アドレスを示すラベルを作る。CASL2のDS相当
+    copy-mem <ADDRESS_FROM> <ADDRESS_TO> <LENGTH>
+                メモリのデータをコピーする
+    dump-code [<ADDRESS> [<SIZE>]]
+                メモリをコード表示する
+    dump-mem [<ADDRESS> [<SIZE>]]
+                メモリダンプする
+    help <COMMAND_NAME>
+                指定デバッガコマンドの詳細ヘルプを表示する
+    help constant
+                デバッガコマンドで使用する定数に関する説明を表示する
     list-files
                 読み込んだソースファイルの一覧を表示する
+    load-reg <REGISTER> <ADDRESS>
+                メモリの指定アドレスにある値をレジスタに設定する
+    quit
+                テスト実行を中止する
+    remove-breakpoint [<ADDRESS1>[,<ADDRESS2>..]]
+                指定アドレスのブレークポイントを解除する。アドレス省略時はPRの示すアドレス
     reset
                 プログラムを最初から実行しなおす。プログラムをファイルから読み込みなおし配置される
-    set-start [<ADDRESS>]
-                プログラムの開始点を変更する(restart時に影響)。省略した場合は最初の開始点に戻す
     restart
                 プログラムを最初の位置から実行しなおす。メモリやGRやFRは終了時点の状態が維持される
-    set-reg <REGISTER> <VALUE>
-                値をレジスタに設定する
+    run [<STEP_LIMIT>]
+                次のブレークポイントまで実行する。ステップ制限数までにブレークポイントに到達しない場合はそこで停止する
+    set-breakpoint [<ADDRESS1>[,<ADDRESS2>..]]
+                指定アドレスにブレークポイントを設定する。アドレス省略時はPRの示すアドレス
+    set-by-file <FILE_PATH>
+                ファイルに列挙された設定系のデバッガコマンドを実行する
+    set-label <LABEL> <ADDRESS>
+                アドレスのエイリアスである新しいラベルを作る。
     set-mem <ADDRESS> <VALUE1>[,<VALUE2>..]
                 値をメモリの指定アドレスに書き込む
     set-mem-fill <ADDRESS> <LENGTH> <VALUE>
                 メモリの指定アドレスから指定の長さ分を指定の値で埋める
-    load-reg <REGISTER> <ADDRESS>
-                メモリの指定アドレスにある値をレジスタに設定する
-    copy-mem <ADDRESS_FROM> <ADDRESS_TO> <LENGTH>
-                メモリのデータをコピーする
-    set-breakpoint [<ADDRESS1>[,<ADDRESS2>..]]
-                指定アドレスにブレークポイントを設定する。アドレス省略時はPRの示すアドレス
-    remove-breakpoint [<ADDRESS1>[,<ADDRESS2>..]]
-                指定アドレスのブレークポイントを解除する。アドレス省略時はPRの示すアドレス
-    dump-mem [<ADDRESS> [<SIZE>]]
-                メモリダンプする
-    dump-code [<ADDRESS> [<SIZE>]]
-                メモリをコード表示する
+    set-reg <REGISTER> <VALUE>
+                値をレジスタに設定する
+    set-start [<ADDRESS>]
+                プログラムの開始点を変更する(restart時に影響)。省略した場合は最初の開始点に戻す
+    show-labels [<PROGRAM_ENTRY>]
+                ラベルの一覧とアドレスを表示する。PROGRAM_ENTRYを指定した場合はローカルラベルを表示する
+    show-mem <ADDRESS> <LENGTH>
+                メモリの指定アドレスから指定の長さ分の領域の各値を列挙する
+    show-reg
+                各レジスタの現在の値を表示する
+    show-state
+                直近の実行(run,skip,step)の結果を再表示する
+    show-var [<BASIC_SRC_FILE> [<VAR_NAME1>[,<VAR_NAME2>..]]]
+                指定したBASICプログラムの変数名と対応するラベルとアドレスと値を表示する
     skip [<STEP_LIMIT>]
                 現在のサブルーチンのRETまで実行する。ステップ制限数までにRETに到達しない場合はそこで停止する
-    run [<STEP_LIMIT>]
-                次のブレークポイントまで実行する。ステップ制限数までにブレークポイントに到達しない場合はそこで停止する
     s    [<STEP_COUNT>]
     step [<STEP_COUNT>]
                 指定ステップ数だけ実行する。STEP_COUNT省略時は1ステップだけ実行する
-    quit
-                テスト実行を中止する
-    help <COMMAND_NAME>
-                指定デバッガコマンドの詳細ヘルプを表示する
 "#
             )?;
             return Ok(());
         }
     };
 
-    if "set-reg".eq_ignore_ascii_case(cmd) {
-        writeln!(
-            stdout,
-            r#"
-    set-reg <REGISTER> <VALUE>
-                値をレジスタに設定する
-                    REGISTER .. GR0～GR7
-                    VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル
-
-                    REGISTER .. OF,SF,ZF
-                    VALUE    .. 0,1
-
-                    REGISTER .. PR,SP
-                    VALUE    .. 16進定数,アドレス定数
-
-                ※各種定数については help constat で説明"#
-        )?;
-    }
-
-    if "set-mem".eq_ignore_ascii_case(cmd) {
-        writeln!(
-            stdout,
-            r#"
-    set-mem <ADDRESS> <VALUE1>[,<VALUE2>..]
-                値をメモリの指定アドレスに書き込む
-                値を複数列挙した場合はアドレスから連続した領域に書き込まれる
-                値が文字定数の場合は文字数分の連続した領域に書き込まれる
-                    ADDRESS  .. 16進定数,アドレス定数
-                    VALUE*   .. 10進定数,16進定数,文字定数,アドレス定数,リテラル
-
-                ※各種定数については help constat で説明"#
-        )?;
-    }
-
-    if "set-mem-fill".eq_ignore_ascii_case(cmd) {
-        writeln!(
-            stdout,
-            r#"
-    set-mem-fill <ADDRESS> <LENGTH> <VALUE>
-                メモリの指定アドレスから指定の長さ分を指定の値で埋める
-                    ADDRESS  .. 16進定数,アドレス定数
-                    LENGTH   .. 正の10進定数,16進定数
-                    VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル
-
-                ※各種定数については help constat で説明"#
-        )?;
-    }
-
-    if "load-reg".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "copy-mem".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "show-reg".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "show-mem".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "show-labels".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "show-var".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "list-files".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "dump-mem".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "dump-code".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "reset".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "set-start".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "restart".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "set-breakpoint".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "remove-breakpoint".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "skip".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "run".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "step".eq_ignore_ascii_case(cmd) || "s".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "help".eq_ignore_ascii_case(cmd) {
-        todo!();
-    }
-
-    if "constant".eq_ignore_ascii_case(cmd) {
+    if "constant" == cmd {
         writeln!(
             stdout,
             r#"
@@ -2631,10 +2525,76 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 10進定数、16進定数、文字定数の頭に=を付けて指定
                 定数格納の領域を確保しそのアドレスを返す
                     例: =123
-                        =#ABCD 
+                        =#ABCD
                         ='XYZ'"#
         )?;
     }
+
+    let description = match cmd.as_str() {
+        "add-dc" => todo!(),
+        "add-ds" => todo!(),
+        "batch" => todo!(),
+        "copy-mem" => todo!(),
+        "dump-code" => todo!(),
+        "dump-mem" => todo!(),
+        "help" => todo!(),
+        "list-files" => todo!(),
+        "load-reg" => todo!(),
+        "quit" => todo!(),
+        "remove-breakpoint" => todo!(),
+        "reset" => todo!(),
+        "restart" => todo!(),
+        "run" => todo!(),
+        "set-breakpoint" => todo!(),
+        "set-label" => todo!(),
+        "set-mem" => {
+            r#"
+    set-mem <ADDRESS> <VALUE1>[,<VALUE2>..]
+                値をメモリの指定アドレスに書き込む
+                値を複数列挙した場合はアドレスから連続した領域に書き込まれる
+                値が文字定数の場合は文字数分の連続した領域に書き込まれる
+                    ADDRESS  .. 16進定数,アドレス定数
+                    VALUE*   .. 10進定数,16進定数,文字定数,アドレス定数,リテラル
+
+                ※各種定数については help constat で説明"#
+        }
+        "set-mem-fill" => {
+            r#"
+    set-mem-fill <ADDRESS> <LENGTH> <VALUE>
+                メモリの指定アドレスから指定の長さ分を指定の値で埋める
+                    ADDRESS  .. 16進定数,アドレス定数
+                    LENGTH   .. 正の10進定数,16進定数
+                    VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル
+
+                ※各種定数については help constat で説明"#
+        }
+        "set-reg" => {
+            r#"
+    set-reg <REGISTER> <VALUE>
+                値をレジスタに設定する
+                    REGISTER .. GR0～GR7
+                    VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル
+
+                    REGISTER .. OF,SF,ZF
+                    VALUE    .. 0,1
+
+                    REGISTER .. PR,SP
+                    VALUE    .. 16進定数,アドレス定数
+
+                ※各種定数については help constat で説明"#
+        }
+        "set-start" => todo!(),
+        "show-labels" => todo!(),
+        "show-mem" => todo!(),
+        "show-reg" => todo!(),
+        "show-state" => todo!(),
+        "show-var" => todo!(),
+        "skip" => todo!(),
+        "step" => todo!(),
+        _ => "コマンド名が正しくありません",
+    };
+
+    writeln!(stdout, "{}", description)?;
 
     Ok(())
 }
