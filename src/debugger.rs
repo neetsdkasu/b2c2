@@ -162,10 +162,32 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
 }
 
 fn show_state<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> io::Result<()> {
+    if let Some(pos) = state.start_point {
+        let mut label = None;
+        for (lb, p) in emu.all_label_list.iter() {
+            if *p == pos {
+                label = Some(lb);
+                break;
+            }
+        }
+        if let Some(lb) = label {
+            writeln!(stdout, "Start Point: {}", lb)?;
+        } else {
+            writeln!(stdout, "Start Point: #{:04X}", pos)?;
+        }
+    } else {
+        writeln!(
+            stdout,
+            "Start Point: {}",
+            emu.start_point.as_ref().expect("BUG")
+        )?;
+    }
+
     writeln!(stdout, "Step Count: {}", emu.step_count)?;
 
     write!(stdout, "Call State:")?;
-    for (pos, _) in emu.program_stack.iter() {
+    for (i, (pos, ret)) in emu.program_stack.iter().enumerate() {
+        let fp = ret.checked_sub(1).expect("BUG");
         match emu.all_label_list.binary_search_by_key(pos, |(_, p)| *p) {
             Ok(mut index) => {
                 while index > 0 {
@@ -181,10 +203,18 @@ fn show_state<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> io::Re
                     break;
                 }
                 let (label, _) = emu.all_label_list.get(index).unwrap();
-                write!(stdout, " > {}", label)?;
+                if i == 0 {
+                    write!(stdout, " {}", label)?;
+                } else {
+                    write!(stdout, " [#{:04X}]-> {}", fp, label)?;
+                }
             }
             Err(_) => {
-                write!(stdout, " > #{:04X}", pos)?;
+                if i == 0 {
+                    write!(stdout, " #{:04X}", pos)?;
+                } else {
+                    write!(stdout, " [#{:04X}]-> #{:04X}", fp, pos)?;
+                }
             }
         }
     }
@@ -455,6 +485,7 @@ fn interactive<R: BufRead, W: Write>(
         "add-dc",
         "add-ds",
         "copy-mem",
+        "default-cmd",
         "dump-code",
         "dump-mem",
         "help",
@@ -501,7 +532,8 @@ fn interactive<R: BufRead, W: Write>(
         match cmd {
             "add-dc" => add_dc(emu, stdout, cmd_and_param.next())?,
             "add-ds" => add_ds(emu, stdout, cmd_and_param.next())?,
-            "copy-mem" => todo!(),
+            "copy-mem" => copy_mem(emu, stdout, cmd_and_param.next())?,
+            "default-cmd" => todo!(),
             "dump-code" => dump_code(emu, stdout, cmd_and_param.next())?,
             "dump-mem" => dump_mem(emu, stdout, cmd_and_param.next())?,
             "help" => show_command_help_before_start(cmd_and_param.next(), stdout)?,
@@ -612,6 +644,86 @@ fn is_valid_boolean(v: u16) -> bool {
     v == 0 || v == 0xFFFF
 }
 
+impl Emulator {
+    fn get_address_by_label_str(&self, label: &str) -> Result<usize, String> {
+        match casl2::Tokenizer::new(label).extended_label() {
+            Err(msg) => Err(msg.to_string()),
+            Ok(None) => Err("引数が不正です".to_string()),
+            Ok(Some(lb)) => lb.get_address(self),
+        }
+    }
+}
+
+fn copy_mem<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let params = if let Some(param) = param {
+        param.split_whitespace().collect::<Vec<_>>()
+    } else {
+        writeln!(stdout, "引数が必要です")?;
+        return Ok(());
+    };
+    let (adr1s, adr2s, len) = if let [adr1, adr2, len] = params.as_slice() {
+        (adr1, adr2, len)
+    } else {
+        writeln!(stdout, "引数が不正です")?;
+        return Ok(());
+    };
+
+    let adr1 = match emu.get_address_by_label_str(adr1s) {
+        Ok(adr) => adr,
+        Err(msg) => {
+            writeln!(stdout, "{}", msg)?;
+            return Ok(());
+        }
+    };
+
+    let adr2 = match emu.get_address_by_label_str(adr2s) {
+        Ok(adr) => adr,
+        Err(msg) => {
+            writeln!(stdout, "{}", msg)?;
+            return Ok(());
+        }
+    };
+
+    let len = match len.parse::<u16>() {
+        Ok(len) => len as usize,
+        Err(_) => match casl2::Tokenizer::new(len).ignore_case_hex() {
+            Some(len) => len as usize,
+            None => {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+        },
+    };
+
+    if adr1
+        .checked_add(len)
+        .filter(|p| *p <= emu.mem.len())
+        .is_none()
+    {
+        writeln!(stdout, "引数が不正です")?;
+        return Ok(());
+    }
+
+    if adr2
+        .checked_add(len)
+        .filter(|p| *p <= emu.mem.len())
+        .is_none()
+    {
+        writeln!(stdout, "引数が不正です")?;
+        return Ok(());
+    }
+
+    emu.mem.copy_within(adr1..adr1 + len, adr2);
+
+    writeln!(
+        stdout,
+        "#{:04X}から#{:04X}へ{}語コピーしました",
+        adr1, adr2, len
+    )?;
+
+    Ok(())
+}
+
 fn add_ds<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let (name, size) = match param {
         None => {
@@ -648,7 +760,7 @@ fn add_ds<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> 
         Ok(size) => size,
         Err(_) => {
             let mut tokenizer = casl2::Tokenizer::new(size);
-            if let Some(h) = tokenizer.hex() {
+            if let Some(h) = tokenizer.ignore_case_hex() {
                 h
             } else {
                 writeln!(stdout, "サイズ指定が不正です")?;
@@ -2589,6 +2701,8 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 新しく領域を確保し先頭アドレスを示すラベルを作る。CASL2のDS相当
     copy-mem <ADDRESS_FROM> <ADDRESS_TO> <LENGTH>
                 メモリのデータをコピーする
+    default-cmd [<DEBUG_COMMAND>]
+                空行が入力されたときの挙動を設定する
     dump-code [<ADDRESS> [<SIZE>]]
                 メモリをコード表示する
     dump-mem [<ADDRESS> [<SIZE>]]
@@ -2708,6 +2822,7 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
         }
         "add-ds" => todo!(),
         "copy-mem" => todo!(),
+        "default-cmd" => todo!(),
         "dump-code" => todo!(),
         "dump-mem" => todo!(),
         "help" => todo!(),
