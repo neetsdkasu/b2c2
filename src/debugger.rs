@@ -280,6 +280,14 @@ impl Emulator {
             }
             break;
         }
+        if src.is_none() {
+            for (p, stmt) in self.labels_for_debug.values() {
+                if *p == pos {
+                    src = Some(stmt.to_string());
+                    break;
+                }
+            }
+        }
         let op_code = self.mem[pos];
         match get_op_code_size(op_code) {
             2 => {
@@ -491,7 +499,7 @@ fn interactive<R: BufRead, W: Write>(
         let mut cmd_and_param = line.splitn(2, ' ').map(|s| s.trim());
         let cmd = cmd_and_param.next().unwrap();
         match cmd {
-            "add-dc" => todo!(),
+            "add-dc" => add_dc(emu, stdout, cmd_and_param.next())?,
             "add-ds" => todo!(),
             "copy-mem" => todo!(),
             "dump-code" => dump_code(emu, stdout, cmd_and_param.next())?,
@@ -604,10 +612,99 @@ fn is_valid_boolean(v: u16) -> bool {
     v == 0 || v == 0xFFFF
 }
 
+fn add_dc<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let (name, values) = match param {
+        None => {
+            writeln!(stdout, "引数が必要です")?;
+            return Ok(());
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let name = iter.next().unwrap().to_ascii_uppercase();
+            if !casl2::Label::from(&name).is_valid() {
+                writeln!(stdout, "{}はラベルとして不正です", name)?;
+                return Ok(());
+            }
+            match iter.next() {
+                None => {
+                    writeln!(stdout, "引数が不正です")?;
+                    return Ok(());
+                }
+                Some(values) => (name, values),
+            }
+        }
+    };
+
+    if emu.program_labels.contains_key(&name) {
+        writeln!(stdout, "{}は既に使用されており指定できません", name)?;
+        return Ok(());
+    }
+    if emu.labels_for_debug.contains_key(&name) {
+        writeln!(stdout, "{}は既に使用されており指定できません", name)?;
+        return Ok(());
+    }
+
+    let mut tokenizer = casl2::Tokenizer::new(values);
+    let values = match Value::take_all_values(emu, &mut tokenizer) {
+        Ok(values) => values,
+        Err(msg) => {
+            writeln!(stdout, "{}", msg)?;
+            return Ok(());
+        }
+    };
+
+    let len = values
+        .iter()
+        .map(|v| match v {
+            Value::Int(_) => 1,
+            Value::Str(s) => s.chars().count(),
+        })
+        .sum::<usize>();
+
+    if !emu.enough_remain(len) {
+        writeln!(stdout, "十分な領域がありません")?;
+        return Ok(());
+    }
+
+    let adr = emu.compile_pos;
+    emu.compile_pos += len;
+
+    let mut constants = vec![];
+    let mut pos = adr;
+    let mut msg = format!("{}(#{:04X})に", name, pos);
+    for v in values {
+        match v {
+            Value::Int(v) => {
+                emu.mem[pos] = v;
+                pos += 1;
+                msg.push_str(&format!("#{:04X},", v));
+                constants.push(casl2::Constant::Hex(v));
+            }
+            Value::Str(s) => {
+                for ch in s.chars() {
+                    let v = jis_x_201::convert_from_char(ch) as u16;
+                    emu.mem[pos] = v;
+                    pos += 1;
+                    msg.push_str(&format!("#{:04X},", v));
+                    constants.push(casl2::Constant::Hex(v));
+                }
+            }
+        }
+    }
+
+    let stmt = casl2::Statement::labeled(&name, casl2::Command::Dc { constants });
+
+    emu.labels_for_debug.insert(name, (adr, stmt));
+
+    writeln!(stdout, "{}を設定しました", msg)?;
+
+    Ok(())
+}
+
 fn set_mem<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let (adr, values) = match param {
         None => {
-            writeln!(stdout, "引数が不正です")?;
+            writeln!(stdout, "引数が必要です")?;
             return Ok(());
         }
         Some(param) => {
@@ -2176,7 +2273,10 @@ impl ExtendedLabel {
         match self {
             Self::GlobalLabel(label) => match emu.program_labels.get(label) {
                 Some(adr) => Ok(*adr),
-                None => Err(format!("ラベル{}が見つかりません", label)),
+                None => match emu.labels_for_debug.get(label) {
+                    Some((adr, _)) => Ok(*adr),
+                    None => Err(format!("ラベル{}が見つかりません", label)),
+                },
             },
             Self::LocalLabel(glabel, llabel) => match emu.local_labels.get(glabel) {
                 Some(label_map) => match label_map.get(llabel) {
