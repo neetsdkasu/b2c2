@@ -459,7 +459,6 @@ fn interactive<R: BufRead, W: Write>(
         "dump-mem",
         "help",
         "list-files",
-        "load-reg",
         "quit",
         "remove-breakpoint",
         "reset",
@@ -479,6 +478,7 @@ fn interactive<R: BufRead, W: Write>(
         "show-var",
         "skip",
         "step",
+        "write-code",
     ]
     .join(" ");
 
@@ -500,13 +500,12 @@ fn interactive<R: BufRead, W: Write>(
         let cmd = cmd_and_param.next().unwrap();
         match cmd {
             "add-dc" => add_dc(emu, stdout, cmd_and_param.next())?,
-            "add-ds" => todo!(),
+            "add-ds" => add_ds(emu, stdout, cmd_and_param.next())?,
             "copy-mem" => todo!(),
             "dump-code" => dump_code(emu, stdout, cmd_and_param.next())?,
             "dump-mem" => dump_mem(emu, stdout, cmd_and_param.next())?,
             "help" => show_command_help_before_start(cmd_and_param.next(), stdout)?,
             "list-files" => list_files(emu, stdout)?,
-            "load-reg" => todo!(),
             "quit" => {
                 writeln!(stdout, "テスト実行を中止します")?;
                 return Ok(QUIT_TEST);
@@ -601,6 +600,7 @@ fn interactive<R: BufRead, W: Write>(
                 }
                 return Ok(0);
             }
+            "write-code" => todo!(),
             _ => {
                 writeln!(stdout, "コマンドが正しくありません")?;
             }
@@ -610,6 +610,72 @@ fn interactive<R: BufRead, W: Write>(
 
 fn is_valid_boolean(v: u16) -> bool {
     v == 0 || v == 0xFFFF
+}
+
+fn add_ds<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let (name, size) = match param {
+        None => {
+            writeln!(stdout, "引数が必要です")?;
+            return Ok(());
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let name = iter.next().unwrap().to_ascii_uppercase();
+            if !casl2::Label::from(&name).is_valid() {
+                writeln!(stdout, "{}はラベルとして不正です", name)?;
+                return Ok(());
+            }
+            match iter.next() {
+                None => {
+                    writeln!(stdout, "引数が不足しています")?;
+                    return Ok(());
+                }
+                Some(size) => (name, size),
+            }
+        }
+    };
+
+    if emu.program_labels.contains_key(&name) {
+        writeln!(stdout, "{}は既に使用されており指定できません", name)?;
+        return Ok(());
+    }
+    if emu.labels_for_debug.contains_key(&name) {
+        writeln!(stdout, "{}は既に使用されており指定できません", name)?;
+        return Ok(());
+    }
+
+    let size = match size.parse::<u16>() {
+        Ok(size) => size,
+        Err(_) => {
+            let mut tokenizer = casl2::Tokenizer::new(size);
+            if let Some(h) = tokenizer.hex() {
+                h
+            } else {
+                writeln!(stdout, "サイズ指定が不正です")?;
+                return Ok(());
+            }
+        }
+    };
+
+    if !emu.enough_remain(size as usize) {
+        writeln!(stdout, "メモリに十分な領域がありません")?;
+        return Ok(());
+    }
+
+    let adr = emu.compile_pos;
+    emu.compile_pos += size as usize;
+
+    let stmt = casl2::Statement::labeled(&name, casl2::Command::Ds { size });
+
+    emu.labels_for_debug.insert(name.clone(), (adr, stmt));
+
+    writeln!(
+        stdout,
+        "{}(#{:04X})に{}語の領域を確保しました",
+        name, adr, size
+    )?;
+
+    Ok(())
 }
 
 fn add_dc<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
@@ -627,7 +693,7 @@ fn add_dc<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> 
             }
             match iter.next() {
                 None => {
-                    writeln!(stdout, "引数が不正です")?;
+                    writeln!(stdout, "引数が不足しています")?;
                     return Ok(());
                 }
                 Some(values) => (name, values),
@@ -662,7 +728,7 @@ fn add_dc<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> 
         .sum::<usize>();
 
     if !emu.enough_remain(len) {
-        writeln!(stdout, "十分な領域がありません")?;
+        writeln!(stdout, "メモリに十分な領域がありません")?;
         return Ok(());
     }
 
@@ -712,7 +778,7 @@ fn set_mem<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
             let adr = iter.next().unwrap();
             match iter.next() {
                 None => {
-                    writeln!(stdout, "引数が不正です")?;
+                    writeln!(stdout, "引数が不足しています")?;
                     return Ok(());
                 }
                 Some(values) => (adr, values),
@@ -2271,23 +2337,25 @@ impl fmt::Display for ExtendedLabel {
 impl ExtendedLabel {
     fn get_address(&self, emu: &Emulator) -> Result<usize, String> {
         match self {
-            Self::GlobalLabel(label) => match emu.program_labels.get(label) {
+            Self::GlobalLabel(label) => match emu.program_labels.get(&label.to_ascii_uppercase()) {
                 Some(adr) => Ok(*adr),
-                None => match emu.labels_for_debug.get(label) {
+                None => match emu.labels_for_debug.get(&label.to_ascii_uppercase()) {
                     Some((adr, _)) => Ok(*adr),
                     None => Err(format!("ラベル{}が見つかりません", label)),
                 },
             },
-            Self::LocalLabel(glabel, llabel) => match emu.local_labels.get(glabel) {
-                Some(label_map) => match label_map.get(llabel) {
-                    Some(adr) => Ok(*adr),
-                    None => Err(format!(
-                        "プログラム{}にラベル{}が見つかりません",
-                        glabel, llabel
-                    )),
-                },
-                None => Err(format!("ラベル{}が見つかりません", glabel)),
-            },
+            Self::LocalLabel(glabel, llabel) => {
+                match emu.local_labels.get(&glabel.to_ascii_uppercase()) {
+                    Some(label_map) => match label_map.get(&llabel.to_ascii_uppercase()) {
+                        Some(adr) => Ok(*adr),
+                        None => Err(format!(
+                            "プログラム{}にラベル{}が見つかりません",
+                            glabel, llabel
+                        )),
+                    },
+                    None => Err(format!("ラベル{}が見つかりません", glabel)),
+                }
+            }
             Self::GeneralRegister(reg) => Ok(emu.general_registers[*reg as usize] as usize),
             Self::ProgramRegister => Ok(emu.program_register),
             Self::StackPointer => Ok(emu.stack_pointer),
@@ -2515,7 +2583,6 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
             writeln!(
                 stdout,
                 r#"
-        "add-dc",
     add-dc <LABEL> <VALUE1>[,<VALUE2>..]
                 新しく領域を作り値を格納し先頭アドレスを示すラベルも作る。CASL2のDC相当
     add-ds <LABEL> <SIZE>
@@ -2532,8 +2599,6 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 デバッガコマンドで使用する定数に関する説明を表示する
     list-files
                 読み込んだソースファイルの一覧を表示する
-    load-reg <REGISTER> <ADDRESS>
-                メモリの指定アドレスにある値をレジスタに設定する
     quit
                 テスト実行を中止する
     remove-breakpoint [<ADDRESS1>[,<ADDRESS2>..]]
@@ -2573,6 +2638,8 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
     s    [<STEP_COUNT>]
     step [<STEP_COUNT>]
                 指定ステップ数だけ実行する。STEP_COUNT省略時は1ステップだけ実行する
+    write-code <ADDRESS> <CASL2_COMMAND>
+                アドレス位置に指定のCASL2コマンドを書き込む
 "#
             )?;
             return Ok(());
@@ -2628,24 +2695,30 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                         =#ABCD
                         ='XYZ'"#
         )?;
+        return Ok(());
     }
 
     let description = match cmd.as_str() {
-        "add-dc" => todo!(),
+        "add-dc" => {
+            r#"
+    add-dc <LABEL> <VALUE1>[,<VALUE2>..]
+                新しく領域を作り値を格納し先頭アドレスを示すラベルも作る。CASL2のDC相当
+                VALUEには10進定数、16進定数、文字定数、アドレス定数、リテラルを指定できる
+"#
+        }
         "add-ds" => todo!(),
-        "batch" => todo!(),
         "copy-mem" => todo!(),
         "dump-code" => todo!(),
         "dump-mem" => todo!(),
         "help" => todo!(),
         "list-files" => todo!(),
-        "load-reg" => todo!(),
         "quit" => todo!(),
         "remove-breakpoint" => todo!(),
         "reset" => todo!(),
         "restart" => todo!(),
         "run" => todo!(),
         "set-breakpoint" => todo!(),
+        "set-by-file" => todo!(),
         "set-label" => todo!(),
         "set-mem" => {
             r#"
@@ -2691,6 +2764,7 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
         "show-var" => todo!(),
         "skip" => todo!(),
         "step" => todo!(),
+        "write-code" => todo!(),
         _ => "コマンド名が正しくありません",
     };
 
