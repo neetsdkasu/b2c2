@@ -82,6 +82,7 @@ struct State {
     err: Option<RuntimeError>,
     run_mode: RunMode,
     start_point: Option<usize>,
+    default_cmd: Option<String>,
 }
 
 pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
@@ -123,6 +124,7 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
         err: None,
         run_mode: RunMode::Step(1),
         start_point: None,
+        default_cmd: None,
     };
 
     loop {
@@ -187,7 +189,7 @@ fn show_state<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> io::Re
 
     write!(stdout, "Call State:")?;
     for (i, (pos, ret)) in emu.program_stack.iter().enumerate() {
-        let fp = ret.checked_sub(1).expect("BUG");
+        let fp = ret.checked_sub(2).expect("BUG");
         match emu.all_label_list.binary_search_by_key(pos, |(_, p)| *p) {
             Ok(mut index) => {
                 while index > 0 {
@@ -481,41 +483,59 @@ fn interactive<R: BufRead, W: Write>(
 ) -> io::Result<i32> {
     let mut line = String::new();
 
-    let command_list = vec![
-        "add-dc",
-        "add-ds",
-        "copy-mem",
-        "default-cmd",
-        "dump-code",
-        "dump-mem",
-        "help",
-        "list-files",
-        "quit",
-        "remove-breakpoint",
-        "reset",
-        "restart",
-        "run",
-        "set-breakpoint",
-        "set-by-file",
-        "set-label",
-        "set-mem",
-        "set-mem-fill",
-        "set-reg",
-        "set-start",
-        "show-labels",
-        "show-mem",
-        "show-reg",
-        "show-state",
-        "show-var",
-        "skip",
-        "step",
-        "write-code",
-    ]
-    .join(" ");
+    let command_list = {
+        use std::fmt::Write;
+        let mut lines = String::new();
+        let mut tmp = String::new();
+        for cmd in vec![
+            "add-dc",
+            "add-ds",
+            "copy-mem",
+            "default-cmd",
+            "dump-code",
+            "dump-mem",
+            "find-cmd",
+            "find-value",
+            "help",
+            "list-files",
+            "quit",
+            "remove-breakpoint",
+            "reset",
+            "restart",
+            "run",
+            "set-breakpoint",
+            "set-by-file",
+            "set-label",
+            "set-mem",
+            "set-mem-fill",
+            "set-reg",
+            "set-start",
+            "show-labels",
+            "show-mem",
+            "show-reg",
+            "show-state",
+            "show-var",
+            "skip",
+            "step",
+            "write-code",
+        ] {
+            if tmp.len() + cmd.len() + 1 >= 80 {
+                writeln!(&mut lines, "{}", tmp).unwrap();
+                tmp.clear();
+            }
+            tmp.push_str(cmd);
+            tmp.push(' ');
+        }
+        if !tmp.is_empty() {
+            writeln!(&mut lines, "{}", tmp).unwrap();
+        }
+        lines
+    };
 
     loop {
         writeln!(stdout)?;
-        writeln!(stdout, "使用可能なデバッガコマンド: {}", command_list)?;
+        writeln!(stdout, "使用可能なデバッガコマンド:")?;
+        writeln!(stdout, "{}", command_list)?;
         writeln!(stdout)?;
         write!(stdout, "[CASL2] > ")?;
         stdout.flush()?;
@@ -526,16 +546,36 @@ fn interactive<R: BufRead, W: Write>(
             writeln!(stdout, "テスト実行を中止します")?;
             return Ok(QUIT_TEST);
         }
-        let line = line.trim();
+        let mut line = line.trim();
+        if line.is_empty() {
+            if let Some(defcmd) = state.default_cmd.as_ref() {
+                line = defcmd.as_str();
+            }
+        }
         let mut cmd_and_param = line.splitn(2, ' ').map(|s| s.trim());
         let cmd = cmd_and_param.next().unwrap();
         match cmd {
             "add-dc" => add_dc(emu, stdout, cmd_and_param.next())?,
             "add-ds" => add_ds(emu, stdout, cmd_and_param.next())?,
             "copy-mem" => copy_mem(emu, stdout, cmd_and_param.next())?,
-            "default-cmd" => todo!(),
+            "default-cmd" => {
+                if let Some(defcmd) = cmd_and_param.next() {
+                    if "none".eq_ignore_ascii_case(defcmd) {
+                        state.default_cmd = None;
+                    } else {
+                        state.default_cmd = Some(defcmd.to_string());
+                    }
+                }
+                if let Some(defcmd) = state.default_cmd.as_ref() {
+                    writeln!(stdout, "デフォルトのデバッガコマンド: {}", defcmd)?;
+                } else {
+                    writeln!(stdout, "デフォルトのデバッガコマンド: none")?;
+                }
+            }
             "dump-code" => dump_code(emu, stdout, cmd_and_param.next())?,
             "dump-mem" => dump_mem(emu, stdout, cmd_and_param.next())?,
+            "find-cmd" => todo!(),
+            "find-value" => todo!(),
             "help" => show_command_help_before_start(cmd_and_param.next(), stdout)?,
             "list-files" => list_files(emu, stdout)?,
             "quit" => {
@@ -2707,6 +2747,10 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 メモリをコード表示する
     dump-mem [<ADDRESS> [<SIZE>]]
                 メモリダンプする
+    find-cmd <ADDRESS> <COMET2_COMMAND>
+                指定のCOMET2コマンドを指定アドレス位置以降から探し最初に見つかったものを表示する
+    find-value <ADDRESS> <VALUE>
+                指定の値を指定アドレス位置以降から探し最初に見つかったものを表示する
     help <COMMAND_NAME>
                 指定デバッガコマンドの詳細ヘルプを表示する
     help constant
@@ -2752,8 +2796,8 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
     s    [<STEP_COUNT>]
     step [<STEP_COUNT>]
                 指定ステップ数だけ実行する。STEP_COUNT省略時は1ステップだけ実行する
-    write-code <ADDRESS> <CASL2_COMMAND>
-                アドレス位置に指定のCASL2コマンドを書き込む
+    write-code <ADDRESS> <COMET2_COMMAND>
+                アドレス位置に指定のCOMET2コマンドを書き込む
 "#
             )?;
             return Ok(());
@@ -2825,6 +2869,8 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
         "default-cmd" => todo!(),
         "dump-code" => todo!(),
         "dump-mem" => todo!(),
+        "find-cmd" => todo!(),
+        "find-value" => todo!(),
         "help" => todo!(),
         "list-files" => todo!(),
         "quit" => todo!(),
