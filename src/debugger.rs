@@ -595,7 +595,7 @@ fn interactive<R: BufRead, W: Write>(
             "dump-code" => dump_code(emu, stdout, cmd_and_param.next())?,
             "dump-mem" => dump_mem(emu, stdout, cmd_and_param.next())?,
             "find-code" => find_code(emu, stdout, cmd_and_param.next())?,
-            "find-value" => todo!(),
+            "find-value" => find_value(emu, stdout, cmd_and_param.next())?,
             "help" => show_command_help_before_start(cmd_and_param.next(), stdout)?,
             "list-files" => list_files(emu, stdout)?,
             "quit" => {
@@ -706,10 +706,17 @@ fn is_valid_boolean(v: u16) -> bool {
 
 impl Emulator {
     fn get_address_by_label_str(&self, label: &str) -> Result<usize, String> {
-        match casl2::Tokenizer::new(label).extended_label() {
+        let mut tokenizer = casl2::Tokenizer::new(label);
+        match tokenizer.extended_label() {
             Err(msg) => Err(msg.to_string()),
             Ok(None) => Err("引数が不正です".to_string()),
-            Ok(Some(lb)) => lb.get_address(self),
+            Ok(Some(lb)) => {
+                if tokenizer.rest().is_empty() {
+                    lb.get_address(self)
+                } else {
+                    Err("引数が不正です".to_string())
+                }
+            }
         }
     }
 }
@@ -780,6 +787,77 @@ fn parse_comet2_command(emu: &Emulator, cmd: &str) -> Result<casl2::Command, Str
         }
         Err(error) => Err(format!("{:?}", error)),
     }
+}
+
+fn find_value<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let (adr, value) = match param {
+        None => {
+            writeln!(stdout, "引数が必要です")?;
+            return Ok(());
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let adr = iter.next().unwrap();
+            if let Some(value) = iter.next() {
+                (adr, value)
+            } else {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+        }
+    };
+
+    let adr = match emu.get_address_by_label_str(adr) {
+        Err(msg) => {
+            writeln!(stdout, "{}", msg)?;
+            return Ok(());
+        }
+        Ok(adr) => adr,
+    };
+
+    let mut tokenizer = casl2::Tokenizer::new(value);
+    let value = match Value::take_all_values_without_literal(emu, &mut tokenizer) {
+        Err(msg) => {
+            writeln!(stdout, "{}", msg)?;
+            return Ok(());
+        }
+        Ok(values) => match values.as_slice() {
+            [Value::Int(v)] => *v,
+            [Value::Str(s)] if !s.is_empty() => {
+                let ch = s.chars().next().unwrap();
+                jis_x_201::convert_from_char(ch) as u16
+            }
+            _ => {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+        },
+    };
+
+    if let Some((i, _)) = emu
+        .mem
+        .iter()
+        .enumerate()
+        .skip(adr)
+        .find(|(_, mem)| **mem == value)
+    {
+        let info = emu.get_code_info(i as u16);
+        if let Some(lb) = info.src_entry_label.as_ref() {
+            if let Some(file) = info.src_file.as_ref() {
+                writeln!(stdout, "Program: {} ({})", lb, file)?;
+            } else {
+                writeln!(stdout, "Program: {}", lb)?;
+            }
+        }
+        if let Some((_, src)) = info.src_code.as_ref() {
+            writeln!(stdout, "{}", src)?;
+        }
+        writeln!(stdout, "{}", info.mem_code)?;
+        return Ok(());
+    }
+
+    writeln!(stdout, "見つかりませんでした")?;
+    Ok(())
 }
 
 fn find_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
@@ -2772,6 +2850,7 @@ enum Value {
 }
 
 impl Value {
+    // リテラル生成するので注意
     fn take_all_values(
         emu: &mut Emulator,
         tokenizer: &mut casl2::Tokenizer<'_>,
@@ -2793,6 +2872,7 @@ impl Value {
         }
     }
 
+    // リテラル生成するので注意
     fn take_single_value(
         emu: &mut Emulator,
         tokenizer: &mut casl2::Tokenizer<'_>,
@@ -2805,7 +2885,10 @@ impl Value {
                     None => return Err("引数が不正です".to_string()),
                 };
                 match value {
-                    casl2::Token::Word(_) => unreachable!("BUG"),
+                    casl2::Token::Word(s) => match emu.get_address_by_label_str(s.as_str()) {
+                        Ok(adr) => Ok(Value::Int(adr as u16)),
+                        Err(msg) => Err(msg),
+                    },
                     casl2::Token::Dec(d) => Ok(Value::Int(d as u16)),
                     casl2::Token::Hex(h) => Ok(Value::Int(h)),
                     casl2::Token::Str(s) => Ok(Value::Str(
@@ -2827,6 +2910,61 @@ impl Value {
                         Ok(pos) => Ok(Value::Int(pos as u16)),
                         Err(msg) => Err(msg.to_string()),
                     },
+                }
+            }
+        }
+    }
+
+    // リテラル生成するので注意
+    fn take_all_values_without_literal(
+        emu: &Emulator,
+        tokenizer: &mut casl2::Tokenizer<'_>,
+    ) -> Result<Vec<Value>, String> {
+        let mut values = vec![];
+
+        loop {
+            let value = Self::take_single_value_without_literal(emu, tokenizer)?;
+
+            values.push(value);
+
+            if !tokenizer.comma() {
+                if tokenizer.rest().is_empty() {
+                    return Ok(values);
+                } else {
+                    return Err("引数が不正です".to_string());
+                }
+            }
+        }
+    }
+
+    fn take_single_value_without_literal(
+        emu: &Emulator,
+        tokenizer: &mut casl2::Tokenizer<'_>,
+    ) -> Result<Value, String> {
+        match tokenizer.extended_label()? {
+            Some(label) => label.get_address(emu).map(|adr| Value::Int(adr as u16)),
+            None => {
+                let value = match tokenizer.ignore_case_value() {
+                    Some(value) => value,
+                    None => return Err("引数が不正です".to_string()),
+                };
+                match value {
+                    casl2::Token::Word(s) => match emu.get_address_by_label_str(s.as_str()) {
+                        Ok(adr) => Ok(Value::Int(adr as u16)),
+                        Err(msg) => Err(msg),
+                    },
+                    casl2::Token::Dec(d) => Ok(Value::Int(d as u16)),
+                    casl2::Token::Hex(h) => Ok(Value::Int(h)),
+                    casl2::Token::Str(s) => Ok(Value::Str(
+                        jis_x_201::convert_kana_wide_full_to_half(&s)
+                            .chars()
+                            .map(jis_x_201::convert_from_char)
+                            .map(|ch| jis_x_201::convert_to_char(ch, true))
+                            .collect(),
+                    )),
+                    casl2::Token::LitDec(..)
+                    | casl2::Token::LitHex(..)
+                    | casl2::Token::LitStr(..) => Err("リテラルは指定できません".to_string()),
                 }
             }
         }
