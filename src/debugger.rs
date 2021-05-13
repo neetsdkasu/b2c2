@@ -233,21 +233,21 @@ fn show_state<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> io::Re
         if last_op_code == RET_OP_CODE && next_pos >= 2 {
             writeln!(stdout, "Prev Code:")?;
             let prev_pos = next_pos - 2;
-            let (prev_disp, prev_src) = emu.get_code_display(prev_pos as u16);
-            if let Some(src) = prev_src {
+            let info = emu.get_code_info(prev_pos as u16);
+            if let Some((_, src)) = info.src_code.as_ref() {
                 writeln!(stdout, "{}", src)?;
             }
-            writeln!(stdout, "{}", prev_disp)?;
+            writeln!(stdout, "{}", info.mem_code)?;
         }
     }
 
     writeln!(stdout, "Last Code:")?;
     let last_pos = emu.last_run_position;
-    let (last_disp, last_src) = emu.get_code_display(last_pos as u16);
-    if let Some(src) = last_src {
+    let info = emu.get_code_info(last_pos as u16);
+    if let Some((_, src)) = info.src_code.as_ref() {
         writeln!(stdout, "{}", src)?;
     }
-    writeln!(stdout, "{}", last_disp)?;
+    writeln!(stdout, "{}", info.mem_code)?;
 
     if let Some(err) = state.err.as_ref() {
         writeln!(stdout, "Program State:")?;
@@ -255,20 +255,34 @@ fn show_state<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> io::Re
     } else {
         writeln!(stdout, "Next Code:")?;
         let next_pos = emu.program_register;
-        let (next_disp, next_src) = emu.get_code_display(next_pos as u16);
-        if let Some(src) = next_src {
+        let info = emu.get_code_info(next_pos as u16);
+        if let Some((_, src)) = info.src_code.as_ref() {
             writeln!(stdout, "{}", src)?;
         }
-        writeln!(stdout, "{}", next_disp)?;
+        writeln!(stdout, "{}", info.mem_code)?;
     }
     Ok(())
 }
 
+#[derive(Default)]
+struct CodeInfo {
+    pos: usize,
+    mem_code: String,
+    src_code: Option<(usize, String)>,
+    src_file: Option<String>,
+    src_entry_label: Option<String>,
+    // alias_labels: Vec<String>,
+}
+
 impl Emulator {
-    fn get_code_display(&self, pos: u16) -> (String, Option<String>) {
+    fn get_code_info(&self, pos: u16) -> CodeInfo {
+        use std::fmt::Write;
         let pos = pos as usize;
-        let mut src: Option<String> = None;
-        for (_file, _label, stmt) in self.program_list.iter() {
+        let mut info = CodeInfo {
+            pos,
+            ..Default::default()
+        };
+        for (file, label, stmt) in self.program_list.iter() {
             if stmt.is_empty() {
                 continue;
             }
@@ -304,7 +318,9 @@ impl Emulator {
                     casl2::Statement::Code { command, .. } => match command {
                         casl2::Command::Start { .. } | casl2::Command::End => {}
                         _ => {
-                            src = Some(format!("{}{}", tmp, code));
+                            info.src_file = Some(file.clone());
+                            info.src_entry_label = Some(label.clone());
+                            info.src_code = Some((*pos, format!("{}{}", tmp, code)));
                             break;
                         }
                     },
@@ -312,10 +328,11 @@ impl Emulator {
             }
             break;
         }
-        if src.is_none() {
-            for (p, stmt) in self.labels_for_debug.values() {
+        if info.src_code.is_none() {
+            for (key, (p, stmt)) in self.labels_for_debug.iter() {
                 if *p == pos {
-                    src = Some(stmt.to_string());
+                    info.src_entry_label = Some(key.clone());
+                    info.src_code = Some((*p, stmt.to_string()));
                     break;
                 }
             }
@@ -330,17 +347,20 @@ impl Emulator {
                         " "
                     };
                     let s = get_op_code_form(op_code, Some(adr));
-                    (format!(" #{:04X}: {} {}", pos, bp, s), src)
+                    write!(&mut info.mem_code, " #{:04X}: {} {}", pos, bp, s).unwrap();
+                    info
                 } else {
                     let bp = if self.break_points[pos] { "*" } else { " " };
                     let s = get_op_code_form(op_code, None);
-                    (format!(" #{:04X}: {} {}", pos, bp, s), src)
+                    write!(&mut info.mem_code, " #{:04X}: {} {}", pos, bp, s).unwrap();
+                    info
                 }
             }
             _ => {
                 let bp = if self.break_points[pos] { "*" } else { " " };
                 let s = get_op_code_form(op_code, None);
-                (format!(" #{:04X}: {} {}", pos, bp, s), src)
+                write!(&mut info.mem_code, " #{:04X}: {} {}", pos, bp, s).unwrap();
+                info
             }
         }
     }
@@ -494,7 +514,7 @@ fn interactive<R: BufRead, W: Write>(
             "default-cmd",
             "dump-code",
             "dump-mem",
-            "find-cmd",
+            "find-code",
             "find-value",
             "help",
             "list-files",
@@ -574,7 +594,7 @@ fn interactive<R: BufRead, W: Write>(
             }
             "dump-code" => dump_code(emu, stdout, cmd_and_param.next())?,
             "dump-mem" => dump_mem(emu, stdout, cmd_and_param.next())?,
-            "find-cmd" => todo!(),
+            "find-code" => find_code(emu, stdout, cmd_and_param.next())?,
             "find-value" => todo!(),
             "help" => show_command_help_before_start(cmd_and_param.next(), stdout)?,
             "list-files" => list_files(emu, stdout)?,
@@ -692,6 +712,197 @@ impl Emulator {
             Ok(Some(lb)) => lb.get_address(self),
         }
     }
+}
+
+fn parse_comet2_command(emu: &Emulator, cmd: &str) -> Result<casl2::Command, String> {
+    use std::fmt::Write;
+    let mut iter = cmd.splitn(2, ' ').map(|s| s.trim());
+    let mut cmd = format!(" {} ", iter.next().unwrap().to_ascii_uppercase());
+    if let Some(param) = iter.next() {
+        let mut tokenizer = casl2::Tokenizer::new(param);
+        match tokenizer.extended_label() {
+            Err(msg) => return Err(msg.to_string()),
+            Ok(Some(lb)) => match casl2::Register::try_from(lb.to_string().as_str()) {
+                Ok(reg) => {
+                    write!(&mut cmd, "{}", reg).unwrap();
+                }
+                Err(_) => {
+                    let adr = lb.get_address(emu)?;
+                    write!(&mut cmd, "#{:04X}", adr).unwrap();
+                }
+            },
+            Ok(None) => match tokenizer.ignore_case_value() {
+                None => return Err("コマンドが不正です".to_string()),
+                Some(token) => {
+                    write!(&mut cmd, "{}", token).unwrap();
+                }
+            },
+        }
+        if tokenizer.comma() {
+            cmd.push(',');
+            match tokenizer.extended_label() {
+                Err(msg) => return Err(msg.to_string()),
+                Ok(Some(lb)) => match casl2::Register::try_from(lb.to_string().as_str()) {
+                    Ok(reg) => {
+                        write!(&mut cmd, "{}", reg).unwrap();
+                    }
+                    Err(_) => {
+                        let adr = lb.get_address(emu)?;
+                        write!(&mut cmd, "#{:04X}", adr).unwrap();
+                    }
+                },
+                Ok(None) => match tokenizer.ignore_case_value() {
+                    None => return Err("コマンドが不正です".to_string()),
+                    Some(token) => {
+                        write!(&mut cmd, "{}", token).unwrap();
+                    }
+                },
+            }
+            if tokenizer.comma() {
+                cmd.push(',');
+                if let Some(w) = tokenizer.ignore_case_word() {
+                    write!(&mut cmd, "{}", w.to_ascii_uppercase()).unwrap();
+                } else {
+                    return Err("コマンドが不正です".to_string());
+                }
+            }
+        }
+        cmd.push_str(&tokenizer.rest());
+    }
+
+    match casl2::parse(&cmd) {
+        Ok(stmt) => {
+            if let [casl2::Statement::Code { command, .. }] = stmt.as_slice() {
+                Ok(command.clone())
+            } else {
+                Err("引数が不正です".to_string())
+            }
+        }
+        Err(error) => Err(format!("{:?}", error)),
+    }
+}
+
+fn find_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let (adr, cmd) = match param {
+        None => {
+            writeln!(stdout, "引数が必要です")?;
+            return Ok(());
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let adr = iter.next().unwrap();
+            if let Some(cmd) = iter.next() {
+                (adr, cmd)
+            } else {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+        }
+    };
+
+    let adr = match emu.get_address_by_label_str(adr) {
+        Err(msg) => {
+            writeln!(stdout, "{}", msg)?;
+            return Ok(());
+        }
+        Ok(adr) => adr,
+    };
+
+    let cmd = match parse_comet2_command(emu, cmd) {
+        Err(msg) => {
+            writeln!(stdout, "{}", msg)?;
+            return Ok(());
+        }
+        Ok(cmd) => cmd,
+    };
+
+    match &cmd {
+        casl2::Command::Start { .. }
+        | casl2::Command::End
+        | casl2::Command::Ds { .. }
+        | casl2::Command::Dc { .. }
+        | casl2::Command::In { .. }
+        | casl2::Command::Out { .. }
+        | casl2::Command::Rpush
+        | casl2::Command::Rpop
+        | casl2::Command::DebugBasicStep { .. } => {
+            writeln!(stdout, "指定できないコマンドです")?;
+            return Ok(());
+        }
+        casl2::Command::R { .. }
+        | casl2::Command::A { .. }
+        | casl2::Command::P { .. }
+        | casl2::Command::Pop { .. }
+        | casl2::Command::Ret
+        | casl2::Command::Nop => {}
+    }
+
+    assert!((1..=2).contains(&cmd.len()));
+
+    let first_word = cmd.first_word();
+
+    let param_adr = match &cmd {
+        casl2::Command::A { adr, .. } | casl2::Command::P { adr, .. } => match adr {
+            casl2::Adr::Dec(d) => Some(*d as u16),
+            casl2::Adr::Hex(h) => Some(*h),
+            casl2::Adr::Label(lb) => match emu.get_address_by_label_str(lb.as_str()) {
+                Ok(adr) => Some(adr as u16),
+                Err(msg) => {
+                    writeln!(stdout, "{}", msg)?;
+                    return Ok(());
+                }
+            },
+            casl2::Adr::LiteralDec(..)
+            | casl2::Adr::LiteralHex(..)
+            | casl2::Adr::LiteralStr(..) => {
+                writeln!(stdout, "リテラルを指定することはできません")?;
+                return Ok(());
+            }
+        },
+        _ => None,
+    };
+
+    for (i, mem) in emu.mem.iter().enumerate().skip(adr) {
+        if *mem != first_word {
+            continue;
+        }
+        if let Some(adr) = param_adr {
+            if let Some(mem) = emu.mem.get(i + 1) {
+                if *mem == adr {
+                    let info = emu.get_code_info(i as u16);
+                    if let Some(lb) = info.src_entry_label.as_ref() {
+                        if let Some(file) = info.src_file.as_ref() {
+                            writeln!(stdout, "Program: {} ({})", lb, file)?;
+                        } else {
+                            writeln!(stdout, "Program: {}", lb)?;
+                        }
+                    }
+                    if let Some((_, src)) = info.src_code.as_ref() {
+                        writeln!(stdout, "{}", src)?;
+                    }
+                    writeln!(stdout, "{}", info.mem_code)?;
+                    return Ok(());
+                }
+            }
+        } else {
+            let info = emu.get_code_info(i as u16);
+            if let Some(lb) = info.src_entry_label.as_ref() {
+                if let Some(file) = info.src_file.as_ref() {
+                    writeln!(stdout, "Program: {} ({})", lb, file)?;
+                } else {
+                    writeln!(stdout, "Program: {}", lb)?;
+                }
+            }
+            if let Some((_, src)) = info.src_code.as_ref() {
+                writeln!(stdout, "{}", src)?;
+            }
+            writeln!(stdout, "{}", info.mem_code)?;
+            return Ok(());
+        }
+    }
+
+    writeln!(stdout, "見つかりませんでした")?;
+    Ok(())
 }
 
 fn copy_mem<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
@@ -1069,11 +1280,11 @@ fn set_breakpoint<W: Write>(
             writeln!(stdout, "#{:04X}にブレークポイントは設定されていません", adr)?;
         }
 
-        let (disp, src) = emu.get_code_display(adr as u16);
-        if let Some(src) = src {
+        let info = emu.get_code_info(adr as u16);
+        if let Some((_, src)) = info.src_code.as_ref() {
             writeln!(stdout, "{}", src)?;
         }
-        writeln!(stdout, "{}", disp)?;
+        writeln!(stdout, "{}", info.mem_code)?;
     }
 
     Ok(())
@@ -1277,8 +1488,8 @@ fn dump_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> i
     };
     let mut pos = adr;
     while pos < adr + size && pos < 0x10000 {
-        let (disp, _) = emu.get_code_display(pos as u16);
-        writeln!(stdout, "{}", disp)?;
+        let info = emu.get_code_info(pos as u16);
+        writeln!(stdout, "{}", info.mem_code)?;
         pos += get_op_code_size(emu.mem[pos]).max(1);
     }
     Ok(())
@@ -2358,7 +2569,7 @@ enum ExtendedLabel {
     GeneralRegister(casl2::Register),
     ProgramRegister,
     StackPointer,
-    HexConst(u16),
+    Const(u16),
     Load(Box<ExtendedLabel>),
     Sum(Box<ExtendedLabel>, Box<ExtendedLabel>),
     Diff(Box<ExtendedLabel>, Box<ExtendedLabel>),
@@ -2380,20 +2591,25 @@ impl<'a> casl2::Tokenizer<'a> {
             if let Some(glabel) = self.ignore_case_word() {
                 if self.colon() {
                     if let Some(llabel) = self.ignore_case_word() {
+                        let glabel = glabel.to_ascii_uppercase();
+                        let llabel = llabel.to_ascii_uppercase();
                         value_stack.push(ExtendedLabel::LocalLabel(glabel, llabel));
                     } else {
                         return Err("引数が不正です");
                     }
                 } else {
+                    let glabel = glabel.to_ascii_uppercase();
                     value_stack.push(ExtendedLabel::GlobalLabel(glabel));
                 }
+            } else if let Some(u) = self.uinteger() {
+                value_stack.push(ExtendedLabel::Const(u));
             } else if let Some(hex) = self.ignore_case_hex() {
-                value_stack.push(ExtendedLabel::HexConst(hex));
+                value_stack.push(ExtendedLabel::Const(hex));
             } else if self.atmark() {
                 if let Some(reg) = self.ignore_case_word() {
-                    if "PR" == reg {
+                    if "PR".eq_ignore_ascii_case(&reg) {
                         value_stack.push(ExtendedLabel::ProgramRegister);
-                    } else if "SP" == reg {
+                    } else if "SP".eq_ignore_ascii_case(&reg) {
                         value_stack.push(ExtendedLabel::StackPointer);
                     } else if let Ok(reg) = casl2::Register::try_from(reg.as_str()) {
                         value_stack.push(ExtendedLabel::GeneralRegister(reg));
@@ -2478,7 +2694,7 @@ impl fmt::Display for ExtendedLabel {
             Self::GeneralRegister(reg) => format!("@{}", reg).fmt(f),
             Self::ProgramRegister => "@PR".fmt(f),
             Self::StackPointer => "@SP".fmt(f),
-            Self::HexConst(h) => format!("#{:04X}", h).fmt(f),
+            Self::Const(h) => format!("#{:04X}", h).fmt(f),
             Self::Load(adr) => format!("({})", adr.to_string()).fmt(f),
             Self::Sum(adr1, adr2) => format!("{}+{}", adr1.to_string(), adr2.to_string()).fmt(f),
             Self::Diff(adr1, adr2) => format!("{}-{}", adr1.to_string(), adr2.to_string()).fmt(f),
@@ -2511,7 +2727,7 @@ impl ExtendedLabel {
             Self::GeneralRegister(reg) => Ok(emu.general_registers[*reg as usize] as usize),
             Self::ProgramRegister => Ok(emu.program_register),
             Self::StackPointer => Ok(emu.stack_pointer),
-            Self::HexConst(h) => Ok(*h as usize),
+            Self::Const(h) => Ok(*h as usize),
             Self::Load(exlabel) => {
                 let adr = exlabel.get_address(emu)?;
                 if let Some(v) = emu.mem.get(adr) {
@@ -2747,7 +2963,7 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 メモリをコード表示する
     dump-mem [<ADDRESS> [<SIZE>]]
                 メモリダンプする
-    find-cmd <ADDRESS> <COMET2_COMMAND>
+    find-code <ADDRESS> <COMET2_COMMAND>
                 指定のCOMET2コマンドを指定アドレス位置以降から探し最初に見つかったものを表示する
     find-value <ADDRESS> <VALUE>
                 指定の値を指定アドレス位置以降から探し最初に見つかったものを表示する
@@ -2869,7 +3085,7 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
         "default-cmd" => todo!(),
         "dump-code" => todo!(),
         "dump-mem" => todo!(),
-        "find-cmd" => todo!(),
+        "find-code" => todo!(),
         "find-value" => todo!(),
         "help" => todo!(),
         "list-files" => todo!(),

@@ -810,4 +810,40 @@ impl<'a> Tokenizer<'a> {
         }
         None
     }
+
+    pub fn uinteger(&mut self) -> Option<u16> {
+        if !matches!(self.next(),
+                Some(ch) if ch.is_ascii_digit())
+        {
+            self.recover();
+            return None;
+        }
+        while let Some(ch) = self.next() {
+            if !ch.is_ascii_digit() {
+                self.back();
+                break;
+            }
+        }
+        if let Ok(value) = self.temp.parse::<u64>() {
+            self.clear();
+            Some(value as u16)
+        } else {
+            self.recover();
+            None
+        }
+    }
+}
+
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Word(s) => s.to_ascii_uppercase().fmt(f),
+            Self::Dec(d) => d.to_string().fmt(f),
+            Self::Hex(h) => format!("#{:04X}", h).fmt(f),
+            Self::Str(s) => format!("'{}'", s.replace('\'', "''")).fmt(f),
+            Self::LitDec(d) => format!("={}", d).fmt(f),
+            Self::LitHex(h) => format!("=#{:04X}", h).fmt(f),
+            Self::LitStr(s) => format!("='{}'", s.replace('\'', "''")).fmt(f),
+        }
+    }
 }
