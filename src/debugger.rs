@@ -163,6 +163,30 @@ pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
     }
 }
 
+impl Emulator {
+    fn get_label(&self, pos: u16) -> (Vec<String>, Vec<String>) {
+        let pos = pos as usize;
+        let mut plabel = Vec::new();
+        for (lb, p) in self.all_label_list.iter() {
+            if *p == pos {
+                plabel.push(lb.clone());
+            }
+        }
+        let mut dlabel = Vec::new();
+        for (lb, (p, _)) in self.labels_for_debug.iter() {
+            if *p == pos {
+                dlabel.push(lb.clone());
+            }
+        }
+        for (lb, p) in self.alias_labels.iter() {
+            if *p == pos {
+                dlabel.push(lb.clone());
+            }
+        }
+        (plabel, dlabel)
+    }
+}
+
 fn show_state<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> io::Result<()> {
     if let Some(pos) = state.start_point {
         let mut label = None;
@@ -271,7 +295,7 @@ struct CodeInfo {
     src_code: Option<(usize, String)>,
     src_file: Option<String>,
     src_entry_label: Option<String>,
-    // alias_labels: Vec<String>,
+    alias_labels: Vec<String>,
 }
 
 impl Emulator {
@@ -280,6 +304,11 @@ impl Emulator {
         let pos = pos as usize;
         let mut info = CodeInfo {
             pos,
+            alias_labels: self
+                .alias_labels
+                .iter()
+                .filter_map(|(k, p)| if *p == pos { Some(k.clone()) } else { None })
+                .collect(),
             ..Default::default()
         };
         for (file, label, stmt) in self.program_list.iter() {
@@ -625,7 +654,7 @@ fn interactive<R: BufRead, W: Write>(
             }
             "set-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), true)?,
             "set-by-file" => todo!(),
-            "set-label" => todo!(),
+            "set-label" => set_label(emu, stdout, cmd_and_param.next())?,
             "set-mem" => set_mem(emu, stdout, cmd_and_param.next())?,
             "set-mem-fill" => todo!(),
             "set-reg" => {
@@ -659,7 +688,7 @@ fn interactive<R: BufRead, W: Write>(
                     writeln!(stdout, "スタートポイントを{}に戻しました", name)?;
                 }
             }
-            "show-labels" => show_label(emu, stdout, cmd_and_param.next())?,
+            "show-labels" => show_labels(emu, stdout, cmd_and_param.next())?,
             "show-mem" => todo!(),
             "show-reg" => show_reg(emu, stdout)?,
             "show-state" => show_state(emu, stdout, state)?,
@@ -789,6 +818,60 @@ fn parse_comet2_command(emu: &Emulator, cmd: &str) -> Result<casl2::Command, Str
     }
 }
 
+//
+// set-label <LABEL> <ADDRESS>
+//
+fn set_label<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let (label, adr) = match param {
+        None => {
+            writeln!(stdout, "引数が必要です")?;
+            return Ok(());
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let label = iter.next().unwrap().to_ascii_uppercase();
+            if !casl2::Label::from(&label).is_valid() {
+                writeln!(stdout, "{}はラベルとして使用できません", label)?;
+                return Ok(());
+            }
+            if let Some(adr) = iter.next() {
+                (label, adr)
+            } else {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+        }
+    };
+
+    if emu.program_labels.contains_key(&label) {
+        writeln!(stdout, "{}は既に使用されており指定できません", label)?;
+        return Ok(());
+    }
+    if emu.labels_for_debug.contains_key(&label) {
+        writeln!(stdout, "{}は既に使用されており指定できません", label)?;
+        return Ok(());
+    }
+
+    let adr = match emu.get_address_by_label_str(adr) {
+        Ok(adr) => adr,
+        Err(msg) => {
+            writeln!(stdout, "{}", msg)?;
+            return Ok(());
+        }
+    };
+
+    if let Some(x) = emu.alias_labels.get(&label) {
+        writeln!(stdout, "#{:04X}から#{:04X}に上書きされます", x, adr)?;
+    }
+    emu.alias_labels.insert(label.clone(), adr);
+    writeln!(stdout, "ラベル{}に#{:04X}を設定しました", label, adr)?;
+
+    Ok(())
+}
+
+//
+// find-value <START_ADDRESS> <VALUE>
+//
 fn find_value<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let (adr, value) = match param {
         None => {
@@ -849,6 +932,9 @@ fn find_value<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> 
                 writeln!(stdout, "Program: {}", lb)?;
             }
         }
+        if !info.alias_labels.is_empty() {
+            writeln!(stdout, "Labels: {}", info.alias_labels.join(" "))?;
+        }
         if let Some((_, src)) = info.src_code.as_ref() {
             writeln!(stdout, "{}", src)?;
         }
@@ -860,6 +946,9 @@ fn find_value<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> 
     Ok(())
 }
 
+//
+// find-code <START_ADDRESS> <COMET2_COMMAND>
+//
 fn find_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let (adr, cmd) = match param {
         None => {
@@ -955,6 +1044,9 @@ fn find_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> i
                             writeln!(stdout, "Program: {}", lb)?;
                         }
                     }
+                    if !info.alias_labels.is_empty() {
+                        writeln!(stdout, "Labels: {}", info.alias_labels.join(" "))?;
+                    }
                     if let Some((_, src)) = info.src_code.as_ref() {
                         writeln!(stdout, "{}", src)?;
                     }
@@ -971,6 +1063,9 @@ fn find_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> i
                     writeln!(stdout, "Program: {}", lb)?;
                 }
             }
+            if !info.alias_labels.is_empty() {
+                writeln!(stdout, "Labels: {}", info.alias_labels.join(" "))?;
+            }
             if let Some((_, src)) = info.src_code.as_ref() {
                 writeln!(stdout, "{}", src)?;
             }
@@ -983,6 +1078,9 @@ fn find_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> i
     Ok(())
 }
 
+//
+// copy-mem <ADDRESS_FROM> <ADDRESS_TO> <LENGTH>
+//
 fn copy_mem<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let params = if let Some(param) = param {
         param.split_whitespace().collect::<Vec<_>>()
@@ -1053,6 +1151,9 @@ fn copy_mem<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -
     Ok(())
 }
 
+//
+// add-ds <LABEL> <SIZE>
+//
 fn add_ds<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let (name, size) = match param {
         None => {
@@ -1081,6 +1182,10 @@ fn add_ds<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> 
         return Ok(());
     }
     if emu.labels_for_debug.contains_key(&name) {
+        writeln!(stdout, "{}は既に使用されており指定できません", name)?;
+        return Ok(());
+    }
+    if emu.alias_labels.contains_key(&name) {
         writeln!(stdout, "{}は既に使用されており指定できません", name)?;
         return Ok(());
     }
@@ -1119,6 +1224,9 @@ fn add_ds<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> 
     Ok(())
 }
 
+//
+// add-dc <LABEL> <VALUE1>[,<VALUE2>..]
+//
 fn add_dc<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let (name, values) = match param {
         None => {
@@ -1147,6 +1255,10 @@ fn add_dc<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> 
         return Ok(());
     }
     if emu.labels_for_debug.contains_key(&name) {
+        writeln!(stdout, "{}は既に使用されており指定できません", name)?;
+        return Ok(());
+    }
+    if emu.alias_labels.contains_key(&name) {
         writeln!(stdout, "{}は既に使用されており指定できません", name)?;
         return Ok(());
     }
@@ -1208,6 +1320,9 @@ fn add_dc<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> 
     Ok(())
 }
 
+//
+// set-mem <ADDRESS> <VALUE1>[,<VALUE2>..]
+//
 fn set_mem<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let (adr, values) = match param {
         None => {
@@ -1300,6 +1415,9 @@ fn set_mem<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
     Ok(())
 }
 
+//
+// set-breakpoint <ADDRESS1>[,<ADDRESS2>..]
+//
 fn set_breakpoint<W: Write>(
     emu: &mut Emulator,
     stdout: &mut W,
@@ -1368,6 +1486,9 @@ fn set_breakpoint<W: Write>(
     Ok(())
 }
 
+//
+// dump-mem <ADDRESS> [<SIZE>]
+//
 fn dump_mem<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let (adr, size) = match param.map(|s| s.to_ascii_uppercase()) {
         None => {
@@ -1487,6 +1608,9 @@ fn dump_mem<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
     Ok(())
 }
 
+//
+// dump-code <ADDRESS> [<SIZE>]
+//
 fn dump_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let (adr, size) = match param.map(|s| s.to_ascii_uppercase()) {
         None => {
@@ -1573,6 +1697,9 @@ fn dump_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> i
     Ok(())
 }
 
+//
+// list-files
+//
 fn list_files<W: Write>(emu: &Emulator, stdout: &mut W) -> io::Result<()> {
     let mut last: Option<&str> = None;
     for (file, key, _) in emu.program_list.iter() {
@@ -1591,6 +1718,9 @@ fn list_files<W: Write>(emu: &Emulator, stdout: &mut W) -> io::Result<()> {
     Ok(())
 }
 
+//
+// show-var [<FILE_NAME> [<VAR_NAME1>[,<VAR_NAME2>..]]]
+//
 fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let (file, info, var_list) = match param {
         None => {
@@ -2547,7 +2677,7 @@ fn print_value_label<W: Write>(
     Ok(())
 }
 
-fn show_label<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+fn show_labels<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let mut count = 0;
     if let Some(label) = param {
         let label = label.to_ascii_uppercase();
@@ -2556,7 +2686,7 @@ fn show_label<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> 
                 writeln!(stdout, " #{:04X} {:<8}", adr, label)?;
             }
             None => {
-                writeln!(stdout, "ラベル{}が見つかりません", label)?;
+                writeln!(stdout, "プログラムエントリ{}が見つかりません", label)?;
                 return Ok(());
             }
         }
@@ -2579,6 +2709,7 @@ fn show_label<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> 
             }
         }
     } else {
+        writeln!(stdout, "プログラムエントリ")?;
         for (adr, key) in emu
             .program_labels
             .iter()
@@ -2591,10 +2722,29 @@ fn show_label<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> 
                 writeln!(stdout)?;
             }
         }
+        if (count & 3) != 0 {
+            writeln!(stdout)?;
+        }
+        count = 0;
+        if !emu.labels_for_debug.is_empty() {
+            writeln!(stdout, "デバッガコマンドで生成")?;
+        }
         for (adr, key) in emu
             .labels_for_debug
             .iter()
             .map(|(key, (adr, _))| (adr, key))
+            .collect::<BTreeSet<_>>()
+        {
+            write!(stdout, " #{:04X} {:<8}   ", adr, key)?;
+            count += 1;
+            if (count & 3) == 0 {
+                writeln!(stdout)?;
+            }
+        }
+        for (adr, key) in emu
+            .alias_labels
+            .iter()
+            .map(|(key, adr)| (adr, key))
             .collect::<BTreeSet<_>>()
         {
             write!(stdout, " #{:04X} {:<8}   ", adr, key)?;
@@ -2783,13 +2933,19 @@ impl fmt::Display for ExtendedLabel {
 impl ExtendedLabel {
     fn get_address(&self, emu: &Emulator) -> Result<usize, String> {
         match self {
-            Self::GlobalLabel(label) => match emu.program_labels.get(&label.to_ascii_uppercase()) {
-                Some(adr) => Ok(*adr),
-                None => match emu.labels_for_debug.get(&label.to_ascii_uppercase()) {
-                    Some((adr, _)) => Ok(*adr),
-                    None => Err(format!("ラベル{}が見つかりません", label)),
-                },
-            },
+            Self::GlobalLabel(label) => {
+                let label = label.to_ascii_uppercase();
+                match emu.program_labels.get(&label) {
+                    Some(adr) => Ok(*adr),
+                    None => match emu.labels_for_debug.get(&label) {
+                        Some((adr, _)) => Ok(*adr),
+                        None => match emu.alias_labels.get(&label) {
+                            Some(adr) => Ok(*adr),
+                            None => Err(format!("ラベル{}が見つかりません", label)),
+                        },
+                    },
+                }
+            }
             Self::LocalLabel(glabel, llabel) => {
                 match emu.local_labels.get(&glabel.to_ascii_uppercase()) {
                     Some(label_map) => match label_map.get(&llabel.to_ascii_uppercase()) {
@@ -3137,7 +3293,7 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 プログラムの開始点を変更する(restart時に影響)。省略した場合は最初の開始点に戻す
     show-labels [<PROGRAM_ENTRY>]
                 ラベルの一覧とアドレスを表示する。PROGRAM_ENTRYを指定した場合はローカルラベルを表示する
-    show-mem <ADDRESS> <LENGTH>
+    show-mem <ADDRESS> [<LENGTH>] [<TYPE>]
                 メモリの指定アドレスから指定の長さ分の領域の各値を列挙する
     show-reg
                 各レジスタの現在の値を表示する
@@ -3646,7 +3802,9 @@ struct Emulator {
     // デバッガコマンドで生成したリテラル (ラベル、(メモリ位置、値))
     literals_for_debug: HashMap<String, (usize, Value)>,
 
-    // 全ラベルのリスト
+    alias_labels: HashMap<String, usize>,
+
+    // 全ラベルのリスト(ソースコード由来のみ)
     all_label_list: Vec<(String, usize)>,
 
     // 挿入するプログラムの埋め込み開始位置
@@ -3691,6 +3849,7 @@ impl Emulator {
             basic_step_count: 0,
             labels_for_debug: HashMap::new(),
             literals_for_debug: HashMap::new(),
+            alias_labels: HashMap::new(),
             program_stack: Vec::new(),
             wrong_ret: Vec::new(),
             execute_count: vec![0; MEMORY_SIZE],
