@@ -543,6 +543,7 @@ fn interactive<R: BufRead, W: Write>(
             "default-cmd",
             "dump-code",
             "dump-mem",
+            "fill-mem",
             "find-code",
             "find-value",
             "help",
@@ -556,7 +557,6 @@ fn interactive<R: BufRead, W: Write>(
             "set-by-file",
             "set-label",
             "set-mem",
-            "set-mem-fill",
             "set-reg",
             "set-start",
             "show-labels",
@@ -623,6 +623,7 @@ fn interactive<R: BufRead, W: Write>(
             }
             "dump-code" => dump_code(emu, stdout, cmd_and_param.next())?,
             "dump-mem" => dump_mem(emu, stdout, cmd_and_param.next())?,
+            "fill-mem" => fill_mem(emu, stdout, cmd_and_param.next())?,
             "find-code" => find_code(emu, stdout, cmd_and_param.next())?,
             "find-value" => find_value(emu, stdout, cmd_and_param.next())?,
             "help" => show_command_help_before_start(cmd_and_param.next(), stdout)?,
@@ -656,7 +657,6 @@ fn interactive<R: BufRead, W: Write>(
             "set-by-file" => todo!(),
             "set-label" => set_label(emu, stdout, cmd_and_param.next())?,
             "set-mem" => set_mem(emu, stdout, cmd_and_param.next())?,
-            "set-mem-fill" => todo!(),
             "set-reg" => {
                 let msg = set_reg(emu, cmd_and_param.next());
                 writeln!(stdout, "{}", msg)?;
@@ -816,6 +816,100 @@ fn parse_comet2_command(emu: &Emulator, cmd: &str) -> Result<casl2::Command, Str
         }
         Err(error) => Err(format!("{:?}", error)),
     }
+}
+
+//
+// fill-mem <ADDRESS> <LENGTH> <VALUE>
+//
+fn fill_mem<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let (adr, len, value) = match param {
+        None => {
+            writeln!(stdout, "引数が必要です")?;
+            return Ok(());
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let adr = iter.next().unwrap();
+            let mut iter = match iter.next() {
+                Some(rest) => rest.splitn(2, ' ').map(|s| s.trim()),
+                None => {
+                    writeln!(stdout, "引数が不正です")?;
+                    return Ok(());
+                }
+            };
+            let len = iter.next().unwrap();
+            if let Some(value) = iter.next() {
+                (adr, len, value)
+            } else {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+        }
+    };
+
+    let adr = match emu.get_address_by_label_str(adr) {
+        Ok(adr) => adr,
+        Err(msg) => {
+            writeln!(stdout, "{}", msg)?;
+            return Ok(());
+        }
+    };
+
+    let len = match len.parse::<u16>() {
+        Ok(len) => len as usize,
+        Err(_) => {
+            let mut tokenizer = casl2::Tokenizer::new(len);
+            if let Some(h) = tokenizer.ignore_case_hex() {
+                if tokenizer.rest().is_empty() {
+                    h as usize
+                } else {
+                    writeln!(stdout, "引数が不正です")?;
+                    return Ok(());
+                }
+            } else {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+        }
+    };
+
+    if adr
+        .checked_add(len)
+        .filter(|v| *v <= emu.mem.len())
+        .is_none()
+    {
+        writeln!(stdout, "長さが大きすぎます")?;
+        return Ok(());
+    }
+
+    let mut tokenizer = casl2::Tokenizer::new(value);
+    let value = match Value::take_all_values(emu, &mut tokenizer) {
+        Err(msg) => {
+            writeln!(stdout, "{}", msg)?;
+            return Ok(());
+        }
+        Ok(values) => match values.as_slice() {
+            [Value::Int(v)] => *v,
+            [Value::Str(s)] if !s.is_empty() => {
+                let ch = s.chars().next().unwrap();
+                jis_x_201::convert_from_char(ch) as u16
+            }
+            _ => {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+        },
+    };
+
+    emu.mem[adr..adr + len].fill(value);
+
+    writeln!(
+        stdout,
+        "#{:04X}から{}語分を#{:04X}で埋めました",
+        adr, len, value
+    )?;
+
+    Ok(())
 }
 
 //
@@ -1217,7 +1311,7 @@ fn add_ds<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> 
 
     writeln!(
         stdout,
-        "{}(#{:04X})に{}語の領域を確保しました",
+        "{}(#{:04X})に{}語分の領域を確保しました",
         name, adr, size
     )?;
 
@@ -3257,6 +3351,8 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 メモリをコード表示する
     dump-mem [<ADDRESS> [<SIZE>]]
                 メモリダンプする
+    fill-mem <ADDRESS> <LENGTH> <VALUE>
+                メモリの指定アドレスから指定の長さ分を指定の値で埋める
     find-code <ADDRESS> <COMET2_COMMAND>
                 指定のCOMET2コマンドを指定アドレス位置以降から探し最初に見つかったものを表示する
     find-value <ADDRESS> <VALUE>
@@ -3285,8 +3381,6 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 アドレスのエイリアスである新しいラベルを作る。
     set-mem <ADDRESS> <VALUE1>[,<VALUE2>..]
                 値をメモリの指定アドレスに書き込む
-    set-mem-fill <ADDRESS> <LENGTH> <VALUE>
-                メモリの指定アドレスから指定の長さ分を指定の値で埋める
     set-reg <REGISTER> <VALUE>
                 値をレジスタに設定する
     set-start [<ADDRESS>]
@@ -3358,7 +3452,7 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                                 #FFFF-@SP
     リテラル
                 10進定数、16進定数、文字定数の頭に=を付けて指定
-                定数格納の領域を確保しそのアドレスを返す
+                領域を確保し値を格納の後そのアドレスを返す
                     例: =123
                         =#ABCD
                         ='XYZ'"#
@@ -3379,6 +3473,16 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
         "default-cmd" => todo!(),
         "dump-code" => todo!(),
         "dump-mem" => todo!(),
+        "fill-mem" => {
+            r#"
+    fill-mem <ADDRESS> <LENGTH> <VALUE>
+                メモリの指定アドレスから指定の長さ分を指定の値で埋める
+                    ADDRESS  .. 16進定数,アドレス定数
+                    LENGTH   .. 正の10進数,16進定数
+                    VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル
+
+                ※各種定数については help constat で説明"#
+        }
         "find-code" => todo!(),
         "find-value" => todo!(),
         "help" => todo!(),
@@ -3399,16 +3503,6 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 値が文字定数の場合は文字数分の連続した領域に書き込まれる
                     ADDRESS  .. 16進定数,アドレス定数
                     VALUE*   .. 10進定数,16進定数,文字定数,アドレス定数,リテラル
-
-                ※各種定数については help constat で説明"#
-        }
-        "set-mem-fill" => {
-            r#"
-    set-mem-fill <ADDRESS> <LENGTH> <VALUE>
-                メモリの指定アドレスから指定の長さ分を指定の値で埋める
-                    ADDRESS  .. 16進定数,アドレス定数
-                    LENGTH   .. 正の10進定数,16進定数
-                    VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル
 
                 ※各種定数については help constat で説明"#
         }
