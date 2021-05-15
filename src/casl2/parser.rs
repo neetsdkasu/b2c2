@@ -700,6 +700,16 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
+    pub fn dot(&mut self) -> bool {
+        if matches!(self.next(), Some('.')) {
+            self.clear();
+            true
+        } else {
+            self.recover();
+            false
+        }
+    }
+
     pub fn open_bracket(&mut self) -> bool {
         if matches!(self.next(), Some('(')) {
             self.clear();
