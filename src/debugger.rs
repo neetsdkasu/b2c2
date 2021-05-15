@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 
 const RET_OP_CODE: u16 = 0x8100;
 const REQUEST_RESTART: i32 = 0x300_0000;
+const REQUEST_RESET: i32 = 0x400_0000;
 const QUIT_TEST: i32 = 99;
 
 pub fn run_nonstep(src_file: String, flags: Flags) -> io::Result<i32> {
@@ -85,79 +86,81 @@ struct State {
     default_cmd: Option<String>,
 }
 
-pub fn run_casl2(src_file: String, mut flags: Flags) -> io::Result<i32> {
+pub fn run_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
-    let mut emu = Emulator::new();
-
-    match if src_file.to_ascii_lowercase().ends_with(".cas") {
-        emu.compile_casl2(&src_file, &flags, true)
-    } else {
-        emu.compile_basic(&src_file, &flags, true)
-    } {
-        Ok(0) => {}
-        result => return result,
-    }
-
-    if emu.start_point.is_none() {
-        eprintln!("入力ファイルが正しくありません");
-        return Ok(101);
-    }
-
-    flags.compiler.program_name = None;
-
-    if !emu.unknown_labels.is_empty() {
-        // 未解決ラベルを解決する処理を入れる
-        let src_dir = Path::new(&src_file).parent().unwrap();
-        match resolve_files(&mut emu, &mut stdin, &mut stdout, &src_dir, &flags) {
-            Ok(0) => {}
-            Ok(QUIT_TEST) => return Ok(0),
-            result => return result,
-        }
-    }
-
-    emu.init_to_start(None);
-
-    let mut state = State {
-        err: None,
-        run_mode: RunMode::Step(1),
-        start_point: None,
-        default_cmd: None,
-    };
 
     loop {
-        writeln!(stdout)?;
-        show_state(&emu, &mut stdout, &state)?;
-        show_reg(&emu, &mut stdout)?;
+        let mut emu = Emulator::new();
 
-        match interactive(&mut emu, &mut stdin, &mut stdout, &mut state) {
+        match if src_file.to_ascii_lowercase().ends_with(".cas") {
+            emu.compile_casl2(&src_file, &flags, true)
+        } else {
+            emu.compile_basic(&src_file, &flags, true)
+        } {
             Ok(0) => {}
-            Ok(REQUEST_RESTART) => continue,
-            Ok(QUIT_TEST) => return Ok(0),
             result => return result,
         }
 
-        writeln!(stdout)?;
+        if emu.start_point.is_none() {
+            eprintln!("入力ファイルが正しくありません");
+            return Ok(101);
+        }
 
-        if state.err.is_some() {
-            writeln!(stdout, "プログラムは終了状態です")?;
-        } else {
-            let result = match state.run_mode {
-                RunMode::SkipSubroutine(limit) => {
-                    do_skip_subroutine(&mut emu, &mut stdin, &mut stdout, &mut state, limit)
-                }
-                RunMode::GoToBreakPoint(limit) => {
-                    do_go_to_breakpoint(&mut emu, &mut stdin, &mut stdout, &mut state, limit)
-                }
-                RunMode::Step(count) => {
-                    do_step(&mut emu, &mut stdin, &mut stdout, &mut state, count)
-                }
-            };
-            match result {
+        if !emu.unknown_labels.is_empty() {
+            // 未解決ラベルを解決する処理を入れる
+            let src_dir = Path::new(&src_file).parent().unwrap();
+            match resolve_files(&mut emu, &mut stdin, &mut stdout, &src_dir, &flags) {
                 Ok(0) => {}
+                Ok(QUIT_TEST) => return Ok(0),
                 result => return result,
+            }
+        }
+
+        emu.init_to_start(None);
+
+        let mut state = State {
+            err: None,
+            run_mode: RunMode::Step(1),
+            start_point: None,
+            default_cmd: None,
+        };
+
+        loop {
+            writeln!(stdout)?;
+            show_state(&emu, &mut stdout, &state)?;
+            show_reg(&emu, &mut stdout)?;
+
+            match interactive(&mut emu, &mut stdin, &mut stdout, &mut state) {
+                Ok(0) => {}
+                Ok(REQUEST_RESTART) => continue,
+                Ok(REQUEST_RESET) => break,
+                Ok(QUIT_TEST) => return Ok(0),
+                result => return result,
+            }
+
+            writeln!(stdout)?;
+
+            if state.err.is_some() {
+                writeln!(stdout, "プログラムは終了状態です")?;
+            } else {
+                let result = match state.run_mode {
+                    RunMode::SkipSubroutine(limit) => {
+                        do_skip_subroutine(&mut emu, &mut stdin, &mut stdout, &mut state, limit)
+                    }
+                    RunMode::GoToBreakPoint(limit) => {
+                        do_go_to_breakpoint(&mut emu, &mut stdin, &mut stdout, &mut state, limit)
+                    }
+                    RunMode::Step(count) => {
+                        do_step(&mut emu, &mut stdin, &mut stdout, &mut state, count)
+                    }
+                };
+                match result {
+                    Ok(0) => {}
+                    result => return result,
+                }
             }
         }
     }
@@ -637,10 +640,16 @@ fn interactive<R: BufRead, W: Write>(
                 return Ok(QUIT_TEST);
             }
             "remove-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), false)?,
-            "reset" => todo!(),
+            "reset" => {
+                writeln!(stdout, "エミュレータをリセットします")?;
+                writeln!(stdout)?;
+                return Ok(REQUEST_RESET);
+            }
             "restart" => {
                 emu.init_to_start(state.start_point);
                 state.err = None;
+                writeln!(stdout, "プログラムをリスタートします")?;
+                writeln!(stdout)?;
                 return Ok(REQUEST_RESTART);
             }
             "run" => {
@@ -3756,6 +3765,11 @@ fn resolve_files<R: BufRead, W: Write>(
     const LIST_UP_SIZE: usize = 8;
     let mut label_cache = HashMap::new();
     let dst_dir = flags.create_dst_dir()?;
+    let flags = {
+        let mut flags = flags.clone();
+        flags.compiler.program_name = None;
+        flags
+    };
     let casl2_flags = {
         let mut flags = flags.clone();
         flags.compiler = Default::default();
