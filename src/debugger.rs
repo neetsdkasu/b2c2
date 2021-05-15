@@ -705,7 +705,7 @@ fn interactive<R: BufRead, W: Write>(
             "show-mem" => show_mem(emu, stdout, cmd_and_param.next())?,
             "show-mem-stat" => show_mem_stat(emu, stdout, cmd_and_param.next())?,
             "show-reg" => show_reg(emu, stdout)?,
-            "show-src" => todo!(),
+            "show-src" => show_src(emu, stdout, cmd_and_param.next())?,
             "show-state" => show_state(emu, stdout, state)?,
             "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
             "skip" => {
@@ -859,6 +859,83 @@ fn parse_just_u16_value(s: &str) -> Option<u16> {
             }
         }
     }
+}
+
+//
+// show-src [<ADDRESS> [<LENGTH>]]
+//
+fn show_src<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let (adr, len) = match param {
+        None => (emu.program_register, 40),
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let adr = iter.next().unwrap();
+            let adr = match emu.get_address_by_label_str(adr) {
+                Ok(adr) => adr,
+                Err(msg) => {
+                    writeln!(stdout, "{}", msg)?;
+                    return Ok(());
+                }
+            };
+            if let Some(len) = iter.next() {
+                match parse_just_u16_value(len) {
+                    Some(len) if len > 0 => (adr, len as usize),
+                    _ => {
+                        writeln!(stdout, "引数が不正です")?;
+                        return Ok(());
+                    }
+                }
+            } else {
+                (adr, 40)
+            }
+        }
+    };
+
+    if adr
+        .checked_add(len)
+        .filter(|v| *v <= emu.mem.len())
+        .is_none()
+    {
+        writeln!(stdout, "長さの指定が大きすぎます")?;
+        return Ok(());
+    }
+
+    let mut pos = adr;
+    let mut view_some = false;
+
+    for (file, label, statements) in emu.program_list.iter() {
+        if statements.is_empty() {
+            continue;
+        }
+        let (fp, _) = statements.first().unwrap();
+        let (lp, _) = statements.last().unwrap();
+        if pos < *fp || *lp < pos {
+            continue;
+        }
+        view_some = true;
+        writeln!(stdout, "Program: {} ({})", file, label)?;
+        let mut view = false;
+        for (p, stmt) in statements.iter().skip_while(move |(p, _)| *p < pos) {
+            if pos < *p {
+                if *p >= adr + len {
+                    if !view {
+                        writeln!(stdout, "#{:04X}の位置にコードはありませんでした", pos)?;
+                    }
+                    return Ok(());
+                }
+                pos = *p;
+            }
+            let bp = if emu.break_points[pos] { "*" } else { " " };
+            view = true;
+            writeln!(stdout, "#{:04X}: {} {}", pos, bp, stmt)?;
+        }
+    }
+
+    if !view_some {
+        writeln!(stdout, "表示可能なコードがありませんでした")?;
+    }
+
+    Ok(())
 }
 
 //
@@ -3730,7 +3807,7 @@ fn show_command_help_before_start<W: Write>(cmd: Option<&str>, stdout: &mut W) -
                 メモリの指定アドレスから指定の長さ分の領域の統計情報ぽいものを表示する
     show-reg
                 各レジスタの現在の値を表示する
-    show-src <ADDRESS> [<LENGTH>]
+    show-src [<ADDRESS> [<LENGTH>]]
                 指定したアドレス位置から指定長さ分の範囲にあるコードを表示する
     show-state
                 直近の実行(run,skip,step)の結果を再表示する
