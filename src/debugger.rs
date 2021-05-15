@@ -702,7 +702,7 @@ fn interactive<R: BufRead, W: Write>(
                 }
             }
             "show-labels" => show_labels(emu, stdout, cmd_and_param.next())?,
-            "show-mem" => todo!(),
+            "show-mem" => show_mem(emu, stdout, cmd_and_param.next())?,
             "show-mem-stat" => todo!(),
             "show-reg" => show_reg(emu, stdout)?,
             "show-src" => todo!(),
@@ -819,6 +819,198 @@ fn parse_comet2_command(
         }
         Err(error) => Err(format!("{:?}", error)),
     }
+}
+
+enum ViewType {
+    Bool,
+    Int,
+    Str,
+}
+
+impl TryFrom<&str> for ViewType {
+    type Error = ();
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        let s = s.to_ascii_lowercase();
+        if "integer".starts_with(&s) {
+            Ok(Self::Int)
+        } else if "boolean".starts_with(&s) {
+            Ok(Self::Bool)
+        } else if "string".starts_with(&s) {
+            Ok(Self::Str)
+        } else {
+            Err(())
+        }
+    }
+}
+
+fn parse_just_u16_value(s: &str) -> Option<u16> {
+    match s.parse::<u16>() {
+        Ok(v) => Some(v),
+        Err(_) => {
+            let mut tokenizer = casl2::Tokenizer::new(s);
+            if let Some(v) = tokenizer.ignore_case_hex() {
+                if tokenizer.rest().is_empty() {
+                    Some(v)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
+    }
+}
+
+//
+// show-mem <ADDRESS> [<LENGTH>] [<TYPE>]
+//
+fn show_mem<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let (adr, len, view) = match param {
+        None => {
+            writeln!(stdout, "引数が必要です")?;
+            return Ok(());
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let adr = iter.next().unwrap();
+            let adr = match emu.get_address_by_label_str(adr) {
+                Ok(adr) => adr,
+                Err(msg) => {
+                    writeln!(stdout, "{}", msg)?;
+                    return Ok(());
+                }
+            };
+            if let Some(rest) = iter.next() {
+                let mut iter = rest.splitn(2, ' ').map(|s| s.trim());
+                let token = iter.next().unwrap();
+                if let Some(rest) = iter.next() {
+                    // token は len
+                    let len = match parse_just_u16_value(token) {
+                        Some(len) if len > 0 => len,
+                        _ => {
+                            writeln!(stdout, "引数が不正です")?;
+                            return Ok(());
+                        }
+                    };
+                    if let Ok(view) = ViewType::try_from(rest) {
+                        (adr, len, Some(view))
+                    } else {
+                        writeln!(stdout, "引数が不正です")?;
+                        return Ok(());
+                    }
+                } else {
+                    // token は len OR type
+                    match parse_just_u16_value(token) {
+                        Some(len) if len > 0 => (adr, len, None),
+                        _ => {
+                            if let Ok(view) = ViewType::try_from(token) {
+                                (adr, 1, Some(view))
+                            } else {
+                                writeln!(stdout, "引数が不正です")?;
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            } else {
+                (adr, 1, None)
+            }
+        }
+    };
+
+    if len.checked_add(adr as u16).is_none() {
+        writeln!(stdout, "長さ指定が大きすぎます")?;
+        return Ok(());
+    }
+
+    writeln!(stdout, "#{:04X}から{}語分のデータ", adr, len)?;
+
+    use std::fmt::Write;
+
+    match view {
+        Some(ViewType::Int) => {
+            let mut line = String::new();
+            let mut count = 0;
+            for i in 0..len as usize {
+                if count == 0 {
+                    write!(&mut line, "#{:04X}:   ", adr + i).unwrap();
+                }
+                if count == 4 {
+                    line.push(' ');
+                }
+                write!(&mut line, " {:6}", emu.mem[adr + i] as i16).unwrap();
+                count += 1;
+                if count == 8 {
+                    count = 0;
+                    writeln!(stdout, "{}", line)?;
+                    line.clear();
+                }
+            }
+            if !line.is_empty() {
+                writeln!(stdout, "{}", line)?;
+            }
+        }
+        Some(ViewType::Bool) => {
+            let mut line = String::new();
+            let mut count = 0;
+            for i in 0..len as usize {
+                if count == 0 {
+                    write!(&mut line, "#{:04X}:   ", adr + i).unwrap();
+                }
+                if count == 4 {
+                    line.push(' ');
+                }
+                let s = match emu.mem[adr + i] {
+                    0x0000 => "False",
+                    0xFFFF => "True",
+                    _ => "?????",
+                };
+                write!(&mut line, " {:<5}", s).unwrap();
+                count += 1;
+                if count == 8 {
+                    count = 0;
+                    writeln!(stdout, "{}", line)?;
+                    line.clear();
+                }
+            }
+            if !line.is_empty() {
+                writeln!(stdout, "{}", line)?;
+            }
+        }
+        Some(ViewType::Str) => {
+            let mut line = String::new();
+            for i in 0..len as usize {
+                let ch = emu.mem[adr + i] as u8;
+                line.push(jis_x_201::convert_to_char(ch, true));
+            }
+            writeln!(stdout, r#""{}""#, line.replace('"', r#""""#))?;
+            writeln!(stdout, "{}", line)?;
+        }
+        None => {
+            let mut line = String::new();
+            let mut count = 0;
+            for i in 0..len as usize {
+                if count == 0 {
+                    write!(&mut line, "#{:04X}:   ", adr + i).unwrap();
+                }
+                if count == 4 {
+                    line.push(' ');
+                }
+                write!(&mut line, " #{:04X}", emu.mem[adr + i]).unwrap();
+                count += 1;
+                if count == 8 {
+                    count = 0;
+                    writeln!(stdout, "{}", line)?;
+                    line.clear();
+                }
+            }
+            if !line.is_empty() {
+                writeln!(stdout, "{}", line)?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 //
