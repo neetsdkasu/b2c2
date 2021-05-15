@@ -736,7 +736,7 @@ fn interactive<R: BufRead, W: Write>(
                 }
                 return Ok(0);
             }
-            "write-code" => todo!(),
+            "write-code" => write_code(emu, stdout, cmd_and_param.next())?,
             _ => {
                 writeln!(stdout, "コマンドが正しくありません")?;
             }
@@ -765,14 +765,17 @@ impl Emulator {
     }
 }
 
-fn parse_comet2_command(
-    emu: &Emulator,
-    cmd: &str,
-    resolve_adr: bool,
-) -> Result<casl2::Command, String> {
+enum Code {
+    Casl2(casl2::Command),
+    In(String),
+    Out(String),
+}
+
+fn parse_casl2_command(emu: &Emulator, cmd: &str, resolve_adr: bool) -> Result<Code, String> {
     use std::fmt::Write;
     let mut iter = cmd.splitn(2, ' ').map(|s| s.trim());
     let mut cmd = format!(" {} ", iter.next().unwrap().to_ascii_uppercase());
+    let mut count = 0;
     if let Some(param) = iter.next() {
         let mut tokenizer = casl2::Tokenizer::new(param);
         loop {
@@ -792,9 +795,10 @@ fn parse_comet2_command(
                     } else {
                         write!(&mut cmd, "{}", lb).unwrap();
                     }
+                    count += 1;
                 }
                 Ok(None) => match tokenizer.ignore_case_value() {
-                    None => return Err("コマンドが不正です".to_string()),
+                    None => return Err("引数が不正です".to_string()),
                     Some(token) => {
                         write!(&mut cmd, "{}", token).unwrap();
                     }
@@ -809,10 +813,26 @@ fn parse_comet2_command(
         cmd.push_str(&tokenizer.rest());
     }
 
+    if resolve_adr {
+        if let Some(param) = cmd.strip_prefix(" OUT ") {
+            return if count == 2 {
+                Ok(Code::Out(param.trim().to_string()))
+            } else {
+                Err("引数が不正です".to_string())
+            };
+        } else if let Some(param) = cmd.strip_prefix(" IN ") {
+            return if count == 2 {
+                Ok(Code::In(param.trim().to_string()))
+            } else {
+                Err("引数が不正です".to_string())
+            };
+        }
+    }
+
     match casl2::parse(&cmd) {
         Ok(stmt) => {
             if let [casl2::Statement::Code { command, .. }] = stmt.as_slice() {
-                Ok(command.clone())
+                Ok(Code::Casl2(command.clone()))
             } else {
                 Err("引数が不正です".to_string())
             }
@@ -859,6 +879,87 @@ fn parse_just_u16_value(s: &str) -> Option<u16> {
             }
         }
     }
+}
+
+//
+// write-code <ADDRESS> <COMET2_COMMAND>
+//
+fn write_code<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let (pos, cmd) = match param {
+        None => {
+            writeln!(stdout, "引数が必要です")?;
+            return Ok(());
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let adr = iter.next().unwrap();
+            let adr = match emu.get_address_by_label_str(adr) {
+                Ok(adr) => adr,
+                Err(msg) => {
+                    writeln!(stdout, "{}", msg)?;
+                    return Ok(());
+                }
+            };
+            if let Some(cmd) = iter.next() {
+                match parse_casl2_command(emu, cmd, true) {
+                    Ok(cmd) => (adr, cmd),
+                    Err(msg) => {
+                        writeln!(stdout, "{}", msg)?;
+                        return Ok(());
+                    }
+                }
+            } else {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+        }
+    };
+
+    match cmd {
+        Code::In(_param) => {
+            todo!()
+        }
+        Code::Out(_param) => {
+            todo!()
+        }
+        Code::Casl2(cmd) => {
+            if pos
+                .checked_add(cmd.len())
+                .filter(|v| *v + 1 < emu.mem.len())
+                .is_none()
+            {
+                writeln!(stdout, "メモリに十分な領域がありません")?;
+                return Ok(());
+            }
+            match &cmd {
+                casl2::Command::Start { .. } | casl2::Command::End | casl2::Command::Ds { .. } => {
+                    writeln!(stdout, "指定できないコマンドです")?;
+                    return Ok(());
+                }
+                casl2::Command::A { adr, .. } | casl2::Command::P { adr, .. } => {
+                    assert_eq!(cmd.len(), 2);
+                    let _ = adr;
+                    todo!();
+                }
+                casl2::Command::R { .. }
+                | casl2::Command::Pop { .. }
+                | casl2::Command::Ret
+                | casl2::Command::Nop => {
+                    assert_eq!(cmd.len(), 1);
+                    emu.mem[pos] = cmd.first_word();
+                }
+                casl2::Command::Dc { .. } => todo!(),
+                casl2::Command::Rpush => todo!(),
+                casl2::Command::Rpop => todo!(),
+                casl2::Command::Out { .. }
+                | casl2::Command::In { .. }
+                | casl2::Command::DebugBasicStep { .. } => unreachable!("BUG"),
+            }
+            writeln!(stdout, "#{:04X}に{}を書き込みました", pos, cmd)?;
+        }
+    }
+
+    Ok(())
 }
 
 //
@@ -1177,8 +1278,9 @@ fn find_src<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
         }
     };
 
-    let cmd = match parse_comet2_command(emu, cmd, false) {
-        Ok(cmd) => cmd,
+    let cmd = match parse_casl2_command(emu, cmd, false) {
+        Ok(Code::Casl2(cmd)) => cmd,
+        Ok(_) => unreachable!("BUG"),
         Err(msg) => {
             writeln!(stdout, "{}", msg)?;
             return Ok(());
@@ -1476,12 +1578,16 @@ fn find_code<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> i
         Ok(adr) => adr,
     };
 
-    let cmd = match parse_comet2_command(emu, cmd, true) {
+    let cmd = match parse_casl2_command(emu, cmd, true) {
         Err(msg) => {
             writeln!(stdout, "{}", msg)?;
             return Ok(());
         }
-        Ok(cmd) => cmd,
+        Ok(Code::Casl2(cmd)) => cmd,
+        Ok(_) => {
+            writeln!(stdout, "指定できないコマンドです")?;
+            return Ok(());
+        }
     };
 
     match &cmd {
