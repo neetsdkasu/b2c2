@@ -703,7 +703,7 @@ fn interactive<R: BufRead, W: Write>(
             }
             "show-labels" => show_labels(emu, stdout, cmd_and_param.next())?,
             "show-mem" => show_mem(emu, stdout, cmd_and_param.next())?,
-            "show-mem-stat" => todo!(),
+            "show-mem-stat" => show_mem_stat(emu, stdout, cmd_and_param.next())?,
             "show-reg" => show_reg(emu, stdout)?,
             "show-src" => todo!(),
             "show-state" => show_state(emu, stdout, state)?,
@@ -862,6 +862,60 @@ fn parse_just_u16_value(s: &str) -> Option<u16> {
 }
 
 //
+// show-mem-stat <ADDRESS> [<LENGTH>]
+//
+fn show_mem_stat<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let (adr, len) = match param {
+        None => {
+            writeln!(stdout, "引数が必要です")?;
+            return Ok(());
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let adr = iter.next().unwrap();
+            let adr = match emu.get_address_by_label_str(adr) {
+                Ok(adr) => adr,
+                Err(msg) => {
+                    writeln!(stdout, "{}", msg)?;
+                    return Ok(());
+                }
+            };
+            if let Some(len) = iter.next() {
+                match parse_just_u16_value(len) {
+                    Some(len) if len > 0 => (adr, len as usize),
+                    _ => {
+                        writeln!(stdout, "引数が不正です")?;
+                        return Ok(());
+                    }
+                }
+            } else {
+                (adr, 1)
+            }
+        }
+    };
+
+    if adr
+        .checked_add(len)
+        .filter(|v| *v <= emu.mem.len())
+        .is_none()
+    {
+        writeln!(stdout, "長さの指定が大きすぎます")?;
+        return Ok(());
+    }
+
+    writeln!(stdout, "書込回数 読込回数 実行回数")?;
+    for pos in adr..adr + len {
+        let exe = emu.execute_count[pos];
+        let acc = emu.access_count[pos];
+        let upd = emu.update_count[pos];
+        let info = emu.get_code_info(pos as u16);
+        writeln!(stdout, "{:8} {:8} {:8} {}", upd, acc, exe, info.mem_code)?;
+    }
+
+    Ok(())
+}
+
+//
 // show-mem <ADDRESS> [<LENGTH>] [<TYPE>]
 //
 fn show_mem<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
@@ -918,8 +972,12 @@ fn show_mem<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
         }
     };
 
-    if len.checked_add(adr as u16).is_none() {
-        writeln!(stdout, "長さ指定が大きすぎます")?;
+    if adr
+        .checked_add(len as usize)
+        .filter(|v| *v <= emu.mem.len())
+        .is_none()
+    {
+        writeln!(stdout, "長さの指定が大きすぎます")?;
         return Ok(());
     }
 
