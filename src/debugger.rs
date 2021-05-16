@@ -199,6 +199,22 @@ fn show_state<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> io::Re
                 break;
             }
         }
+        if label.is_none() {
+            for (lb, (p, _)) in emu.labels_for_debug.iter() {
+                if *p == pos {
+                    label = Some(lb);
+                    break;
+                }
+            }
+        }
+        if label.is_none() {
+            for (lb, p) in emu.alias_labels.iter() {
+                if *p == pos {
+                    label = Some(lb);
+                    break;
+                }
+            }
+        }
         if let Some(lb) = label {
             writeln!(stdout, "Start Point: {}", lb)?;
         } else {
@@ -239,7 +255,28 @@ fn show_state<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> io::Re
                 }
             }
             Err(_) => {
-                if i == 0 {
+                if let Some(label) = emu
+                    .labels_for_debug
+                    .iter()
+                    .find_map(|(k, (p, _))| if p == pos { Some(k) } else { None })
+                    .or_else(|| {
+                        emu.alias_labels.iter().find_map(
+                            |(k, p)| {
+                                if p == pos {
+                                    Some(k)
+                                } else {
+                                    None
+                                }
+                            },
+                        )
+                    })
+                {
+                    if i == 0 {
+                        write!(stdout, " {}", label)?;
+                    } else {
+                        write!(stdout, " [#{:04X}]-> {}", fp, label)?;
+                    }
+                } else if i == 0 {
                     write!(stdout, " #{:04X}", pos)?;
                 } else {
                     write!(stdout, " [#{:04X}]-> #{:04X}", fp, pos)?;
@@ -795,7 +832,6 @@ fn parse_casl2_command(emu: &Emulator, cmd: &str, resolve_adr: bool) -> Result<C
                     } else {
                         write!(&mut cmd, "{}", lb).unwrap();
                     }
-                    count += 1;
                 }
                 Ok(None) => match tokenizer.ignore_case_value() {
                     None => return Err("引数が不正です".to_string()),
@@ -804,6 +840,7 @@ fn parse_casl2_command(emu: &Emulator, cmd: &str, resolve_adr: bool) -> Result<C
                     }
                 },
             }
+            count += 1;
             if tokenizer.comma() {
                 cmd.push(',');
             } else {
@@ -916,15 +953,152 @@ fn write_code<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>)
     };
 
     match cmd {
-        Code::In(_param) => {
-            todo!()
+        Code::In(param) => {
+            let mut tokenizer = casl2::Tokenizer::new(&param);
+            match Value::take_all_values(emu, &mut tokenizer) {
+                Err(msg) => {
+                    writeln!(stdout, "{}", msg)?;
+                    return Ok(());
+                }
+                Ok(params) => {
+                    if let [Value::Int(buf), Value::Int(len)] = params.as_slice() {
+                        let src = casl2::parse(&format!(
+                            r#"
+                        PUSH 0,GR1
+                        PUSH 0,GR2
+                        PUSH 0,GR3
+                        PUSH 0,GR4
+                        PUSH 0,GR5
+                        PUSH 0,GR6
+                        PUSH 0,GR7
+                        LD  GR1,GR0
+                        PUSH 0,GR1
+                        LAD GR1,{buf}
+                        LAD GR2,{len}
+                        SVC 1
+                        POP GR1
+                        LD  GR0,GR1
+                        POP GR7
+                        POP GR6
+                        POP GR5
+                        POP GR4
+                        POP GR3
+                        POP GR2
+                        POP GR1"#,
+                            buf = buf,
+                            len = len
+                        ))
+                        .unwrap();
+                        let end = {
+                            let mut pos = pos;
+                            for stmt in src.iter() {
+                                if let casl2::Statement::Code { command, .. } = stmt {
+                                    let len = command.len();
+                                    emu.mem[pos] = command.first_word();
+                                    match command {
+                                        casl2::Command::P { adr, .. }
+                                        | casl2::Command::A { adr, .. } => match adr {
+                                            casl2::Adr::Dec(d) => emu.mem[pos + 1] = *d as u16,
+                                            casl2::Adr::Hex(h) => emu.mem[pos + 1] = *h,
+                                            _ => {}
+                                        },
+                                        _ => {}
+                                    }
+                                    pos += len;
+                                }
+                            }
+                            pos
+                        };
+                        writeln!(
+                            stdout,
+                            "#{:04X}..#{:04X}にIN        #{:04X},#{:04X}を書き込みました",
+                            pos,
+                            end - 1,
+                            buf,
+                            len
+                        )?;
+                    } else {
+                        writeln!(stdout, "引数が不正です")?;
+                        return Ok(());
+                    }
+                }
+            }
         }
-        Code::Out(_param) => {
-            todo!()
+        Code::Out(param) => {
+            let mut tokenizer = casl2::Tokenizer::new(&param);
+            match Value::take_all_values(emu, &mut tokenizer) {
+                Err(msg) => {
+                    writeln!(stdout, "{}", msg)?;
+                    return Ok(());
+                }
+                Ok(params) => {
+                    if let [Value::Int(buf), Value::Int(len)] = params.as_slice() {
+                        let src = casl2::parse(&format!(
+                            r#"
+                        PUSH 0,GR1
+                        PUSH 0,GR2
+                        PUSH 0,GR3
+                        PUSH 0,GR4
+                        PUSH 0,GR5
+                        PUSH 0,GR6
+                        PUSH 0,GR7
+                        LD  GR1,GR0
+                        PUSH 0,GR1
+                        LAD GR1,{buf}
+                        LAD GR2,{len}
+                        SVC 2
+                        POP GR1
+                        LD  GR0,GR1
+                        POP GR7
+                        POP GR6
+                        POP GR5
+                        POP GR4
+                        POP GR3
+                        POP GR2
+                        POP GR1"#,
+                            buf = buf,
+                            len = len
+                        ))
+                        .unwrap();
+                        let end = {
+                            let mut pos = pos;
+                            for stmt in src.iter() {
+                                if let casl2::Statement::Code { command, .. } = stmt {
+                                    let len = command.len();
+                                    emu.mem[pos] = command.first_word();
+                                    match command {
+                                        casl2::Command::P { adr, .. }
+                                        | casl2::Command::A { adr, .. } => match adr {
+                                            casl2::Adr::Dec(d) => emu.mem[pos + 1] = *d as u16,
+                                            casl2::Adr::Hex(h) => emu.mem[pos + 1] = *h,
+                                            _ => {}
+                                        },
+                                        _ => {}
+                                    }
+                                    pos += len;
+                                }
+                            }
+                            pos
+                        };
+                        writeln!(
+                            stdout,
+                            "#{:04X}..#{:04X}にOUT       #{:04X},#{:04X}を書き込みました",
+                            pos,
+                            end - 1,
+                            buf,
+                            len
+                        )?;
+                    } else {
+                        writeln!(stdout, "引数が不正です")?;
+                        return Ok(());
+                    }
+                }
+            }
         }
         Code::Casl2(cmd) => {
+            let cmd_len = cmd.len();
             if pos
-                .checked_add(cmd.len())
+                .checked_add(cmd_len)
                 .filter(|v| *v + 1 < emu.mem.len())
                 .is_none()
             {
@@ -938,8 +1112,28 @@ fn write_code<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>)
                 }
                 casl2::Command::A { adr, .. } | casl2::Command::P { adr, .. } => {
                     assert_eq!(cmd.len(), 2);
-                    let _ = adr;
-                    todo!();
+                    let adr = adr.to_string();
+                    let mut tokenizer = casl2::Tokenizer::new(&adr);
+                    match Value::take_single_value(emu, &mut tokenizer) {
+                        Err(msg) => {
+                            writeln!(stdout, "{}", msg)?;
+                            return Ok(());
+                        }
+                        Ok(Value::Int(adr)) => {
+                            emu.mem[pos] = cmd.first_word();
+                            emu.mem[pos + 1] = adr as u16;
+                        }
+                        Ok(Value::Str(s)) => {
+                            if let Some(ch) = s.chars().next() {
+                                let ch = jis_x_201::convert_from_char(ch);
+                                emu.mem[pos] = cmd.first_word();
+                                emu.mem[pos + 1] = ch as u16;
+                            } else {
+                                writeln!(stdout, "引数が不正です")?;
+                                return Ok(());
+                            }
+                        }
+                    }
                 }
                 casl2::Command::R { .. }
                 | casl2::Command::Pop { .. }
@@ -948,14 +1142,59 @@ fn write_code<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>)
                     assert_eq!(cmd.len(), 1);
                     emu.mem[pos] = cmd.first_word();
                 }
-                casl2::Command::Dc { .. } => todo!(),
-                casl2::Command::Rpush => todo!(),
-                casl2::Command::Rpop => todo!(),
+                casl2::Command::Dc { constants } => {
+                    let mut pos = pos;
+                    for c in constants.iter() {
+                        let c = c.to_string();
+                        let mut tokenizer = casl2::Tokenizer::new(&c);
+                        match Value::take_single_value(emu, &mut tokenizer) {
+                            Err(msg) => {
+                                writeln!(stdout, "{}", msg)?;
+                                return Ok(());
+                            }
+                            Ok(Value::Int(v)) => {
+                                emu.mem[pos] = v;
+                                pos += 1;
+                            }
+                            Ok(Value::Str(s)) => {
+                                for ch in s.chars() {
+                                    let ch = jis_x_201::convert_from_char(ch);
+                                    emu.mem[pos] = ch as u16;
+                                    pos += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+                casl2::Command::Rpush => {
+                    use casl2::IndexRegister::*;
+                    for (i, gr) in [Gr1, Gr2, Gr3, Gr4, Gr5, Gr6, Gr7].iter().enumerate() {
+                        let cmd = casl2::Command::P {
+                            code: casl2::P::Push,
+                            adr: casl2::Adr::Hex(0),
+                            x: Some(*gr),
+                        };
+                        emu.mem[pos + i] = cmd.first_word();
+                    }
+                }
+                casl2::Command::Rpop => {
+                    use casl2::Register::*;
+                    for (i, gr) in [Gr7, Gr6, Gr5, Gr4, Gr3, Gr2, Gr1].iter().enumerate() {
+                        let cmd = casl2::Command::Pop { r: *gr };
+                        emu.mem[pos + i] = cmd.first_word();
+                    }
+                }
                 casl2::Command::Out { .. }
                 | casl2::Command::In { .. }
                 | casl2::Command::DebugBasicStep { .. } => unreachable!("BUG"),
             }
-            writeln!(stdout, "#{:04X}に{}を書き込みました", pos, cmd)?;
+            writeln!(
+                stdout,
+                "#{:04X}..#{:04X}に{}を書き込みました",
+                pos,
+                pos + cmd_len - 1,
+                cmd
+            )?;
         }
     }
 
