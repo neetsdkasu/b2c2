@@ -638,10 +638,10 @@ fn interactive<R: BufRead, W: Write>(
             writeln!(stdout, "テスト実行を中止します")?;
             return Ok(QUIT_TEST);
         }
-        let mut line = line.trim();
+        let mut line = line.trim().to_string();
         if line.is_empty() {
             if let Some(defcmd) = state.default_cmd.as_ref() {
-                line = defcmd.as_str();
+                line = defcmd.clone();
             }
         }
         let mut cmd_and_param = line.splitn(2, ' ').map(|s| s.trim());
@@ -704,7 +704,7 @@ fn interactive<R: BufRead, W: Write>(
                 return Ok(0);
             }
             "set-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), true)?,
-            "set-by-file" => todo!(),
+            "set-by-file" => set_by_file(emu, stdout, state, cmd_and_param.next())?,
             "set-label" => set_label(emu, stdout, cmd_and_param.next())?,
             "set-mem" => set_mem(emu, stdout, cmd_and_param.next())?,
             "set-reg" => {
@@ -916,6 +916,103 @@ fn parse_just_u16_value(s: &str) -> Option<u16> {
             }
         }
     }
+}
+
+//
+// set-by-file <FILE_PATH>
+//
+fn set_by_file<W: Write>(
+    emu: &mut Emulator,
+    stdout: &mut W,
+    state: &mut State,
+    param: Option<&str>,
+) -> io::Result<()> {
+    let file = match param {
+        Some(file) => file,
+        None => {
+            writeln!(stdout, "引数が必要です")?;
+            return Ok(());
+        }
+    };
+
+    let path = Path::new(file);
+    if !path.exists() || !path.is_file() {
+        eprintln!("ファイルが見つかりません ({})", file);
+        return Ok(());
+    }
+    if path.metadata()?.len() > 1_000_000 {
+        eprintln!("ファイルサイズが大きすぎます ({})", file);
+        return Ok(());
+    }
+
+    let text = fs::read_to_string(file)?;
+
+    for line in text.lines() {
+        let mut cmd_and_param = line.trim().splitn(2, ' ').map(|s| s.trim());
+        let cmd = cmd_and_param.next().unwrap();
+        match cmd {
+            "add-dc" => add_dc(emu, stdout, cmd_and_param.next())?,
+            "add-ds" => add_ds(emu, stdout, cmd_and_param.next())?,
+            "copy-mem" => copy_mem(emu, stdout, cmd_and_param.next())?,
+            "default-cmd" => {
+                if let Some(defcmd) = cmd_and_param.next() {
+                    if "none".eq_ignore_ascii_case(defcmd) {
+                        state.default_cmd = None;
+                    } else {
+                        state.default_cmd = Some(defcmd.to_string());
+                    }
+                }
+                if let Some(defcmd) = state.default_cmd.as_ref() {
+                    writeln!(stdout, "デフォルトのデバッガコマンド: {}", defcmd)?;
+                } else {
+                    writeln!(stdout, "デフォルトのデバッガコマンド: none")?;
+                }
+            }
+            "fill-mem" => fill_mem(emu, stdout, cmd_and_param.next())?,
+            "remove-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), false)?,
+            "set-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), true)?,
+            "set-label" => set_label(emu, stdout, cmd_and_param.next())?,
+            "set-mem" => set_mem(emu, stdout, cmd_and_param.next())?,
+            "set-reg" => {
+                let msg = set_reg(emu, cmd_and_param.next());
+                writeln!(stdout, "{}", msg)?;
+            }
+            "set-start" => {
+                if let Some(s) = cmd_and_param.next() {
+                    let s = s.to_ascii_uppercase();
+                    let mut tokenizer = casl2::Tokenizer::new(s.as_str());
+                    match tokenizer.extended_label() {
+                        Ok(Some(lb)) => {
+                            if !tokenizer.rest().is_empty() {
+                                writeln!(stdout, "引数が不正です")?;
+                            } else {
+                                match lb.get_address(emu) {
+                                    Ok(adr) => {
+                                        state.start_point = Some(adr);
+                                        writeln!(stdout, "スタートポイントを{}に設定しました", lb)?;
+                                    }
+                                    Err(msg) => writeln!(stdout, "{}", msg)?,
+                                }
+                            }
+                        }
+                        Ok(_) => writeln!(stdout, "引数が不正です")?,
+                        Err(msg) => writeln!(stdout, "{}", msg)?,
+                    }
+                } else {
+                    state.start_point = None;
+                    let name = emu.start_point.as_ref().expect("BUG");
+                    writeln!(stdout, "スタートポイントを{}に戻しました", name)?;
+                }
+            }
+            "write-code" => write_code(emu, stdout, cmd_and_param.next())?,
+            "" => {}
+            _ => {
+                writeln!(stdout, "コメント行としてスキップします: {}", line)?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 //
@@ -5631,6 +5728,16 @@ impl Emulator {
 
 impl Emulator {
     fn compile_basic(&mut self, src_file: &str, flags: &Flags, save: bool) -> io::Result<i32> {
+        let path = Path::new(src_file);
+        if !path.exists() || !path.is_file() {
+            eprintln!("ファイルが見つかりません ({})", src_file);
+            return Ok(200);
+        }
+        if path.metadata()?.len() > 1_000_000 {
+            eprintln!("ファイルサイズが大きすぎます ({})", src_file);
+            return Ok(200);
+        }
+
         let text = fs::read_to_string(src_file)?;
 
         let basic_src = match parser::parse(text.as_bytes())? {
@@ -5782,6 +5889,15 @@ impl Emulator {
 
 impl Emulator {
     fn compile_casl2(&mut self, src_file: &str, flags: &Flags, save: bool) -> io::Result<i32> {
+        let path = Path::new(src_file);
+        if !path.exists() || !path.is_file() {
+            eprintln!("ファイルが見つかりません ({})", src_file);
+            return Ok(200);
+        }
+        if path.metadata()?.len() > 1_000_000 {
+            eprintln!("ファイルサイズが大きすぎます ({})", src_file);
+            return Ok(200);
+        }
         let text = fs::read_to_string(src_file)?;
 
         let casl2_src = match casl2::parse(text.as_str()) {

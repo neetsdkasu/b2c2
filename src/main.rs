@@ -337,8 +337,13 @@ impl Flags {
                         return show_usage();
                     }
                     if let Some(file) = iter.next() {
-                        if !Path::new(&file).exists() {
+                        let path = Path::new(&file);
+                        if !path.exists() || !path.is_file() {
                             eprintln!("ERROR: ファイルが見つかりません ( {} )", file);
+                            return Ok(3);
+                        }
+                        if path.metadata()?.len() > 1_000_000 {
+                            eprintln!("ERROR: ファイルサイズが大きすぎます ( {} )", file);
                             return Ok(3);
                         }
                         self.src_file = Some(file);
