@@ -11,9 +11,9 @@ impl Compiler {
         assert!(matches!(value.return_type(), parser::ExprType::String));
 
         self.add_debugger_hint(|| format!("Select Case {value}", value = value));
-        self.comment(format!("Select Case {value}", value = value));
+        self.nest_depth += 1;
 
-        let head_debugger_hint = self.get_current_debugger_hint();
+        self.comment(format!("Select Case {value}", value = value));
 
         let exit_label = self.get_exit_label(exit_id);
 
@@ -35,6 +35,8 @@ impl Compiler {
         self.code(saves);
         self.code(value_labels.lad_pos(casl2::Register::Gr1));
         self.code(value_labels.ld_len(casl2::Register::Gr2));
+
+        self.show_debugger_hint();
 
         self.return_temp_str_var_label(value_labels);
 
@@ -84,34 +86,33 @@ impl Compiler {
                     ));
                     self.labeled(label, casl2::Command::Nop);
                     self.code(&recovers);
-                    if let Some(cmd) = head_debugger_hint.clone() {
-                        self.add_debugger_hint_command(
-                            cmd,
-                            format!(
-                                "Case {}",
-                                values
-                                    .iter()
-                                    .map(|s| format!("'{}'", s.replace('\'', "''")))
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            ),
-                        );
-                    }
+                    self.add_debugger_hint_message(|| {
+                        format!(
+                            "Case {}",
+                            values
+                                .iter()
+                                .map(|s| format!("'{}'", s.replace('\'', "''")))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    });
+                    self.nest_depth += 1;
                     for stmt in block.iter() {
                         self.compile(stmt);
                     }
                     self.show_debugger_hint();
+                    self.nest_depth -= 1;
                 }
                 parser::Statement::CaseElse { block } => {
                     self.comment("Case Else");
                     self.labeled(label, casl2::Command::Nop);
-                    if let Some(cmd) = head_debugger_hint.clone() {
-                        self.add_debugger_hint_command(cmd, "Case Else".to_string());
-                    }
+                    self.add_debugger_hint_message(|| "Case Else".to_string());
+                    self.nest_depth += 1;
                     for stmt in block.iter() {
                         self.compile(stmt);
                     }
                     self.show_debugger_hint();
+                    self.nest_depth -= 1;
                 }
                 _ => unreachable!("BUG"),
             }
@@ -129,6 +130,8 @@ impl Compiler {
 
         self.comment("End Select");
         self.labeled(exit_label, casl2::Command::Nop);
+
+        self.nest_depth -= 1;
         self.add_debugger_hint_message(|| "End Select".to_string());
     }
 
@@ -156,12 +159,14 @@ impl Compiler {
             .collect();
 
         self.add_debugger_hint(|| format!("Select Case {}", value));
-        self.comment(format!("Select Case {}", value));
+        self.nest_depth += 1;
 
-        let head_debugger_hint = self.get_current_debugger_hint();
+        self.comment(format!("Select Case {}", value));
 
         // 想定では GR7
         let value_reg = self.compile_int_expr(value);
+
+        self.show_debugger_hint();
 
         for (case_stmt, label) in case_blocks.iter() {
             match case_stmt {
@@ -220,34 +225,33 @@ impl Compiler {
                             .join(", ")
                     ));
                     self.labeled(label, casl2::Command::Nop);
-                    if let Some(cmd) = head_debugger_hint.clone() {
-                        self.add_debugger_hint_command(
-                            cmd,
-                            format!(
-                                "Case {}",
-                                values
-                                    .iter()
-                                    .map(|v| v.to_string())
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            ),
-                        );
-                    }
+                    self.add_debugger_hint_message(|| {
+                        format!(
+                            "Case {}",
+                            values
+                                .iter()
+                                .map(|v| v.to_string())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    });
+                    self.nest_depth += 1;
                     for stmt in block.iter() {
                         self.compile(stmt);
                     }
                     self.show_debugger_hint();
+                    self.nest_depth -= 1;
                 }
                 parser::Statement::CaseElse { block } => {
                     self.comment("Case Else");
                     self.labeled(label, casl2::Command::Nop);
-                    if let Some(cmd) = head_debugger_hint.clone() {
-                        self.add_debugger_hint_command(cmd, "Case Else".to_string());
-                    }
+                    self.add_debugger_hint_message(|| "Case Else".to_string());
+                    self.nest_depth += 1;
                     for stmt in block.iter() {
                         self.compile(stmt);
                     }
                     self.show_debugger_hint();
+                    self.nest_depth -= 1;
                 }
                 _ => unreachable!("BUG"),
             }
@@ -268,6 +272,8 @@ impl Compiler {
         );
         self.comment("End Select");
         self.labeled(exit_label, casl2::Command::Nop);
+
+        self.nest_depth -= 1;
         self.add_debugger_hint_message(|| "End Select".to_string());
     }
 }

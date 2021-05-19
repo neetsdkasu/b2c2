@@ -144,7 +144,7 @@ pub struct LabelSet {
 #[derive(Clone)]
 pub struct DebugInfo {
     pub label_set: LabelSet,
-    pub status_hint: Vec<String>,
+    pub status_hint: Vec<(usize, String)>,
 }
 
 // デバッグ用コンパイル
@@ -172,7 +172,9 @@ pub fn compile_for_debugger(
     let mut compiler = Compiler::new(flag.program_name.clone())?;
 
     compiler.for_debug_basic = flag.for_debug_basic;
-    compiler.add_debugger_hint(|| "Initialized".to_string());
+    compiler.add_debugger_hint_message(|| "Sub MAIN".to_string());
+    compiler.nest_depth = 1;
+    compiler.add_debugger_hint_message(|| "(Initialize)".to_string());
 
     for stmt in src.iter() {
         compiler.compile(stmt);
@@ -191,7 +193,17 @@ pub fn compile_for_debugger(
 
     let debug_info = DebugInfo {
         label_set,
-        status_hint: compiler.debugger_hint.clone(),
+        status_hint: if flag.for_debug_basic {
+            let mut hint = compiler.debugger_hint.clone();
+            hint.push((0, "End Sub".to_string()));
+            if let Some(pn) = compiler.program_name.as_ref() {
+                let (_, msg) = hint.first_mut().unwrap();
+                *msg = msg.replace("MAIN", pn);
+            }
+            hint
+        } else {
+            Vec::new()
+        },
     };
 
     let statements = compiler.finish();
@@ -251,9 +263,11 @@ pub enum ValueLabel {
 struct Compiler {
     // debugger用コンパイルモードか
     for_debug_basic: bool,
+    // ブロックネストの深さ (debugger用)
+    nest_depth: usize,
 
-    // debuggerで利用するためのヒント
-    debugger_hint: Vec<String>,
+    // debuggerで利用するためのヒント (ネストの深さ、ヒントメッセージ)
+    debugger_hint: Vec<(usize, String)>,
 
     // プログラム名
     program_name: Option<String>,
@@ -391,6 +405,7 @@ impl Compiler {
 
         Ok(Self {
             for_debug_basic: false,
+            nest_depth: 0,
             debugger_hint: Vec::new(),
             program_name,
             original_program_name: None,
@@ -469,7 +484,8 @@ impl Compiler {
         if !self.for_debug_basic {
             return;
         }
-        self.debugger_hint.push(hint());
+        let nest = self.nest_depth;
+        self.debugger_hint.push((nest, hint()));
     }
 
     // debugger用のヒントを追加する
@@ -483,20 +499,8 @@ impl Compiler {
         if let Some(cmd) = self.get_current_debugger_hint() {
             self.code(cmd);
         }
-        self.debugger_hint.push(hint());
-    }
-
-    // debugger用のヒントを追加する
-    fn add_debugger_hint_command(&mut self, cmd: casl2::Command, hint: String) {
-        if !self.for_debug_basic {
-            return;
-        }
-        assert!(matches!(
-            cmd,
-            casl2::Command::DebugBasicStep { id } if (id < self.debugger_hint.len())
-        ));
-        self.code(cmd);
-        self.debugger_hint.push(hint);
+        let nest = self.nest_depth;
+        self.debugger_hint.push((nest, hint()));
     }
 }
 
@@ -846,8 +850,10 @@ impl Compiler {
         let allocator_code = self
             .option_local_allocation_size
             .map(|size| subroutine::get_util_allocator_code(&mut self, size));
-        self.show_debugger_hint();
+        self.add_debugger_hint(|| "End Sub".to_string());
+        let dbg_cmd = self.get_current_debugger_hint();
         let Self {
+            for_debug_basic,
             program_name,
             arguments,
             argument_labels,
@@ -913,6 +919,11 @@ impl Compiler {
         // プログラム開始時のレジスタの状態の復帰
         if option_restore_registers {
             statements.code(casl2::Command::Rpop);
+        }
+
+        // End Subの表示
+        if let Some(cmd) = dbg_cmd {
+            statements.code(cmd);
         }
 
         // プログラムの終了
@@ -1071,6 +1082,11 @@ impl Compiler {
                 command: casl2::Command::Start { entry_point: None },
                 comment: None,
             });
+        }
+
+        // Subの表示
+        if for_debug_basic {
+            temp_statements.code(casl2::Command::DebugBasicStep { id: 0 });
         }
 
         // プログラム開始時のレジスタの状態の保存

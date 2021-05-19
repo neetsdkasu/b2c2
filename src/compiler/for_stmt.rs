@@ -31,6 +31,7 @@ impl Compiler {
                 step = step
             )
         });
+        self.nest_depth += 1;
         self.comment(format!(
             "For {counter} = {init} To {end} Step {step}",
             counter = counter,
@@ -118,6 +119,7 @@ impl Compiler {
 
         // ループ末尾 (カウンタの更新など)
 
+        self.nest_depth -= 1;
         self.add_debugger_hint(|| format!("Next {counter}", counter = counter));
         self.comment(format!("Next {counter}", counter = counter));
 
@@ -170,6 +172,7 @@ impl Compiler {
                 step = step
             )
         });
+        self.nest_depth += 1;
         self.comment(format!(
             "For {counter} = {init} To {end} Step {step}",
             counter = counter,
@@ -288,6 +291,7 @@ impl Compiler {
 
         // ループ末尾 (カウンタの更新など)
 
+        self.nest_depth -= 1;
         self.add_debugger_hint(|| format!("Next {counter}", counter = counter));
         self.comment(format!("Next {counter}", counter = counter));
 

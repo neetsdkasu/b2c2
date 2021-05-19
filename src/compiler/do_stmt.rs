@@ -16,6 +16,7 @@ impl Compiler {
         let exit_label = self.get_exit_label(exit_id);
 
         self.add_debugger_hint(|| format!("Do While {cond}", cond = condition));
+        self.nest_depth += 1;
         self.comment(format!("Do While {cond}", cond = condition));
         self.labeled(&loop_label, casl2::Command::Nop);
 
@@ -34,6 +35,7 @@ impl Compiler {
             self.compile(stmt);
         }
 
+        self.nest_depth -= 1;
         self.add_debugger_hint(|| "Loop".to_string());
         self.comment("Loop");
         self.code(format!(" JUMP {next}", next = loop_label));
@@ -55,6 +57,7 @@ impl Compiler {
         let exit_label = self.get_exit_label(exit_id);
 
         self.add_debugger_hint(|| format!("Do Until {cond}", cond = condition));
+        self.nest_depth += 1;
         self.comment(format!("Do Until {cond}", cond = condition));
         self.labeled(&loop_label, casl2::Command::Nop);
 
@@ -73,6 +76,7 @@ impl Compiler {
             self.compile(stmt);
         }
 
+        self.nest_depth -= 1;
         self.add_debugger_hint(|| "Loop".to_string());
         self.comment("Loop");
         self.code(format!(" JUMP {next}", next = loop_label));
@@ -91,6 +95,7 @@ impl Compiler {
         assert!(matches!(condition.return_type(), parser::ExprType::Boolean));
 
         self.add_debugger_hint(|| "Do".to_string());
+        self.nest_depth += 1;
         self.comment("Do");
 
         let top_label = self.get_new_jump_label();
@@ -103,6 +108,7 @@ impl Compiler {
             self.compile(stmt);
         }
 
+        self.nest_depth -= 1;
         self.add_debugger_hint(|| format!("Loop While {cond}", cond = condition));
         self.comment(format!("Loop While {cond}", cond = condition));
         self.labeled(loop_label, casl2::Command::Nop);
@@ -133,6 +139,7 @@ impl Compiler {
         assert!(matches!(condition.return_type(), parser::ExprType::Boolean));
 
         self.add_debugger_hint(|| "Do".to_string());
+        self.nest_depth += 1;
         self.comment("Do");
 
         let top_label = self.get_new_jump_label();
@@ -145,6 +152,7 @@ impl Compiler {
             self.compile(stmt);
         }
 
+        self.nest_depth -= 1;
         self.add_debugger_hint(|| format!("Loop Until {cond}", cond = condition));
         self.comment(format!("Loop Until {cond}", cond = condition));
         self.labeled(loop_label, casl2::Command::Nop);
@@ -169,6 +177,7 @@ impl Compiler {
         let exit_label = self.get_exit_label(exit_id);
 
         self.add_debugger_hint(|| "Do".to_string());
+        self.nest_depth += 1;
         self.comment("Do");
         self.labeled(&loop_label, casl2::Command::Nop);
 
@@ -176,6 +185,7 @@ impl Compiler {
             self.compile(stmt);
         }
 
+        self.nest_depth -= 1;
         self.add_debugger_hint(|| "Loop".to_string());
         self.comment("Loop");
         self.code(casl2::Command::P {

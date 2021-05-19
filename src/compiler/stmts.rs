@@ -982,6 +982,7 @@ impl Compiler {
         else_blocks: &[parser::Statement],
     ) {
         self.add_debugger_hint(|| format!("If {} Then", condition));
+        self.nest_depth += 1;
         self.comment(format!("If {} Then", condition));
 
         let end_label = self.get_new_jump_label();
@@ -1018,7 +1019,9 @@ impl Compiler {
 
             match else_stmt {
                 parser::Statement::ElseIf { condition, block } => {
+                    self.nest_depth -= 1;
                     self.add_debugger_hint_message(|| format!("ElseIf {} Then", condition));
+                    self.nest_depth += 1;
                     self.comment(format!("ElseIf {} Then", condition));
                     self.labeled(head, casl2::Command::Nop);
 
@@ -1039,7 +1042,9 @@ impl Compiler {
                     self.show_debugger_hint();
                 }
                 parser::Statement::Else { block } => {
+                    self.nest_depth -= 1;
                     self.add_debugger_hint_message(|| "Else".to_string());
+                    self.nest_depth += 1;
                     self.comment("Else");
                     self.labeled(head, casl2::Command::Nop);
 
@@ -1054,6 +1059,7 @@ impl Compiler {
 
         self.comment("End If");
         self.labeled(end_label, casl2::Command::Nop);
+        self.nest_depth -= 1;
         self.add_debugger_hint_message(|| "End If".to_string());
     }
 

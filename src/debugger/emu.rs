@@ -257,6 +257,15 @@ impl Emulator {
 }
 
 impl Emulator {
+    pub(super) fn get_current_program(&self) -> Option<&Program> {
+        self.program_list.iter().find(|(_, _, stmt)| {
+            stmt.first()
+                .zip(stmt.last())
+                .filter(|(fp, lp)| (fp.0..=lp.0).contains(&self.program_register))
+                .is_some()
+        })
+    }
+
     pub(super) fn get_code_info(&self, pos: u16) -> CodeInfo {
         use std::fmt::Write;
         let pos = pos as usize;
