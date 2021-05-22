@@ -170,7 +170,7 @@ pub(super) fn auto_resolve_files<R: BufRead, W: Write>(
                     eprintln!("入力がキャンセルされました");
                     io::stderr().flush()?;
                     writeln!(stdout, "テスト実行を中止します")?;
-                    return Ok(QUIT_TEST);
+                    return Ok(REQUEST_QUIT);
                 }
                 let line = line.trim();
                 match line.parse::<i32>() {
@@ -188,7 +188,7 @@ pub(super) fn auto_resolve_files<R: BufRead, W: Write>(
                     }
                     Ok(-1) => {
                         writeln!(stdout, "テスト実行を中止します")?;
-                        return Ok(QUIT_TEST);
+                        return Ok(REQUEST_QUIT);
                     }
                     _ => {
                         let path = Path::new(line);
@@ -271,7 +271,7 @@ pub(super) fn resolve_files<R: BufRead, W: Write>(
             eprintln!("入力がキャンセルされました");
             io::stderr().flush()?;
             writeln!(stdout, "テスト実行を中止します")?;
-            return Ok(QUIT_TEST);
+            return Ok(REQUEST_QUIT);
         }
         let line = line.trim();
         let file = if line.is_empty() {
@@ -305,7 +305,7 @@ pub(super) fn resolve_files<R: BufRead, W: Write>(
             } else {
                 writeln!(stdout, "解決できるファイルを見つけられませんでした")?;
                 writeln!(stdout, "テスト実行を中止します")?;
-                return Ok(QUIT_TEST);
+                return Ok(REQUEST_QUIT);
             }
         } else {
             let count = files.len().min(LIST_UP_SIZE) as i32;
@@ -324,7 +324,7 @@ pub(super) fn resolve_files<R: BufRead, W: Write>(
                 }
                 Ok(-1) => {
                     writeln!(stdout, "テスト実行を中止します")?;
-                    return Ok(QUIT_TEST);
+                    return Ok(REQUEST_QUIT);
                 }
                 Ok(num) if num >= 1 && num <= count => files[num as usize - 1].clone(),
                 _ => {

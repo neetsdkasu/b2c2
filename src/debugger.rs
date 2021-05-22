@@ -20,16 +20,20 @@ mod misc;
 mod utils;
 
 const RET_OP_CODE: u16 = 0x8100;
-const REQUEST_RESTART: i32 = 0x300_0000;
-const REQUEST_RESET: i32 = 0x400_0000;
-const QUIT_TEST: i32 = 99;
+const REQUEST_CONTINUE: i32 = 0x300_0000;
+const REQUEST_BREAK: i32 = 0x400_0000;
+const REQUEST_QUIT: i32 = 99;
+const DEFAULT_COMET2_LIMIT_ON_BASIC_MODE: u64 = 1_000_000_000_000;
 
 #[derive(Clone, Copy)]
 enum RunMode {
     Step(u64),
     GoToBreakPoint(u64),
     SkipSubroutine(u64),
-    BasicStep { basic_limit: u64, comet2_limit: u64 },
+    BasicStep {
+        basic_step_count: u64,
+        comet2_limit: u64,
+    },
 }
 
 struct State {
@@ -97,7 +101,7 @@ pub fn run_nonstep(src_file: String, flags: Flags) -> io::Result<i32> {
         let src_dir = Path::new(&src_file).parent().unwrap();
         match auto_resolve_files(&mut emu, &mut stdin, &mut stdout, &src_dir, &flags) {
             Ok(0) => {}
-            Ok(QUIT_TEST) => return Ok(0),
+            Ok(REQUEST_QUIT) => return Ok(0),
             result => return result,
         }
     }
@@ -113,7 +117,7 @@ pub fn run_nonstep(src_file: String, flags: Flags) -> io::Result<i32> {
                 if matches!(error, RuntimeError::NormalTermination { .. }) {
                     return Ok(0);
                 } else {
-                    return Ok(QUIT_TEST);
+                    return Ok(REQUEST_QUIT);
                 }
             }
         }
@@ -148,7 +152,7 @@ pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
             let src_dir = Path::new(&src_file).parent().unwrap();
             match resolve_files(&mut emu, &mut stdin, &mut stdout, &src_dir, &flags) {
                 Ok(0) => {}
-                Ok(QUIT_TEST) => return Ok(0),
+                Ok(REQUEST_QUIT) => return Ok(0),
                 result => return result,
             }
         }
@@ -158,8 +162,8 @@ pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
         let mut state = State {
             err: None,
             run_mode: RunMode::BasicStep {
-                basic_limit: 1,
-                comet2_limit: 1_000_000_000_000,
+                basic_step_count: 1,
+                comet2_limit: DEFAULT_COMET2_LIMIT_ON_BASIC_MODE,
             },
             start_point: None,
             default_cmd: None,
@@ -168,12 +172,17 @@ pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
         loop {
             writeln!(stdout)?;
             show_state_basic(&emu, &mut stdout, &state)?;
+            if let Some((file, _, _)) = emu.get_current_program() {
+                if emu.basic_info.contains_key(file) {
+                    show_var(&emu, &mut stdout, Some(file.as_str()))?;
+                }
+            }
 
             match interactive_basic(&mut emu, &mut stdin, &mut stdout, &mut state) {
                 Ok(0) => {}
-                Ok(REQUEST_RESTART) => continue,
-                Ok(REQUEST_RESET) => break,
-                Ok(QUIT_TEST) => return Ok(0),
+                Ok(REQUEST_CONTINUE) => continue,
+                Ok(REQUEST_BREAK) => break,
+                Ok(REQUEST_QUIT) => return Ok(0),
                 result => return result,
             }
 
@@ -193,14 +202,14 @@ pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
                         do_step(&mut emu, &mut stdin, &mut stdout, &mut state, count)
                     }
                     RunMode::BasicStep {
-                        basic_limit,
+                        basic_step_count,
                         comet2_limit,
                     } => do_step_basic(
                         &mut emu,
                         &mut stdin,
                         &mut stdout,
                         &mut state,
-                        basic_limit,
+                        basic_step_count,
                         comet2_limit,
                     ),
                 };
@@ -241,7 +250,7 @@ pub fn run_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
             let src_dir = Path::new(&src_file).parent().unwrap();
             match resolve_files(&mut emu, &mut stdin, &mut stdout, &src_dir, &flags) {
                 Ok(0) => {}
-                Ok(QUIT_TEST) => return Ok(0),
+                Ok(REQUEST_QUIT) => return Ok(0),
                 result => return result,
             }
         }
@@ -262,9 +271,9 @@ pub fn run_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
 
             match interactive_casl2(&mut emu, &mut stdin, &mut stdout, &mut state) {
                 Ok(0) => {}
-                Ok(REQUEST_RESTART) => continue,
-                Ok(REQUEST_RESET) => break,
-                Ok(QUIT_TEST) => return Ok(0),
+                Ok(REQUEST_CONTINUE) => continue,
+                Ok(REQUEST_BREAK) => break,
+                Ok(REQUEST_QUIT) => return Ok(0),
                 result => return result,
             }
 
@@ -302,27 +311,27 @@ fn do_step_basic<R: BufRead, W: Write>(
     stdin: &mut R,
     stdout: &mut W,
     state: &mut State,
-    mut basic_limit: u64,
+    mut basic_step_count: u64,
     comet2_limit: u64,
 ) -> io::Result<i32> {
     let mut limit = comet2_limit;
-    while basic_limit > 0 && limit > 0 {
+    while basic_step_count > 0 && limit > 0 {
         limit -= 1;
         match emu.step_through_code(stdin, stdout) {
             Ok(_) => {}
             Err(RuntimeError::IoError(error)) => return Err(error),
             Err(error) => {
                 state.err = Some(error);
-                basic_limit -= 1;
+                basic_step_count -= 1;
                 break;
             }
         }
         if emu.basic_step.is_some() {
-            basic_limit -= 1;
+            basic_step_count -= 1;
             limit = comet2_limit;
         }
     }
-    if basic_limit != 0 {
+    if basic_step_count != 0 {
         if state.err.is_some() {
             if matches!(state.err, Some(RuntimeError::NormalTermination { .. })) {
                 writeln!(stdout, "指定ステップ数が終わる前にプログラムが終了しました")?;
@@ -498,9 +507,9 @@ fn interactive_basic<R: BufRead, W: Write>(
             "help",
             "list-files",
             "quit",
-            "reset",
-            "restart",
-            "run",
+            "show-src",
+            "show-state",
+            "show-var",
             "step",
         ] {
             if tmp.len() + cmd.len() + 1 >= 80 {
@@ -528,7 +537,7 @@ fn interactive_basic<R: BufRead, W: Write>(
             eprintln!("入力がキャンセルされました");
             io::stderr().flush()?;
             writeln!(stdout, "テスト実行を中止します")?;
-            return Ok(QUIT_TEST);
+            return Ok(REQUEST_QUIT);
         }
         let mut line = line.trim().to_string();
         if line.is_empty() {
@@ -553,13 +562,49 @@ fn interactive_basic<R: BufRead, W: Write>(
                     writeln!(stdout, "デフォルトのデバッガコマンド: none")?;
                 }
             }
-            "help" => show_command_help(cmd_and_param.next(), stdout)?,
+            "help" => show_command_help_for_basic(cmd_and_param.next(), stdout)?,
             "list-files" => list_files(emu, stdout)?,
             "quit" => {
                 writeln!(stdout, "テスト実行を中止します")?;
-                return Ok(QUIT_TEST);
+                return Ok(REQUEST_QUIT);
             }
-            "step" | "s" => return Ok(0),
+            "show-src" => todo!(),
+            "show-state" => show_state_basic(emu, stdout, state)?,
+            "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
+            "step" | "s" => {
+                if let Some(param) = cmd_and_param.next() {
+                    let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+                    match iter.next().unwrap().parse::<u64>() {
+                        Ok(basic_step_count) if basic_step_count > 0 => {
+                            if let Some(rest) = iter.next() {
+                                match rest.parse::<u64>() {
+                                    Ok(comet2_limit) if comet2_limit > 0 => {
+                                        state.run_mode = RunMode::BasicStep {
+                                            basic_step_count,
+                                            comet2_limit,
+                                        };
+                                        return Ok(0);
+                                    }
+                                    _ => writeln!(stdout, "引数が不正です")?,
+                                }
+                            } else {
+                                state.run_mode = RunMode::BasicStep {
+                                    basic_step_count,
+                                    comet2_limit: DEFAULT_COMET2_LIMIT_ON_BASIC_MODE,
+                                };
+                                return Ok(0);
+                            }
+                        }
+                        _ => writeln!(stdout, "引数が不正です")?,
+                    };
+                } else {
+                    state.run_mode = RunMode::BasicStep {
+                        basic_step_count: 1,
+                        comet2_limit: DEFAULT_COMET2_LIMIT_ON_BASIC_MODE,
+                    };
+                    return Ok(0);
+                }
+            }
             _ => {
                 writeln!(stdout, "コマンドが正しくありません")?;
             }
@@ -642,7 +687,7 @@ fn interactive_casl2<R: BufRead, W: Write>(
             eprintln!("入力がキャンセルされました");
             io::stderr().flush()?;
             writeln!(stdout, "テスト実行を中止します")?;
-            return Ok(QUIT_TEST);
+            return Ok(REQUEST_QUIT);
         }
         let mut line = line.trim().to_string();
         if line.is_empty() {
@@ -680,20 +725,20 @@ fn interactive_casl2<R: BufRead, W: Write>(
             "list-files" => list_files(emu, stdout)?,
             "quit" => {
                 writeln!(stdout, "テスト実行を中止します")?;
-                return Ok(QUIT_TEST);
+                return Ok(REQUEST_QUIT);
             }
             "remove-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), false)?,
             "reset" => {
                 writeln!(stdout, "エミュレータをリセットします")?;
                 writeln!(stdout)?;
-                return Ok(REQUEST_RESET);
+                return Ok(REQUEST_BREAK);
             }
             "restart" => {
                 emu.init_to_start(state.start_point);
                 state.err = None;
                 writeln!(stdout, "プログラムをリスタートします")?;
                 writeln!(stdout)?;
-                return Ok(REQUEST_RESTART);
+                return Ok(REQUEST_CONTINUE);
             }
             "run" => {
                 if let Some(s) = cmd_and_param.next() {
@@ -3081,7 +3126,7 @@ fn set_reg(emu: &mut Emulator, param: Option<&str>) -> String {
 }
 
 //
-// help [<TARGET>]
+// help [<TARGET>] (CASL2)
 //
 fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<()> {
     writeln!(stdout)?;
@@ -3293,6 +3338,59 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
         "skip" => todo!(),
         "step" => todo!(),
         "write-code" => todo!(),
+        _ => "コマンド名が正しくありません",
+    };
+
+    writeln!(stdout, "{}", description)?;
+
+    Ok(())
+}
+
+//
+// help [<TARGET>] (BASIC)
+//
+fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<()> {
+    writeln!(stdout)?;
+    writeln!(stdout, "コマンドヘルプ")?;
+
+    let cmd = match cmd {
+        Some(cmd) => cmd.to_ascii_lowercase(),
+        None => {
+            writeln!(
+                stdout,
+                r#"
+    default-cmd [<DEBUG_COMMAND>]
+                空行が入力されたときの挙動を設定する
+    help <COMMAND_NAME>
+                指定デバッガコマンドの詳細ヘルプを表示する
+    list-files
+                読み込んだソースファイルの一覧を表示する
+    quit
+                テスト実行を中止する
+    show-src [<ADDRESS> [<LENGTH>]]
+                指定したアドレス位置から指定長さ分の範囲にあるコードを表示する
+    show-state
+                直近の実行(run,skip,step)の結果を再表示する
+    show-var [<BASIC_SRC_FILE> [<VAR_NAME1>[,<VAR_NAME2>..]]]
+                指定したBASICプログラムの変数名と対応するラベルとアドレスと値を表示する
+    s    [<STEP_COUNT>]
+    step [<STEP_COUNT>]
+                指定ステップ数だけ実行する。STEP_COUNT省略時は1ステップだけ実行する
+"#
+            )?;
+            return Ok(());
+        }
+    };
+
+    let description = match cmd.as_str() {
+        "default-cmd" => todo!(),
+        "help" => todo!(),
+        "list-files" => todo!(),
+        "quit" => todo!(),
+        "show-src" => todo!(),
+        "show-state" => todo!(),
+        "show-var" => todo!(),
+        "step" => todo!(),
         _ => "コマンド名が正しくありません",
     };
 
