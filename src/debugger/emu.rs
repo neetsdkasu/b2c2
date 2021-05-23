@@ -1274,7 +1274,7 @@ impl Emulator {
             self.loaded_files
                 .insert(path.to_string_lossy().into_owned());
 
-            if overwrite || !path.exists() {
+            if overwrite || !path.exists() || !path.is_file() {
                 let mut dst_file = fs::File::create(&path)?;
 
                 for stmt in casl2_src.iter() {
@@ -1282,7 +1282,16 @@ impl Emulator {
                 }
 
                 dst_file.flush()?;
-                eprintln!("生成されたファイル: {}", path.display());
+                if path.exists() && path.is_file() {
+                    eprintln!("生成されたファイル(上書): {}", path.display());
+                } else {
+                    eprintln!("生成されたファイル: {}", path.display());
+                }
+            } else {
+                eprintln!(
+                    "既存するためファイル生成をスキップしました: {}",
+                    path.display()
+                );
             }
         }
         path.pop();
@@ -1295,7 +1304,11 @@ impl Emulator {
             if overwrite || !path.exists() {
                 let statistics = stat::analyze(casl2_src);
                 fs::write(&path, statistics)?;
-                eprintln!("生成されたファイル: {}", path.display());
+                if path.exists() && path.is_file() {
+                    eprintln!("生成されたファイル(上書): {}", path.display());
+                } else {
+                    eprintln!("生成されたファイル: {}", path.display());
+                }
             }
             path.pop();
         }

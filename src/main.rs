@@ -206,7 +206,11 @@ fn process_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
         if let Some(file) = backup.file_name() {
             path.push(file);
             let _copy_size = fs::copy(src_file, &path)?;
-            eprintln!("生成されたファイル: {}", path.display());
+            if path.exists() && path.is_file() {
+                eprintln!("生成されたファイル　(上書): {}", path.display());
+            } else {
+                eprintln!("生成されたファイル: {}", path.display());
+            }
             path.pop();
         }
     }
@@ -249,7 +253,11 @@ fn save_casl2_src_list(
 
             dst_file.flush()?;
         }
-        eprintln!("生成されたファイル: {}", path.display());
+        if path.exists() && path.is_file() {
+            eprintln!("生成されたファイル(上書): {}", path.display());
+        } else {
+            eprintln!("生成されたファイル: {}", path.display());
+        }
         path.pop();
 
         if statistics {
@@ -257,7 +265,11 @@ fn save_casl2_src_list(
             path.push(file_name);
             let statistics = stat::analyze(&casl2_src);
             fs::write(&path, statistics)?;
-            eprintln!("生成されたファイル: {}", path.display());
+            if path.exists() && path.is_file() {
+                eprintln!("生成されたファイル(上書): {}", path.display());
+            } else {
+                eprintln!("生成されたファイル: {}", path.display());
+            }
             path.pop();
         }
     }

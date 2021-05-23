@@ -568,7 +568,7 @@ fn interactive_basic<R: BufRead, W: Write>(
                 writeln!(stdout, "テスト実行を中止します")?;
                 return Ok(REQUEST_QUIT);
             }
-            "show-src" => todo!(),
+            "show-src" => show_src_basic(emu, stdout, cmd_and_param.next())?,
             "show-state" => show_state_basic(emu, stdout, state)?,
             "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
             "step" | "s" => {
@@ -833,10 +833,179 @@ fn interactive_casl2<R: BufRead, W: Write>(
 }
 
 //
+// show-src [<SRC_FILE>] (BASIC)
+//
+fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let (file, _, stmt) = match param {
+        Some(".") => match emu.get_current_program() {
+            Some(pg) => pg,
+            None => {
+                writeln!(stdout, ".のBASICソースの情報が見つかりませんでした")?;
+                return Ok(());
+            }
+        },
+        Some(file) => match emu.program_list.iter().find(|(f, _, _)| f == file) {
+            Some(pg) => pg,
+            None => {
+                writeln!(stdout, "{}のBASICソースの情報が見つかりませんでした", file)?;
+                return Ok(());
+            }
+        },
+        None => match emu.get_current_program() {
+            Some(pg) => pg,
+            None => {
+                writeln!(stdout, "引数が必要です")?;
+                return Ok(());
+            }
+        },
+    };
+
+    let info = match emu.basic_info.get(file) {
+        Some((_, info)) => info,
+        None => {
+            writeln!(stdout, "{}のBASICソースの情報が見つかりませんでした", file)?;
+            return Ok(());
+        }
+    };
+
+    writeln!(stdout, "{}のBASICソース", file)?;
+
+    for (_, (_, arg)) in info
+        .label_set
+        .argument_labels
+        .iter()
+        .collect::<BTreeMap<_, _>>()
+    {
+        match &arg.var_type {
+            parser::VarType::Boolean => writeln!(stdout, " ByVal {} As Boolean", arg.var_name)?,
+            parser::VarType::RefBoolean => writeln!(stdout, " ByRef {} As Boolean", arg.var_name)?,
+            parser::VarType::Integer => writeln!(stdout, " ByVal {} As Integer", arg.var_name)?,
+            parser::VarType::RefInteger => writeln!(stdout, " ByRef {} As Integer", arg.var_name)?,
+            _ => unreachable!("BUG"),
+        }
+    }
+    for (_, (_, arg)) in info
+        .label_set
+        .str_argument_labels
+        .iter()
+        .collect::<BTreeMap<_, _>>()
+    {
+        match &arg.var_type {
+            parser::VarType::String => writeln!(stdout, " ByVal {} As String", arg.var_name)?,
+            parser::VarType::RefString => writeln!(stdout, " ByRef {} As String", arg.var_name)?,
+            _ => unreachable!("BUG"),
+        }
+    }
+    for (_, (_, arg)) in info
+        .label_set
+        .arr_argument_labels
+        .iter()
+        .collect::<BTreeMap<_, _>>()
+    {
+        match &arg.var_type {
+            parser::VarType::ArrayOfBoolean(size) => {
+                writeln!(stdout, " ByVal {}({}) As Boolean", arg.var_name, size)?
+            }
+            parser::VarType::RefArrayOfBoolean(size) => {
+                writeln!(stdout, " ByRef {}({}) As Boolean", arg.var_name, size)?
+            }
+            parser::VarType::ArrayOfInteger(size) => {
+                writeln!(stdout, " ByVal {}({}) As Integer", arg.var_name, size)?
+            }
+            parser::VarType::RefArrayOfInteger(size) => {
+                writeln!(stdout, " ByRef {}({}) As Integer", arg.var_name, size)?
+            }
+            _ => unreachable!("BUG"),
+        }
+    }
+    for (name, _) in info
+        .label_set
+        .bool_var_labels
+        .iter()
+        .collect::<BTreeMap<_, _>>()
+    {
+        writeln!(stdout, " Dim {} As Boolean", name)?;
+    }
+    for (name, _) in info
+        .label_set
+        .int_var_labels
+        .iter()
+        .collect::<BTreeMap<_, _>>()
+    {
+        writeln!(stdout, " Dim {} As Integer", name)?;
+    }
+    for (name, _) in info
+        .label_set
+        .str_var_labels
+        .iter()
+        .collect::<BTreeMap<_, _>>()
+    {
+        writeln!(stdout, " Dim {} As String", name)?;
+    }
+    for (name, label) in info
+        .label_set
+        .bool_arr_labels
+        .iter()
+        .collect::<BTreeMap<_, _>>()
+    {
+        writeln!(stdout, " Dim {}({}) As Boolean", name, label.size())?;
+    }
+    for (name, label) in info
+        .label_set
+        .int_arr_labels
+        .iter()
+        .collect::<BTreeMap<_, _>>()
+    {
+        writeln!(stdout, " Dim {}({}) As Integer", name, label.size())?;
+    }
+
+    let bps = stmt
+        .iter()
+        .filter_map(|(pos, stmt)| match stmt {
+            casl2::Statement::Code {
+                command: casl2::Command::DebugBasicStep { id },
+                ..
+            } => Some((*pos, *id)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    for (i, (n, hint)) in info.status_hint.iter().enumerate() {
+        let bp = match bps.get(i) {
+            Some((pos, id)) if emu.break_points[*pos] => {
+                assert_eq!(*id, i);
+                "*"
+            }
+            _ => " ",
+        };
+        writeln!(stdout, "{0:5}: {1} {2:3$}{4}", i, bp, "", n * 2, hint)?;
+    }
+
+    Ok(())
+}
+
+//
 // show-state (BASIC)
 //
 fn show_state_basic<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> io::Result<()> {
     writeln!(stdout, "Step Count: {}", emu.basic_step_count)?;
+
+    write!(stdout, "Call State:")?;
+    for (i, (pos, _)) in emu.program_stack.iter().enumerate() {
+        if i > 0 {
+            write!(stdout, " >")?;
+        }
+        if let Some((k, _)) = emu.all_label_list.iter().find(|(_, v)| v == pos) {
+            if let Some((f, _, _)) = emu.program_list.iter().find(|(_, lb, _)| lb == k) {
+                write!(stdout, " {} ({})", k, f)?;
+            } else {
+                write!(stdout, " {}", k)?;
+            }
+        } else {
+            write!(stdout, " ????")?;
+        }
+    }
+    writeln!(stdout)?;
 
     let bp = if emu.break_points[emu.program_register] {
         "*"
@@ -844,28 +1013,19 @@ fn show_state_basic<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> 
         " "
     };
 
-    if let Some((file, label, _)) = emu.get_current_program() {
-        writeln!(stdout, "Program: {} ({})", label, file)?;
-
-        if let Some((_, info)) = emu.basic_info.get(file) {
-            if let Some(hint_id) = emu.basic_step {
-                if let Some((n, s)) = info.status_hint.get(hint_id as usize) {
-                    writeln!(stdout, "Last:")?;
-                    writeln!(stdout, "{0:5}: {1} {2:3$}{4}", hint_id, bp, "", n * 2, s)?;
-                } else {
-                    writeln!(stdout, "Last:")?;
-                    writeln!(stdout, "{0:5}: {1} ?????", hint_id, bp)?;
-                }
-            } else {
-                writeln!(stdout, "Last:")?;
-                writeln!(stdout, "?????: {} ?????", bp)?;
-            }
+    if let Some(((_, info), hint_id)) = emu
+        .get_current_program()
+        .and_then(|(file, _, _)| emu.basic_info.get(file))
+        .zip(emu.basic_step)
+    {
+        if let Some((n, s)) = info.status_hint.get(hint_id as usize) {
+            writeln!(stdout, "Last:")?;
+            writeln!(stdout, "{0:5}: {1} {2:3$}{4}", hint_id, bp, "", n * 2, s)?;
         } else {
             writeln!(stdout, "Last:")?;
-            writeln!(stdout, "?????: {} ?????", bp)?;
+            writeln!(stdout, "{0:5}: {1} ?????", hint_id, bp)?;
         }
     } else {
-        writeln!(stdout, "Program: ????")?;
         writeln!(stdout, "Last:")?;
         writeln!(stdout, "?????: {} ?????", bp)?;
     }
@@ -1069,7 +1229,14 @@ fn set_by_file<W: Write>(
                     writeln!(stdout, "デフォルトのデバッガコマンド: none")?;
                 }
             }
+            "dump-code" => dump_code(emu, stdout, cmd_and_param.next())?,
+            "dump-mem" => dump_mem(emu, stdout, cmd_and_param.next())?,
             "fill-mem" => fill_mem(emu, stdout, cmd_and_param.next())?,
+            "find-code" => find_code(emu, stdout, cmd_and_param.next())?,
+            "find-src" => find_src(emu, stdout, cmd_and_param.next())?,
+            "find-value" => find_value(emu, stdout, cmd_and_param.next())?,
+            "help" => show_command_help(cmd_and_param.next(), stdout)?,
+            "list-files" => list_files(emu, stdout)?,
             "remove-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), false)?,
             "set-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), true)?,
             "set-label" => set_label(emu, stdout, cmd_and_param.next())?,
@@ -1105,6 +1272,13 @@ fn set_by_file<W: Write>(
                     writeln!(stdout, "スタートポイントを{}に戻しました", name)?;
                 }
             }
+            "show-labels" => show_labels(emu, stdout, cmd_and_param.next())?,
+            "show-mem" => show_mem(emu, stdout, cmd_and_param.next())?,
+            "show-mem-stat" => show_mem_stat(emu, stdout, cmd_and_param.next())?,
+            "show-reg" => show_reg(emu, stdout)?,
+            "show-src" => show_src(emu, stdout, cmd_and_param.next())?,
+            "show-state" => show_state(emu, stdout, state)?,
+            "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
             "write-code" => write_code(emu, stdout, cmd_and_param.next())?,
             "" => {}
             _ => {
@@ -2774,8 +2948,14 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
         Some(param) => {
             let mut iter = param.splitn(2, ' ');
             let file = iter.next().unwrap();
+            let info = if file == "." {
+                emu.get_current_program()
+                    .and_then(|(file, _, _)| emu.basic_info.get(file))
+            } else {
+                emu.basic_info.get(&file.to_string())
+            };
             let var_list = iter.next().map(|s| s.split(',').collect::<Vec<_>>());
-            (file, emu.basic_info.get(&file.to_string()), var_list)
+            (file, info, var_list)
         }
     };
 
@@ -2886,7 +3066,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             writeln!(stdout)?;
             writeln!(
                 stdout,
-                "※省略された値を確認するには変数名を指定した実行が必要です　( 例: show-reg {} {} )",
+                "※省略された値を確認するには変数名を指定した実行が必要です　( 例: show-var {} {} )",
                 file, name
             )?;
         }
@@ -3367,14 +3547,14 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
                 読み込んだソースファイルの一覧を表示する
     quit
                 テスト実行を中止する
-    show-src [<ADDRESS> [<LENGTH>]]
-                指定したアドレス位置から指定長さ分の範囲にあるコードを表示する
+    show-src [<BASIC_SRC_FILE>]]
+                指定したBASICプログラムのコードを表示する
     show-state
                 直近の実行(run,skip,step)の結果を再表示する
     show-var [<BASIC_SRC_FILE> [<VAR_NAME1>[,<VAR_NAME2>..]]]
                 指定したBASICプログラムの変数名と対応するラベルとアドレスと値を表示する
-    s    [<STEP_COUNT>]
-    step [<STEP_COUNT>]
+    s    [<STEP_COUNT> [<COMET2_STEP_LIMIT>]]
+    step [<STEP_COUNT> [<COMET2_STEP_LIMIT>]]
                 指定ステップ数だけ実行する。STEP_COUNT省略時は1ステップだけ実行する
 "#
             )?;

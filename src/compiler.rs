@@ -1800,7 +1800,7 @@ impl ArrayLabel {
         }
     }
 
-    fn size(&self) -> usize {
+    pub fn size(&self) -> usize {
         use ArrayLabel::*;
         match self {
             TempArrayOfBoolean(_, size)
