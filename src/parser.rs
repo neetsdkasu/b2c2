@@ -4314,7 +4314,7 @@ impl std::fmt::Display for Expr {
             LitCharacter('"') => r#"""""c"#.fmt(f),
             LitCharacter(lit) => format!(r#""{}"c"#, lit).fmt(f),
             UnaryOperatorInteger(op, value) | UnaryOperatorBoolean(op, value) => {
-                format!("{} {}", op.to_string(), value.to_string()).fmt(f)
+                format!("{}({})", op.to_string(), value.to_string()).fmt(f)
             }
             VarBoolean(var)
             | VarInteger(var)

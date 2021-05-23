@@ -80,7 +80,7 @@ fn parser_parse_expr_works() {
                 (2, Token::Boolean(true)),
             ],
             Expr::UnaryOperatorBoolean(Operator::Not, Box::new(Expr::LitBoolean(true))),
-            "Not True",
+            "Not(True)",
         ),
         // -1234
         (
@@ -107,7 +107,7 @@ fn parser_parse_expr_works() {
                 (2, Token::Integer(1234)),
             ],
             Expr::UnaryOperatorInteger(Operator::Not, Box::new(Expr::LitInteger(1234))),
-            "Not 1234",
+            "Not(1234)",
         ),
         // Not boolVar1
         (
@@ -116,7 +116,7 @@ fn parser_parse_expr_works() {
                 (2, Token::Name(bool_var1.into())),
             ],
             Expr::UnaryOperatorBoolean(Operator::Not, Box::new(Expr::VarBoolean(bool_var1.into()))),
-            "Not boolVar1",
+            "Not(boolVar1)",
         ),
         // Not intVar1
         (
@@ -125,7 +125,7 @@ fn parser_parse_expr_works() {
                 (2, Token::Name(int_var1.into())),
             ],
             Expr::UnaryOperatorInteger(Operator::Not, Box::new(Expr::VarInteger(int_var1.into()))),
-            "Not intVar1",
+            "Not(intVar1)",
         ),
         // -intVar1
         (
@@ -134,7 +134,7 @@ fn parser_parse_expr_works() {
                 (2, Token::Name(int_var1.into())),
             ],
             Expr::UnaryOperatorInteger(Operator::Sub, Box::new(Expr::VarInteger(int_var1.into()))),
-            "- intVar1",
+            "-(intVar1)",
         ),
         // 123 + 456
         (
@@ -320,7 +320,7 @@ fn parser_parse_expr_works() {
                     )),
                 )),
             ),
-            "(- Max(123, 456) + (- (987 - 321) * Not intVar1))",
+            "(-(Max(123, 456)) + (-((987 - 321)) * Not(intVar1)))",
         ),
     ];
 
