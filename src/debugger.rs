@@ -507,6 +507,11 @@ fn interactive_basic<R: BufRead, W: Write>(
             "help",
             "list-files",
             "quit",
+            "remove-breakpoint",
+            "reset",
+            "restart",
+            "run",
+            "set-breakpoint",
             "show-src",
             "show-state",
             "show-var",
@@ -568,6 +573,13 @@ fn interactive_basic<R: BufRead, W: Write>(
                 writeln!(stdout, "テスト実行を中止します")?;
                 return Ok(REQUEST_QUIT);
             }
+            "remove-breakpoint" => {
+                set_breakpoint_for_basic(emu, stdout, cmd_and_param.next(), false)?
+            }
+            "reset" => todo!(),
+            "restart" => todo!(),
+            "run" => todo!(),
+            "set-breakpoint" => set_breakpoint_for_basic(emu, stdout, cmd_and_param.next(), true)?,
             "show-src" => show_src_basic(emu, stdout, cmd_and_param.next())?,
             "show-state" => show_state_basic(emu, stdout, state)?,
             "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
@@ -833,6 +845,113 @@ fn interactive_casl2<R: BufRead, W: Write>(
 }
 
 //
+// remove-breakpoint <BASIC_SRC_FILE> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
+// set-breakpoint <BASIC_SRC_FILE> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
+//
+fn set_breakpoint_for_basic<W: Write>(
+    emu: &mut Emulator,
+    stdout: &mut W,
+    param: Option<&str>,
+    value: bool,
+) -> io::Result<()> {
+    let (file, params) = match param {
+        None => {
+            writeln!(stdout, "引数が必要です")?;
+            return Ok(());
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let file = iter.next().unwrap();
+            match iter.next() {
+                None => {
+                    writeln!(stdout, "引数が不正です")?;
+                    return Ok(());
+                }
+                Some(param) => (file, param),
+            }
+        }
+    };
+
+    let (bps, points) = {
+        let pg = if file == "." {
+            emu.get_current_program()
+        } else {
+            emu.program_list.iter().find(|(f, _, _)| f == file)
+        };
+
+        let (file, stmt) = match pg {
+            Some((file, _, stmt)) => (file, stmt),
+            None => {
+                writeln!(stdout, "{}のBASICソースの情報が見つかりませんでした", file)?;
+                return Ok(());
+            }
+        };
+
+        let info = match emu.basic_info.get(file) {
+            Some((_, info)) => info,
+            None => {
+                writeln!(stdout, "{}のBASICソースの情報が見つかりませんでした", file)?;
+                return Ok(());
+            }
+        };
+
+        let mut points = vec![];
+        for p in params.split(',') {
+            match p.trim().parse::<usize>() {
+                Ok(v) if v < info.status_hint.len() => points.push(v),
+                _ => {
+                    writeln!(stdout, "引数が不正です")?;
+                    return Ok(());
+                }
+            }
+        }
+
+        let bps = stmt
+            .iter()
+            .filter_map(|(pos, stmt)| match stmt {
+                casl2::Statement::Code {
+                    command: casl2::Command::DebugBasicStep { id },
+                    ..
+                } => Some((*pos, *id)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        (bps, points)
+    };
+
+    for p in points {
+        if let Some((pos, _)) = bps.iter().find(|(_, id)| *id == p) {
+            emu.break_points[*pos] = value;
+        }
+    }
+
+    let file = if file == "." {
+        emu.get_current_program()
+            .map(|(file, _, _)| file.as_str())
+            .unwrap()
+    } else {
+        file
+    };
+
+    if value {
+        writeln!(
+            stdout,
+            "{}の{}にブレークポイントを設定しました",
+            file, params
+        )?;
+    } else {
+        writeln!(
+            stdout,
+            "{}の{}からブレークポイントを解除しました",
+            file, params
+        )?;
+    }
+
+    Ok(())
+}
+
+//
 // show-src [<SRC_FILE>] (BASIC)
 //
 fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
@@ -971,7 +1090,7 @@ fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>)
         .collect::<Vec<_>>();
 
     for (i, (n, hint)) in info.status_hint.iter().enumerate() {
-        let bp = match bps.get(i) {
+        let bp = match bps.iter().find(|(_, id)| *id == i) {
             Some((pos, id)) if emu.break_points[*pos] => {
                 assert_eq!(*id, i);
                 "*"
@@ -1007,7 +1126,7 @@ fn show_state_basic<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> 
     }
     writeln!(stdout)?;
 
-    let bp = if emu.break_points[emu.program_register] {
+    let bp = if emu.break_points[emu.last_run_position] {
         "*"
     } else {
         " "
@@ -3351,7 +3470,7 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
     reset
                 プログラムを最初から実行しなおす。プログラムをファイルから読み込みなおし配置される
     restart
-                プログラムを最初の位置から実行しなおす。メモリやGRやFRは終了時点の状態が維持される
+                プログラムを最初の位置から実行しなおす。メモリやGRやFRは終了時点の状態クリアされずに最後の実行状態のまま維持される
     run [<STEP_LIMIT>]
                 次のブレークポイントまで実行する。ステップ制限数までにブレークポイントに到達しない場合はそこで停止する
     set-breakpoint [<ADDRESS1>[,<ADDRESS2>..]]
@@ -3547,14 +3666,24 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
                 読み込んだソースファイルの一覧を表示する
     quit
                 テスト実行を中止する
-    show-src [<BASIC_SRC_FILE>]]
+    remove-breakpoint <BASIC_SRC_FILE> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
+                指定したBASICプログラムからブレークポイントを解除する
+    reset
+                プログラムを最初から実行しなおす。プログラムをファイルから読み込みなおし配置される
+    restart
+                プログラムを最初の位置から実行しなおす。メモリの状態はクリアされずに最後の実行状態のまま維持される
+    run [<BASIC_STEP_LIMIT> [<COMET2_STEP_LIMIT>]]
+                次のブレークポイントまで実行する
+    set-breakpoint <BASIC_SRC_FILE> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
+                指定したBASICプログラムにブレークポイントを設定する
+    show-src [<BASIC_SRC_FILE>]
                 指定したBASICプログラムのコードを表示する
     show-state
                 直近の実行(run,skip,step)の結果を再表示する
     show-var [<BASIC_SRC_FILE> [<VAR_NAME1>[,<VAR_NAME2>..]]]
                 指定したBASICプログラムの変数名と対応するラベルとアドレスと値を表示する
-    s    [<STEP_COUNT> [<COMET2_STEP_LIMIT>]]
-    step [<STEP_COUNT> [<COMET2_STEP_LIMIT>]]
+    s    [<BASIC_STEP_COUNT> [<COMET2_STEP_LIMIT>]]
+    step [<BASIC_STEP_COUNT> [<COMET2_STEP_LIMIT>]]
                 指定ステップ数だけ実行する。STEP_COUNT省略時は1ステップだけ実行する
 "#
             )?;
@@ -3567,6 +3696,11 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
         "help" => todo!(),
         "list-files" => todo!(),
         "quit" => todo!(),
+        "remove-breakpoint" => todo!(),
+        "reset" => todo!(),
+        "restart" => todo!(),
+        "run" => todo!(),
+        "set-breakpoint" => todo!(),
         "show-src" => todo!(),
         "show-state" => todo!(),
         "show-var" => todo!(),
