@@ -34,6 +34,10 @@ enum RunMode {
         basic_step_count: u64,
         comet2_limit: u64,
     },
+    GoToBasicBreakPoint {
+        basic_limit: u64,
+        comet2_limit: u64,
+    },
 }
 
 struct State {
@@ -212,6 +216,17 @@ pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
                         basic_step_count,
                         comet2_limit,
                     ),
+                    RunMode::GoToBasicBreakPoint {
+                        basic_limit,
+                        comet2_limit,
+                    } => do_go_to_breakpoint_for_basic(
+                        &mut emu,
+                        &mut stdin,
+                        &mut stdout,
+                        &mut state,
+                        basic_limit,
+                        comet2_limit,
+                    ),
                 };
                 match result {
                     Ok(0) => {}
@@ -292,7 +307,9 @@ pub fn run_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
                     RunMode::Step(count) => {
                         do_step(&mut emu, &mut stdin, &mut stdout, &mut state, count)
                     }
-                    RunMode::BasicStep { .. } => unreachable!("BUG"),
+                    RunMode::BasicStep { .. } | RunMode::GoToBasicBreakPoint { .. } => {
+                        unreachable!("BUG")
+                    }
                 };
                 match result {
                     Ok(0) => {}
@@ -301,6 +318,71 @@ pub fn run_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
             }
         }
     }
+}
+
+//
+// ブレークポイントまで実行実行 (BASIC)
+//
+fn do_go_to_breakpoint_for_basic<R: BufRead, W: Write>(
+    emu: &mut Emulator,
+    stdin: &mut R,
+    stdout: &mut W,
+    state: &mut State,
+    basic_limit: u64,
+    comet2_limit: u64,
+) -> io::Result<i32> {
+    let mut step_limit = basic_limit;
+    let mut limit = comet2_limit;
+    let mut reach = false;
+    while step_limit > 0 && limit > 0 {
+        limit -= 1;
+        match emu.step_through_code(stdin, stdout) {
+            Ok(_) => {}
+            Err(RuntimeError::IoError(error)) => return Err(error),
+            Err(error) => {
+                let last_pos = emu.last_run_position;
+                let last_op_code = emu.mem[last_pos];
+                if emu.break_points[last_pos] {
+                    reach = true;
+                } else if get_op_code_size(last_op_code) == 2 {
+                    reach = emu.break_points[last_pos + 1];
+                }
+                state.err = Some(error);
+                break;
+            }
+        }
+        if emu.basic_step.is_some() {
+            step_limit -= 1;
+            limit = comet2_limit;
+            if emu.break_points[emu.last_run_position] {
+                reach = true;
+                break;
+            }
+        }
+    }
+    writeln!(stdout)?;
+    if reach {
+        writeln!(stdout, "ブレークポイントに到達しました")?;
+    } else if state.err.is_some() {
+        if matches!(state.err, Some(RuntimeError::NormalTermination { .. })) {
+            writeln!(stdout, "ブレークポイント到達前にプログラムが終了しました")?;
+        } else {
+            writeln!(stdout, "実行はエラーで停止しました")?;
+        }
+    } else if step_limit == 0 {
+        writeln!(
+            stdout,
+            "指定ステップ数が終わる前にステップ数の制限({})に達して停止しました",
+            basic_limit
+        )?;
+    } else if limit == 0 {
+        writeln!(
+            stdout,
+            "指定ステップ数が終わる前にCOMET2ステップ数制限({})に達して停止しました",
+            comet2_limit
+        )?;
+    }
+    Ok(0)
 }
 
 //
@@ -578,7 +660,40 @@ fn interactive_basic<R: BufRead, W: Write>(
             }
             "reset" => todo!(),
             "restart" => todo!(),
-            "run" => todo!(),
+            "run" => {
+                if let Some(param) = cmd_and_param.next() {
+                    let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+                    match iter.next().unwrap().parse::<u64>() {
+                        Ok(basic_limit) if basic_limit > 0 => {
+                            if let Some(rest) = iter.next() {
+                                match rest.parse::<u64>() {
+                                    Ok(comet2_limit) if comet2_limit > 0 => {
+                                        state.run_mode = RunMode::GoToBasicBreakPoint {
+                                            basic_limit,
+                                            comet2_limit,
+                                        };
+                                        return Ok(0);
+                                    }
+                                    _ => writeln!(stdout, "引数が不正です")?,
+                                }
+                            } else {
+                                state.run_mode = RunMode::GoToBasicBreakPoint {
+                                    basic_limit,
+                                    comet2_limit: DEFAULT_COMET2_LIMIT_ON_BASIC_MODE,
+                                };
+                                return Ok(0);
+                            }
+                        }
+                        _ => writeln!(stdout, "引数が不正です")?,
+                    };
+                } else {
+                    state.run_mode = RunMode::GoToBasicBreakPoint {
+                        basic_limit: 10000,
+                        comet2_limit: DEFAULT_COMET2_LIMIT_ON_BASIC_MODE,
+                    };
+                    return Ok(0);
+                }
+            }
             "set-breakpoint" => set_breakpoint_for_basic(emu, stdout, cmd_and_param.next(), true)?,
             "show-src" => show_src_basic(emu, stdout, cmd_and_param.next())?,
             "show-state" => show_state_basic(emu, stdout, state)?,
