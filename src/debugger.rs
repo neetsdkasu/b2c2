@@ -1154,6 +1154,13 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
                 writeln!(stdout, "{}に{}を設定しました", var_name, v)?;
                 return Ok(());
             }
+            [T::Character(ch)] => {
+                let s = jis_x_201::convert_kana_wide_full_to_half(&ch.to_string());
+                let v = jis_x_201::convert_from_char(s.chars().next().unwrap());
+                emu.mem[pos] = v as u16;
+                writeln!(stdout, "{}に{}を設定しました", var_name, v)?;
+                return Ok(());
+            }
             [T::Operator(Op::Sub), T::Integer(v)] => {
                 let v = -*v;
                 emu.mem[pos] = v as u16;

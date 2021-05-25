@@ -31,10 +31,32 @@ impl ResolveLabel<compiler::ValueLabel> for Emulator {
                 let pos = self.mem[*pos] as usize;
                 Some((pos, parser::VarType::Integer))
             }
-            MemBoolean(_) => todo!(),
-            MemInteger(_) => todo!(),
-            MemRefBoolean(_) => todo!(),
-            MemRefInteger(_) => todo!(),
+            MemBoolean(offset) => {
+                let pos = local_labels.get("MEM")?;
+                let pos = self.mem[*pos] as usize;
+                let pos = pos.checked_add(*offset).filter(|p| *p <= 0xFFFF)?;
+                Some((pos, parser::VarType::Boolean))
+            }
+            MemInteger(offset) => {
+                let pos = local_labels.get("MEM")?;
+                let pos = self.mem[*pos] as usize;
+                let pos = pos.checked_add(*offset).filter(|p| *p <= 0xFFFF)?;
+                Some((pos, parser::VarType::Integer))
+            }
+            MemRefBoolean(offset) => {
+                let pos = local_labels.get("MEM")?;
+                let pos = self.mem[*pos] as usize;
+                let pos = pos.checked_add(*offset).filter(|p| *p <= 0xFFFF)?;
+                let pos = self.mem[pos] as usize;
+                Some((pos, parser::VarType::Boolean))
+            }
+            MemRefInteger(offset) => {
+                let pos = local_labels.get("MEM")?;
+                let pos = self.mem[*pos] as usize;
+                let pos = pos.checked_add(*offset).filter(|p| *p <= 0xFFFF)?;
+                let pos = self.mem[pos] as usize;
+                Some((pos, parser::VarType::Integer))
+            }
         }
     }
 }
