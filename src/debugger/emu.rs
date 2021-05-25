@@ -419,7 +419,7 @@ impl Emulator {
         Ok(pos)
     }
 
-    pub(super) fn make_literal_str(&mut self, s: &str) -> Result<usize, &str> {
+    pub(super) fn make_literal_str(&mut self, s: &str) -> Result<(usize, String), &str> {
         if s.is_empty() {
             return Err("空の文字定数のリテラルは生成できません");
         }
@@ -433,7 +433,7 @@ impl Emulator {
             .collect::<String>();
         let key = format!("'{}", s);
         if let Some((pos, _)) = self.literals_for_debug.get(&key) {
-            return Ok(*pos);
+            return Ok((*pos, s));
         }
         if !self.enough_remain(bs.len()) {
             return Err("メモリ不足でリテラルを生成できません");
@@ -443,8 +443,9 @@ impl Emulator {
             self.mem[pos + i] = *ch as u16;
         }
         self.compile_pos += bs.len();
-        self.literals_for_debug.insert(key, (pos, Value::Str(s)));
-        Ok(pos)
+        self.literals_for_debug
+            .insert(key, (pos, Value::Str(s.clone())));
+        Ok((pos, s))
     }
 
     pub(super) fn resolve_dummy_code(&mut self, label: String) -> Result<(), String> {

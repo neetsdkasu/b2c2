@@ -234,7 +234,7 @@ impl Value {
                         Err(msg) => Err(msg.to_string()),
                     },
                     casl2::Token::LitStr(s) => match emu.make_literal_str(&s) {
-                        Ok(pos) => Ok(Value::Int(pos as u16)),
+                        Ok((pos, _)) => Ok(Value::Int(pos as u16)),
                         Err(msg) => Err(msg.to_string()),
                     },
                 }

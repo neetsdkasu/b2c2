@@ -1328,7 +1328,74 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
             return Ok(());
         }
         Ok(_) => unreachable!("BUG"),
-        Err(_arg) => todo!(),
+        Err(arg) => match &arg.var_type {
+            V::Boolean => {
+                if let [T::Boolean(v)] = values.as_slice() {
+                    let s = if *v { "True" } else { "False" };
+                    let v = if *v { 0xFFFF } else { 0x0000 };
+                    emu.general_registers[arg.register1 as usize] = v;
+                    writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
+                    return Ok(());
+                }
+            }
+            V::Integer => match values.as_slice() {
+                [T::Integer(v)] if *v <= 0xFFFF => {
+                    emu.general_registers[arg.register1 as usize] = *v as u16;
+                    writeln!(stdout, "{}に{}を設定しました", var_name, v)?;
+                    return Ok(());
+                }
+                [T::Character(ch)] => {
+                    let s = jis_x_201::convert_kana_wide_full_to_half(&ch.to_string());
+                    let v = jis_x_201::convert_from_char(s.chars().next().unwrap());
+                    emu.general_registers[arg.register1 as usize] = v as u16;
+                    writeln!(stdout, "{}に{}を設定しました", var_name, v)?;
+                    return Ok(());
+                }
+                [T::Operator(Op::Sub), T::Integer(v)] => {
+                    let v = -*v;
+                    emu.general_registers[arg.register1 as usize] = v as u16;
+                    writeln!(stdout, "{}に{}を設定しました", var_name, v as i16)?;
+                    return Ok(());
+                }
+                _ => {}
+            },
+            V::String => {
+                if let [T::String(s)] = values.as_slice() {
+                    if s.is_empty() {
+                        emu.general_registers[arg.register1 as usize] = 0;
+                        emu.general_registers[arg.register2.unwrap() as usize] = 0;
+                        writeln!(stdout, r#"{}に""を設定しました"#, var_name)?;
+                    } else {
+                        match emu.make_literal_str(s) {
+                            Err(_) => {
+                                writeln!(stdout, "引数が不正です")?;
+                                return Ok(());
+                            }
+                            Ok((pos, s)) => {
+                                emu.general_registers[arg.register1 as usize] =
+                                    s.chars().count().min(256) as u16;
+                                emu.general_registers[arg.register2.unwrap() as usize] = pos as u16;
+                                writeln!(
+                                    stdout,
+                                    r#"{}に"{}"を設定しました"#,
+                                    var_name,
+                                    s.replace('"', r#""""#)
+                                )?;
+                            }
+                        }
+                    }
+                    return Ok(());
+                }
+                todo!()
+            }
+            V::ArrayOfBoolean(..) => todo!(),
+            V::ArrayOfInteger(..) => todo!(),
+            V::RefBoolean => todo!(),
+            V::RefInteger => todo!(),
+            V::RefString => todo!(),
+            V::RefArrayOfBoolean(..) => todo!(),
+            V::RefArrayOfInteger(..) => todo!(),
+        },
     }
 
     writeln!(stdout, "引数が不正です")?;
