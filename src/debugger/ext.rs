@@ -1,5 +1,44 @@
 use super::*;
 
+pub(super) trait ResolveLabel<T> {
+    fn resolve_label(&self, pg_label: &str, label: &T) -> Option<(usize, parser::VarType)>;
+}
+
+impl ResolveLabel<compiler::ValueLabel> for Emulator {
+    fn resolve_label(
+        &self,
+        pg_label: &str,
+        label: &compiler::ValueLabel,
+    ) -> Option<(usize, parser::VarType)> {
+        use compiler::ValueLabel::*;
+        let local_labels = self.local_labels.get(pg_label)?;
+        match label {
+            VarBoolean(label) => {
+                let pos = local_labels.get(label)?;
+                Some((*pos, parser::VarType::Boolean))
+            }
+            VarInteger(label) => {
+                let pos = local_labels.get(label)?;
+                Some((*pos, parser::VarType::Integer))
+            }
+            VarRefBoolean(label) => {
+                let pos = local_labels.get(label)?;
+                let pos = self.mem[*pos] as usize;
+                Some((pos, parser::VarType::Boolean))
+            }
+            VarRefInteger(label) => {
+                let pos = local_labels.get(label)?;
+                let pos = self.mem[*pos] as usize;
+                Some((pos, parser::VarType::Integer))
+            }
+            MemBoolean(_) => todo!(),
+            MemInteger(_) => todo!(),
+            MemRefBoolean(_) => todo!(),
+            MemRefInteger(_) => todo!(),
+        }
+    }
+}
+
 impl Value {
     // リテラル生成するので注意
     pub(super) fn take_all_values(

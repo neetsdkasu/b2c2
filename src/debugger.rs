@@ -6,7 +6,9 @@ use crate::compiler;
 use crate::jis_x_201;
 use crate::parser;
 use crate::stat;
+use crate::tokenizer;
 use crate::Flags;
+use ext::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::fmt;
@@ -637,6 +639,7 @@ fn interactive_basic<R: BufRead, W: Write>(
             "run",
             "set-breakpoint",
             "set-by-file",
+            "set-var",
             "show-src",
             "show-state",
             "show-var",
@@ -763,6 +766,7 @@ fn interactive_basic<R: BufRead, W: Write>(
             }
             "set-breakpoint" => set_breakpoint_for_basic(emu, stdout, cmd_and_param.next(), true)?,
             "set-by-file" => todo!(),
+            "set-var" => set_var(emu, stdout, cmd_and_param.next())?,
             "show-src" => show_src_basic(emu, stdout, cmd_and_param.next())?,
             "show-state" => show_state_basic(emu, stdout, state)?,
             "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
@@ -1040,6 +1044,130 @@ fn interactive_casl2<R: BufRead, W: Write>(
             }
         }
     }
+}
+
+//
+// set-var <VAR_NAME> <VALUE1>[,<VALUE2>..]
+//
+fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    if emu.basic_step.is_none() {
+        writeln!(stdout, "現在地点での変数の設定は行えません")?;
+        return Ok(());
+    }
+    let (var_name, values) = match param {
+        None => {
+            writeln!(stdout, "引数が必要です")?;
+            return Ok(());
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let var_name = iter.next().unwrap();
+            let values = match iter.next() {
+                None => {
+                    writeln!(stdout, "引数が不正です")?;
+                    return Ok(());
+                }
+                Some(values) => {
+                    let res = match tokenizer::Tokenizer::new(values.as_bytes()).next() {
+                        Some(res) => res?,
+                        None => {
+                            writeln!(stdout, "引数が不正です")?;
+                            return Ok(());
+                        }
+                    };
+                    match res {
+                        Ok((_, tokens)) => tokens.into_iter().map(|(_, tk)| tk).collect::<Vec<_>>(),
+                        Err(_) => {
+                            writeln!(stdout, "引数が不正です")?;
+                            return Ok(());
+                        }
+                    }
+                }
+            };
+            (var_name, values)
+        }
+    };
+
+    let target = {
+        let (file, pg_label, label_set) = match emu.get_current_program() {
+            None => {
+                writeln!(stdout, "現在地点での変数の設定は行えません")?;
+                return Ok(());
+            }
+            Some((file, _, _)) => match emu.basic_info.get(file) {
+                Some((label, info)) => (file, label, &info.label_set),
+                None => {
+                    writeln!(stdout, "現在地点での変数の設定は行えません")?;
+                    return Ok(());
+                }
+            },
+        };
+
+        if let Some((label, arg)) = label_set.argument_labels.get(var_name) {
+            if matches!(emu.basic_step, Some(0)) {
+                Err(arg.clone())
+            } else {
+                match emu.resolve_label(pg_label, label) {
+                    Some(res) => Ok(res),
+                    None => {
+                        writeln!(stdout, "{}に変数{}が見つかりません", file, var_name)?;
+                        return Ok(());
+                    }
+                }
+            }
+        } else if matches!(emu.basic_step, Some(0)) {
+            writeln!(stdout, "現在地点での変数の設定は行えません")?;
+            return Ok(());
+        } else if let Some(label) = label_set
+            .int_var_labels
+            .get(var_name)
+            .or_else(|| label_set.bool_var_labels.get(var_name))
+        {
+            match emu.resolve_label(pg_label, label) {
+                Some(res) => Ok(res),
+                None => {
+                    writeln!(stdout, "{}に変数{}が見つかりません", file, var_name)?;
+                    return Ok(());
+                }
+            }
+        } else {
+            writeln!(stdout, "{}に変数{}が見つかりません", file, var_name)?;
+            return Ok(());
+        }
+    };
+
+    use parser::VarType as V;
+    use tokenizer::{Operator as Op, Token as T};
+
+    match target {
+        Ok((pos, V::Boolean)) => {
+            if let [T::Boolean(v)] = values.as_slice() {
+                emu.mem[pos] = if *v { 0xFFFF } else { 0x0000 };
+                let v = if *v { "True" } else { "False" };
+                writeln!(stdout, "{}に{}を設定しました", var_name, v)?;
+                return Ok(());
+            }
+        }
+        Ok((pos, V::Integer)) => match values.as_slice() {
+            [T::Integer(v)] => {
+                emu.mem[pos] = *v as u16;
+                writeln!(stdout, "{}に{}を設定しました", var_name, v)?;
+                return Ok(());
+            }
+            [T::Operator(Op::Sub), T::Integer(v)] => {
+                let v = -*v;
+                emu.mem[pos] = v as u16;
+                writeln!(stdout, "{}に{}を設定しました", var_name, v as i16)?;
+                return Ok(());
+            }
+            _ => {}
+        },
+        Ok(_) => todo!(),
+        Err(_arg) => todo!(),
+    }
+
+    writeln!(stdout, "引数が不正です")?;
+    Ok(())
 }
 
 //
@@ -3881,6 +4009,8 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
                 指定したBASICプログラムにブレークポイントを設定する
     set-by-file <FILE_PATH>
                 ファイルに列挙された設定系のデバッガコマンドを実行する
+    set-var <VAR_NAME> <VALUE1>[,<VALUE2>..]
+                現在地点のプログラムの変数に値を設定する。値はBASICリテラルのみ
     show-src [<BASIC_SRC_FILE>]
                 指定したBASICプログラムのコードを表示する
     show-state
@@ -3908,6 +4038,7 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
         "run" => todo!(),
         "set-breakpoint" => todo!(),
         "set-by-file" => todo!(),
+        "set-var" => todo!(),
         "show-src" => todo!(),
         "show-state" => todo!(),
         "show-var" => todo!(),
