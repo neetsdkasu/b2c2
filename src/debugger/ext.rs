@@ -1,7 +1,57 @@
 use super::*;
 
+type ResolveLabelAddress = (usize, Option<usize>, parser::VarType);
+
 pub(super) trait ResolveLabel<T> {
-    fn resolve_label(&self, pg_label: &str, label: &T) -> Option<(usize, parser::VarType)>;
+    fn resolve_label(&self, pg_label: &str, label: &T) -> Option<ResolveLabelAddress>;
+}
+
+impl ResolveLabel<compiler::StrLabels> for Emulator {
+    fn resolve_label(
+        &self,
+        pg_label: &str,
+        label: &compiler::StrLabels,
+    ) -> Option<ResolveLabelAddress> {
+        use compiler::StrLabelType::*;
+        let local_labels = self.local_labels.get(pg_label)?;
+        match &label.label_type {
+            Const(_) | Lit(_) | Temp => unreachable!("たぶん"),
+            Var | ArgVal => {
+                let len = local_labels.get(&label.len)?;
+                len.checked_add(1).filter(|p| *p <= self.mem.len())?;
+                let pos = local_labels.get(&label.pos)?;
+                pos.checked_add(256).filter(|p| *p <= self.mem.len())?;
+                Some((*len, Some(*pos), parser::VarType::String))
+            }
+            ArgRef => {
+                let len = local_labels.get(&label.len)?;
+                let len = self.mem[*len] as usize;
+                len.checked_add(1).filter(|p| *p <= self.mem.len())?;
+                let pos = local_labels.get(&label.pos)?;
+                let pos = self.mem[*pos] as usize;
+                pos.checked_add(256).filter(|p| *p <= self.mem.len())?;
+                Some((len, Some(pos), parser::VarType::String))
+            }
+            MemVal(offset) => {
+                let mem = local_labels.get("MEM")?;
+                let mem = self.mem[*mem] as usize;
+                let len = mem.checked_add(*offset).filter(|p| *p < self.mem.len())?;
+                len.checked_add(257).filter(|p| *p <= self.mem.len())?;
+                Some((len, Some(len + 1), parser::VarType::String))
+            }
+            MemRef(offset) => {
+                let mem = local_labels.get("MEM")?;
+                let mem = self.mem[*mem] as usize;
+                let len = mem.checked_add(*offset).filter(|p| *p < self.mem.len())?;
+                let pos = len.checked_add(1).filter(|p| *p < self.mem.len())?;
+                let len = self.mem[len] as usize;
+                len.checked_add(1).filter(|p| *p <= self.mem.len())?;
+                let pos = self.mem[pos] as usize;
+                pos.checked_add(256).filter(|p| *p <= self.mem.len())?;
+                Some((len, Some(pos), parser::VarType::String))
+            }
+        }
+    }
 }
 
 impl ResolveLabel<compiler::ArrayLabel> for Emulator {
@@ -9,7 +59,7 @@ impl ResolveLabel<compiler::ArrayLabel> for Emulator {
         &self,
         pg_label: &str,
         label: &compiler::ArrayLabel,
-    ) -> Option<(usize, parser::VarType)> {
+    ) -> Option<ResolveLabelAddress> {
         use compiler::ArrayLabel::*;
         let local_labels = self.local_labels.get(pg_label)?;
         match label {
@@ -17,37 +67,37 @@ impl ResolveLabel<compiler::ArrayLabel> for Emulator {
             VarArrayOfBoolean(label, size) => {
                 let pos = local_labels.get(label)?;
                 pos.checked_add(*size).filter(|p| *p <= self.mem.len())?;
-                Some((*pos, parser::VarType::ArrayOfBoolean(*size)))
+                Some((*pos, None, parser::VarType::ArrayOfBoolean(*size)))
             }
             VarArrayOfInteger(label, size) => {
                 let pos = local_labels.get(label)?;
                 pos.checked_add(*size).filter(|p| *p <= self.mem.len())?;
-                Some((*pos, parser::VarType::ArrayOfInteger(*size)))
+                Some((*pos, None, parser::VarType::ArrayOfInteger(*size)))
             }
             VarRefArrayOfBoolean(label, size) => {
                 let pos = local_labels.get(label)?;
                 let pos = self.mem[*pos] as usize;
                 pos.checked_add(*size).filter(|p| *p <= self.mem.len())?;
-                Some((pos, parser::VarType::ArrayOfBoolean(*size)))
+                Some((pos, None, parser::VarType::ArrayOfBoolean(*size)))
             }
             VarRefArrayOfInteger(label, size) => {
                 let pos = local_labels.get(label)?;
                 let pos = self.mem[*pos] as usize;
-                Some((pos, parser::VarType::ArrayOfInteger(*size)))
+                Some((pos, None, parser::VarType::ArrayOfInteger(*size)))
             }
             MemArrayOfBoolean { offset, size } => {
                 let pos = local_labels.get("MEM")?;
                 let pos = self.mem[*pos] as usize;
                 let pos = pos.checked_add(*offset).filter(|p| *p < self.mem.len())?;
                 pos.checked_add(*size).filter(|p| *p <= self.mem.len())?;
-                Some((pos, parser::VarType::ArrayOfBoolean(*size)))
+                Some((pos, None, parser::VarType::ArrayOfBoolean(*size)))
             }
             MemArrayOfInteger { offset, size } => {
                 let pos = local_labels.get("MEM")?;
                 let pos = self.mem[*pos] as usize;
                 let pos = pos.checked_add(*offset).filter(|p| *p < self.mem.len())?;
                 pos.checked_add(*size).filter(|p| *p <= self.mem.len())?;
-                Some((pos, parser::VarType::ArrayOfInteger(*size)))
+                Some((pos, None, parser::VarType::ArrayOfInteger(*size)))
             }
             MemRefArrayOfBoolean { offset, size } => {
                 let pos = local_labels.get("MEM")?;
@@ -55,7 +105,7 @@ impl ResolveLabel<compiler::ArrayLabel> for Emulator {
                 let pos = pos.checked_add(*offset).filter(|p| *p < self.mem.len())?;
                 let pos = self.mem[pos] as usize;
                 pos.checked_add(*size).filter(|p| *p <= self.mem.len())?;
-                Some((pos, parser::VarType::ArrayOfBoolean(*size)))
+                Some((pos, None, parser::VarType::ArrayOfBoolean(*size)))
             }
             MemRefArrayOfInteger { offset, size } => {
                 let pos = local_labels.get("MEM")?;
@@ -63,7 +113,7 @@ impl ResolveLabel<compiler::ArrayLabel> for Emulator {
                 let pos = pos.checked_add(*offset).filter(|p| *p < self.mem.len())?;
                 let pos = self.mem[pos] as usize;
                 pos.checked_add(*size).filter(|p| *p <= self.mem.len())?;
-                Some((pos, parser::VarType::ArrayOfInteger(*size)))
+                Some((pos, None, parser::VarType::ArrayOfInteger(*size)))
             }
         }
     }
@@ -74,53 +124,53 @@ impl ResolveLabel<compiler::ValueLabel> for Emulator {
         &self,
         pg_label: &str,
         label: &compiler::ValueLabel,
-    ) -> Option<(usize, parser::VarType)> {
+    ) -> Option<ResolveLabelAddress> {
         use compiler::ValueLabel::*;
         let local_labels = self.local_labels.get(pg_label)?;
         match label {
             VarBoolean(label) => {
                 let pos = local_labels.get(label)?;
-                Some((*pos, parser::VarType::Boolean))
+                Some((*pos, None, parser::VarType::Boolean))
             }
             VarInteger(label) => {
                 let pos = local_labels.get(label)?;
-                Some((*pos, parser::VarType::Integer))
+                Some((*pos, None, parser::VarType::Integer))
             }
             VarRefBoolean(label) => {
                 let pos = local_labels.get(label)?;
                 let pos = self.mem[*pos] as usize;
-                Some((pos, parser::VarType::Boolean))
+                Some((pos, None, parser::VarType::Boolean))
             }
             VarRefInteger(label) => {
                 let pos = local_labels.get(label)?;
                 let pos = self.mem[*pos] as usize;
-                Some((pos, parser::VarType::Integer))
+                Some((pos, None, parser::VarType::Integer))
             }
             MemBoolean(offset) => {
                 let pos = local_labels.get("MEM")?;
                 let pos = self.mem[*pos] as usize;
                 let pos = pos.checked_add(*offset).filter(|p| *p < self.mem.len())?;
-                Some((pos, parser::VarType::Boolean))
+                Some((pos, None, parser::VarType::Boolean))
             }
             MemInteger(offset) => {
                 let pos = local_labels.get("MEM")?;
                 let pos = self.mem[*pos] as usize;
                 let pos = pos.checked_add(*offset).filter(|p| *p < self.mem.len())?;
-                Some((pos, parser::VarType::Integer))
+                Some((pos, None, parser::VarType::Integer))
             }
             MemRefBoolean(offset) => {
                 let pos = local_labels.get("MEM")?;
                 let pos = self.mem[*pos] as usize;
                 let pos = pos.checked_add(*offset).filter(|p| *p < self.mem.len())?;
                 let pos = self.mem[pos] as usize;
-                Some((pos, parser::VarType::Boolean))
+                Some((pos, None, parser::VarType::Boolean))
             }
             MemRefInteger(offset) => {
                 let pos = local_labels.get("MEM")?;
                 let pos = self.mem[*pos] as usize;
                 let pos = pos.checked_add(*offset).filter(|p| *p < self.mem.len())?;
                 let pos = self.mem[pos] as usize;
-                Some((pos, parser::VarType::Integer))
+                Some((pos, None, parser::VarType::Integer))
             }
         }
     }

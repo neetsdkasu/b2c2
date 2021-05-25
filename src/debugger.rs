@@ -1127,6 +1127,18 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
                     }
                 }
             }
+        } else if let Some((label, arg)) = label_set.str_argument_labels.get(var_name) {
+            if matches!(emu.basic_step, Some(0)) {
+                Err(arg.clone())
+            } else {
+                match emu.resolve_label(pg_label, label) {
+                    Some(res) => Ok(res),
+                    None => {
+                        writeln!(stdout, "{}に変数{}が見つかりません", file, var_name)?;
+                        return Ok(());
+                    }
+                }
+            }
         } else if matches!(emu.basic_step, Some(0)) {
             writeln!(stdout, "現在地点での変数の設定は行えません")?;
             return Ok(());
@@ -1154,6 +1166,14 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
                     return Ok(());
                 }
             }
+        } else if let Some(label) = label_set.str_var_labels.get(var_name) {
+            match emu.resolve_label(pg_label, label) {
+                Some(res) => Ok(res),
+                None => {
+                    writeln!(stdout, "{}に変数{}が見つかりません", file, var_name)?;
+                    return Ok(());
+                }
+            }
         } else {
             writeln!(stdout, "{}に変数{}が見つかりません", file, var_name)?;
             return Ok(());
@@ -1164,7 +1184,7 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
     use tokenizer::{Operator as Op, Token as T};
 
     match target {
-        Ok((pos, V::Boolean)) => {
+        Ok((pos, None, V::Boolean)) => {
             if let [T::Boolean(v)] = values.as_slice() {
                 emu.mem[pos] = if *v { 0xFFFF } else { 0x0000 };
                 let v = if *v { "True" } else { "False" };
@@ -1172,7 +1192,7 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
                 return Ok(());
             }
         }
-        Ok((pos, V::Integer)) => match values.as_slice() {
+        Ok((pos, None, V::Integer)) => match values.as_slice() {
             [T::Integer(v)] if *v <= 0xFFFF => {
                 emu.mem[pos] = *v as u16;
                 writeln!(stdout, "{}に{}を設定しました", var_name, v)?;
@@ -1193,7 +1213,7 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
             }
             _ => {}
         },
-        Ok((pos, V::ArrayOfBoolean(size))) => {
+        Ok((pos, None, V::ArrayOfBoolean(size))) => {
             let mut vs = Vec::with_capacity(size);
             for tk in values.split(|tk| matches!(tk, T::Operator(Op::Comma))) {
                 if let [T::Boolean(v)] = tk {
@@ -1218,7 +1238,7 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
             writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
             return Ok(());
         }
-        Ok((pos, V::ArrayOfInteger(size))) => {
+        Ok((pos, None, V::ArrayOfInteger(size))) => {
             let mut vs = Vec::with_capacity(size);
             for tk in values.split(|tk| matches!(tk, T::Operator(Op::Comma))) {
                 match tk {
@@ -1255,7 +1275,10 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
             writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
             return Ok(());
         }
-        Ok(_) => todo!(),
+        Ok((len, Some(pos), V::String)) => {
+            todo!();
+        }
+        Ok(_) => unreachable!("BUG"),
         Err(_arg) => todo!(),
     }
 
