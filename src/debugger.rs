@@ -658,8 +658,18 @@ fn interactive_basic<R: BufRead, W: Write>(
             "remove-breakpoint" => {
                 set_breakpoint_for_basic(emu, stdout, cmd_and_param.next(), false)?
             }
-            "reset" => todo!(),
-            "restart" => todo!(),
+            "reset" => {
+                writeln!(stdout, "エミュレータをリセットします")?;
+                writeln!(stdout)?;
+                return Ok(REQUEST_BREAK);
+            }
+            "restart" => {
+                emu.init_to_start(None);
+                state.err = None;
+                writeln!(stdout, "プログラムをリスタートします")?;
+                writeln!(stdout)?;
+                return Ok(REQUEST_CONTINUE);
+            }
             "run" => {
                 if let Some(param) = cmd_and_param.next() {
                     let mut iter = param.splitn(2, ' ').map(|s| s.trim());
