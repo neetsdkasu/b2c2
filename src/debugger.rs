@@ -1115,6 +1115,18 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
                     }
                 }
             }
+        } else if let Some((label, arg)) = label_set.arr_argument_labels.get(var_name) {
+            if matches!(emu.basic_step, Some(0)) {
+                Err(arg.clone())
+            } else {
+                match emu.resolve_label(pg_label, label) {
+                    Some(res) => Ok(res),
+                    None => {
+                        writeln!(stdout, "{}に変数{}が見つかりません", file, var_name)?;
+                        return Ok(());
+                    }
+                }
+            }
         } else if matches!(emu.basic_step, Some(0)) {
             writeln!(stdout, "現在地点での変数の設定は行えません")?;
             return Ok(());
@@ -1122,6 +1134,18 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
             .int_var_labels
             .get(var_name)
             .or_else(|| label_set.bool_var_labels.get(var_name))
+        {
+            match emu.resolve_label(pg_label, label) {
+                Some(res) => Ok(res),
+                None => {
+                    writeln!(stdout, "{}に変数{}が見つかりません", file, var_name)?;
+                    return Ok(());
+                }
+            }
+        } else if let Some(label) = label_set
+            .int_arr_labels
+            .get(var_name)
+            .or_else(|| label_set.bool_arr_labels.get(var_name))
         {
             match emu.resolve_label(pg_label, label) {
                 Some(res) => Ok(res),
@@ -1149,7 +1173,7 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
             }
         }
         Ok((pos, V::Integer)) => match values.as_slice() {
-            [T::Integer(v)] => {
+            [T::Integer(v)] if *v <= 0xFFFF => {
                 emu.mem[pos] = *v as u16;
                 writeln!(stdout, "{}に{}を設定しました", var_name, v)?;
                 return Ok(());
@@ -1169,6 +1193,68 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
             }
             _ => {}
         },
+        Ok((pos, V::ArrayOfBoolean(size))) => {
+            let mut vs = Vec::with_capacity(size);
+            for tk in values.split(|tk| matches!(tk, T::Operator(Op::Comma))) {
+                if let [T::Boolean(v)] = tk {
+                    vs.push(*v);
+                } else {
+                    writeln!(stdout, "引数が不正です")?;
+                    return Ok(());
+                }
+            }
+            if vs.len() != size {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+            let mut s = String::new();
+            for (i, v) in vs.iter().enumerate() {
+                emu.mem[pos + i] = if *v { 0xFFFF } else { 0x0000 };
+                if i != 0 {
+                    s.push(',');
+                }
+                s.push_str(if *v { "True" } else { "False" });
+            }
+            writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
+            return Ok(());
+        }
+        Ok((pos, V::ArrayOfInteger(size))) => {
+            let mut vs = Vec::with_capacity(size);
+            for tk in values.split(|tk| matches!(tk, T::Operator(Op::Comma))) {
+                match tk {
+                    [T::Integer(v)] if *v <= 0xFFFF => {
+                        vs.push(*v as u16);
+                    }
+                    [T::Character(ch)] => {
+                        let s = jis_x_201::convert_kana_wide_full_to_half(&ch.to_string());
+                        let v = jis_x_201::convert_from_char(s.chars().next().unwrap());
+                        vs.push(v as u16);
+                    }
+                    [T::Operator(Op::Sub), T::Integer(v)] => {
+                        let v = -*v;
+                        vs.push(v as u16);
+                    }
+                    _ => {
+                        writeln!(stdout, "引数が不正です")?;
+                        return Ok(());
+                    }
+                }
+            }
+            if vs.len() != size {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+            let mut s = String::new();
+            for (i, v) in vs.iter().enumerate() {
+                emu.mem[pos + i] = *v;
+                if i != 0 {
+                    s.push(',');
+                }
+                s.push_str(&(*v as i16).to_string());
+            }
+            writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
+            return Ok(());
+        }
         Ok(_) => todo!(),
         Err(_arg) => todo!(),
     }
@@ -1329,10 +1415,26 @@ fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>)
         .collect::<BTreeMap<_, _>>()
     {
         match &arg.var_type {
-            parser::VarType::Boolean => writeln!(stdout, " ByVal {} As Boolean", arg.var_name)?,
-            parser::VarType::RefBoolean => writeln!(stdout, " ByRef {} As Boolean", arg.var_name)?,
-            parser::VarType::Integer => writeln!(stdout, " ByVal {} As Integer", arg.var_name)?,
-            parser::VarType::RefInteger => writeln!(stdout, " ByRef {} As Integer", arg.var_name)?,
+            parser::VarType::Boolean => writeln!(
+                stdout,
+                " ByVal {} As Boolean From {}",
+                arg.var_name, arg.register1
+            )?,
+            parser::VarType::RefBoolean => writeln!(
+                stdout,
+                " ByRef {} As Boolean From {}",
+                arg.var_name, arg.register1
+            )?,
+            parser::VarType::Integer => writeln!(
+                stdout,
+                " ByVal {} As Integer From {}",
+                arg.var_name, arg.register1
+            )?,
+            parser::VarType::RefInteger => writeln!(
+                stdout,
+                " ByRef {} As Integer From {}",
+                arg.var_name, arg.register1
+            )?,
             _ => unreachable!("BUG"),
         }
     }
@@ -1343,8 +1445,20 @@ fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>)
         .collect::<BTreeMap<_, _>>()
     {
         match &arg.var_type {
-            parser::VarType::String => writeln!(stdout, " ByVal {} As String", arg.var_name)?,
-            parser::VarType::RefString => writeln!(stdout, " ByRef {} As String", arg.var_name)?,
+            parser::VarType::String => writeln!(
+                stdout,
+                " ByVal {} As String From {},{}",
+                arg.var_name,
+                arg.register1,
+                arg.register2.unwrap()
+            )?,
+            parser::VarType::RefString => writeln!(
+                stdout,
+                " ByRef {} As String From {},{}",
+                arg.var_name,
+                arg.register1,
+                arg.register2.unwrap()
+            )?,
             _ => unreachable!("BUG"),
         }
     }
@@ -1355,18 +1469,34 @@ fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>)
         .collect::<BTreeMap<_, _>>()
     {
         match &arg.var_type {
-            parser::VarType::ArrayOfBoolean(size) => {
-                writeln!(stdout, " ByVal {}({}) As Boolean", arg.var_name, size)?
-            }
-            parser::VarType::RefArrayOfBoolean(size) => {
-                writeln!(stdout, " ByRef {}({}) As Boolean", arg.var_name, size)?
-            }
-            parser::VarType::ArrayOfInteger(size) => {
-                writeln!(stdout, " ByVal {}({}) As Integer", arg.var_name, size)?
-            }
-            parser::VarType::RefArrayOfInteger(size) => {
-                writeln!(stdout, " ByRef {}({}) As Integer", arg.var_name, size)?
-            }
+            parser::VarType::ArrayOfBoolean(size) => writeln!(
+                stdout,
+                " ByVal {}({}) As Boolean From {}",
+                arg.var_name,
+                size - 1,
+                arg.register1
+            )?,
+            parser::VarType::RefArrayOfBoolean(size) => writeln!(
+                stdout,
+                " ByRef {}({}) As Boolean From {}",
+                arg.var_name,
+                size - 1,
+                arg.register1
+            )?,
+            parser::VarType::ArrayOfInteger(size) => writeln!(
+                stdout,
+                " ByVal {}({}) As Integer From {}",
+                arg.var_name,
+                size - 1,
+                arg.register1
+            )?,
+            parser::VarType::RefArrayOfInteger(size) => writeln!(
+                stdout,
+                " ByRef {}({}) As Integer From {}",
+                arg.var_name,
+                size - 1,
+                arg.register1
+            )?,
             _ => unreachable!("BUG"),
         }
     }
@@ -1400,7 +1530,7 @@ fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>)
         .iter()
         .collect::<BTreeMap<_, _>>()
     {
-        writeln!(stdout, " Dim {}({}) As Boolean", name, label.size())?;
+        writeln!(stdout, " Dim {}({}) As Boolean", name, label.size() - 1)?;
     }
     for (name, label) in info
         .label_set
@@ -1408,7 +1538,7 @@ fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>)
         .iter()
         .collect::<BTreeMap<_, _>>()
     {
-        writeln!(stdout, " Dim {}({}) As Integer", name, label.size())?;
+        writeln!(stdout, " Dim {}({}) As Integer", name, label.size() - 1)?;
     }
 
     let bps = stmt
