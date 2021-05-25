@@ -1276,7 +1276,56 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
             return Ok(());
         }
         Ok((len, Some(pos), V::String)) => {
-            todo!();
+            if let [T::String(s)] = values.as_slice() {
+                let s = jis_x_201::convert_kana_wide_full_to_half(s);
+                emu.mem[len] = s.chars().count().min(256) as u16;
+                for (i, ch) in s.chars().enumerate().take(256) {
+                    emu.mem[pos + i] = jis_x_201::convert_from_char(ch) as u16;
+                }
+                let s = s
+                    .chars()
+                    .take(256)
+                    .collect::<String>()
+                    .replace('"', r#""""#);
+                writeln!(stdout, r#"{}に"{}"を設定しました"#, var_name, s)?;
+                return Ok(());
+            }
+            let mut vs = Vec::with_capacity(256);
+            for tk in values.split(|tk| matches!(tk, T::Operator(Op::Comma))) {
+                match tk {
+                    [T::Integer(v)] if *v <= 0xFFFF => {
+                        vs.push(*v as u16);
+                    }
+                    [T::Character(ch)] => {
+                        let s = jis_x_201::convert_kana_wide_full_to_half(&ch.to_string());
+                        let v = jis_x_201::convert_from_char(s.chars().next().unwrap());
+                        vs.push(v as u16);
+                    }
+                    [T::Operator(Op::Sub), T::Integer(v)] => {
+                        let v = -*v;
+                        vs.push(v as u16);
+                    }
+                    _ => {
+                        writeln!(stdout, "引数が不正です")?;
+                        return Ok(());
+                    }
+                }
+            }
+            if vs.len() > 256 {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+            emu.mem[len] = vs.len() as u16;
+            let mut s = String::new();
+            for (i, v) in vs.iter().enumerate() {
+                emu.mem[pos + i] = *v;
+                if i != 0 {
+                    s.push(',');
+                }
+                s.push_str(&(*v as i16).to_string());
+            }
+            writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
+            return Ok(());
         }
         Ok(_) => unreachable!("BUG"),
         Err(_arg) => todo!(),
