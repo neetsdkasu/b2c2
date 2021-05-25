@@ -40,11 +40,18 @@ enum RunMode {
     },
 }
 
+#[derive(Clone, Copy)]
+enum DebugMode {
+    Basic,
+    Casl2,
+}
+
 struct State {
     err: Option<RuntimeError>,
     run_mode: RunMode,
     start_point: Option<usize>,
-    default_cmd: Option<String>,
+    default_cmd: Vec<Option<String>>,
+    debug_mode: DebugMode,
 }
 
 enum Code {
@@ -170,24 +177,51 @@ pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
                 comet2_limit: DEFAULT_COMET2_LIMIT_ON_BASIC_MODE,
             },
             start_point: None,
-            default_cmd: None,
+            default_cmd: vec![None, None],
+            debug_mode: DebugMode::Basic,
         };
 
         loop {
             writeln!(stdout)?;
-            show_state_basic(&emu, &mut stdout, &state)?;
-            if let Some((file, _, _)) = emu.get_current_program() {
-                if emu.basic_info.contains_key(file) {
-                    show_var(&emu, &mut stdout, Some(file.as_str()))?;
-                }
-            }
+            match state.debug_mode {
+                DebugMode::Basic => {
+                    show_state_basic(&emu, &mut stdout, &state)?;
+                    if let Some((file, _, _)) = emu.get_current_program() {
+                        if emu.basic_info.contains_key(file) {
+                            show_var(&emu, &mut stdout, Some(file.as_str()))?;
+                        }
+                    }
 
-            match interactive_basic(&mut emu, &mut stdin, &mut stdout, &mut state) {
-                Ok(0) => {}
-                Ok(REQUEST_CONTINUE) => continue,
-                Ok(REQUEST_BREAK) => break,
-                Ok(REQUEST_QUIT) => return Ok(0),
-                result => return result,
+                    match interactive_basic(&mut emu, &mut stdin, &mut stdout, &mut state) {
+                        Ok(0) => {}
+                        Ok(REQUEST_CONTINUE) => {
+                            if matches!(state.debug_mode, DebugMode::Casl2) {
+                                writeln!(stdout, "CASL2デバッグモードに切り替えます")?;
+                            }
+                            continue;
+                        }
+                        Ok(REQUEST_BREAK) => break,
+                        Ok(REQUEST_QUIT) => return Ok(0),
+                        result => return result,
+                    }
+                }
+                DebugMode::Casl2 => {
+                    show_state(&emu, &mut stdout, &state)?;
+                    show_reg(&emu, &mut stdout)?;
+
+                    match interactive_casl2(&mut emu, &mut stdin, &mut stdout, &mut state) {
+                        Ok(0) => {}
+                        Ok(REQUEST_CONTINUE) => {
+                            if matches!(state.debug_mode, DebugMode::Basic) {
+                                writeln!(stdout, "BASICデバッグモードに切り替えます")?;
+                            }
+                            continue;
+                        }
+                        Ok(REQUEST_BREAK) => break,
+                        Ok(REQUEST_QUIT) => return Ok(0),
+                        result => return result,
+                    }
+                }
             }
 
             writeln!(stdout)?;
@@ -276,7 +310,8 @@ pub fn run_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
             err: None,
             run_mode: RunMode::Step(1),
             start_point: None,
-            default_cmd: None,
+            default_cmd: vec![None, None],
+            debug_mode: DebugMode::Casl2,
         };
 
         loop {
@@ -286,7 +321,13 @@ pub fn run_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
 
             match interactive_casl2(&mut emu, &mut stdin, &mut stdout, &mut state) {
                 Ok(0) => {}
-                Ok(REQUEST_CONTINUE) => continue,
+                Ok(REQUEST_CONTINUE) => {
+                    if matches!(state.debug_mode, DebugMode::Basic) {
+                        writeln!(stdout, "BASICデバッグモードは使用できません")?;
+                        state.debug_mode = DebugMode::Casl2;
+                    }
+                    continue;
+                }
                 Ok(REQUEST_BREAK) => break,
                 Ok(REQUEST_QUIT) => return Ok(0),
                 result => return result,
@@ -588,12 +629,14 @@ fn interactive_basic<R: BufRead, W: Write>(
             "default-cmd",
             "help",
             "list-files",
+            "mode",
             "quit",
             "remove-breakpoint",
             "reset",
             "restart",
             "run",
             "set-breakpoint",
+            "set-by-file",
             "show-src",
             "show-state",
             "show-var",
@@ -628,7 +671,7 @@ fn interactive_basic<R: BufRead, W: Write>(
         }
         let mut line = line.trim().to_string();
         if line.is_empty() {
-            if let Some(defcmd) = state.default_cmd.as_ref() {
+            if let Some(defcmd) = state.default_cmd[DebugMode::Basic as usize].as_ref() {
                 line = defcmd.clone();
             }
         }
@@ -638,12 +681,12 @@ fn interactive_basic<R: BufRead, W: Write>(
             "default-cmd" => {
                 if let Some(defcmd) = cmd_and_param.next() {
                     if "none".eq_ignore_ascii_case(defcmd) {
-                        state.default_cmd = None;
+                        state.default_cmd[DebugMode::Basic as usize] = None;
                     } else {
-                        state.default_cmd = Some(defcmd.to_string());
+                        state.default_cmd[DebugMode::Basic as usize] = Some(defcmd.to_string());
                     }
                 }
-                if let Some(defcmd) = state.default_cmd.as_ref() {
+                if let Some(defcmd) = state.default_cmd[DebugMode::Basic as usize].as_ref() {
                     writeln!(stdout, "デフォルトのデバッガコマンド: {}", defcmd)?;
                 } else {
                     writeln!(stdout, "デフォルトのデバッガコマンド: none")?;
@@ -651,6 +694,20 @@ fn interactive_basic<R: BufRead, W: Write>(
             }
             "help" => show_command_help_for_basic(cmd_and_param.next(), stdout)?,
             "list-files" => list_files(emu, stdout)?,
+            "mode" => {
+                if let Some(param) = cmd_and_param.next() {
+                    if "casl2".eq_ignore_ascii_case(param) {
+                        state.debug_mode = DebugMode::Casl2;
+                        return Ok(REQUEST_CONTINUE);
+                    } else if "basic".eq_ignore_ascii_case(param) {
+                        writeln!(stdout, "現在BASICデバッグモードです")?;
+                    } else {
+                        writeln!(stdout, "引数が不正です")?;
+                    }
+                } else {
+                    writeln!(stdout, "現在BASICデバッグモードです")?;
+                }
+            }
             "quit" => {
                 writeln!(stdout, "テスト実行を中止します")?;
                 return Ok(REQUEST_QUIT);
@@ -705,6 +762,7 @@ fn interactive_basic<R: BufRead, W: Write>(
                 }
             }
             "set-breakpoint" => set_breakpoint_for_basic(emu, stdout, cmd_and_param.next(), true)?,
+            "set-by-file" => todo!(),
             "show-src" => show_src_basic(emu, stdout, cmd_and_param.next())?,
             "show-state" => show_state_basic(emu, stdout, state)?,
             "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
@@ -777,6 +835,7 @@ fn interactive_casl2<R: BufRead, W: Write>(
             "find-value",
             "help",
             "list-files",
+            "mode",
             "quit",
             "remove-breakpoint",
             "reset",
@@ -828,7 +887,7 @@ fn interactive_casl2<R: BufRead, W: Write>(
         }
         let mut line = line.trim().to_string();
         if line.is_empty() {
-            if let Some(defcmd) = state.default_cmd.as_ref() {
+            if let Some(defcmd) = state.default_cmd[DebugMode::Casl2 as usize].as_ref() {
                 line = defcmd.clone();
             }
         }
@@ -841,12 +900,12 @@ fn interactive_casl2<R: BufRead, W: Write>(
             "default-cmd" => {
                 if let Some(defcmd) = cmd_and_param.next() {
                     if "none".eq_ignore_ascii_case(defcmd) {
-                        state.default_cmd = None;
+                        state.default_cmd[DebugMode::Casl2 as usize] = None;
                     } else {
-                        state.default_cmd = Some(defcmd.to_string());
+                        state.default_cmd[DebugMode::Casl2 as usize] = Some(defcmd.to_string());
                     }
                 }
-                if let Some(defcmd) = state.default_cmd.as_ref() {
+                if let Some(defcmd) = state.default_cmd[DebugMode::Casl2 as usize].as_ref() {
                     writeln!(stdout, "デフォルトのデバッガコマンド: {}", defcmd)?;
                 } else {
                     writeln!(stdout, "デフォルトのデバッガコマンド: none")?;
@@ -860,6 +919,20 @@ fn interactive_casl2<R: BufRead, W: Write>(
             "find-value" => find_value(emu, stdout, cmd_and_param.next())?,
             "help" => show_command_help(cmd_and_param.next(), stdout)?,
             "list-files" => list_files(emu, stdout)?,
+            "mode" => {
+                if let Some(param) = cmd_and_param.next() {
+                    if "basic".eq_ignore_ascii_case(param) {
+                        state.debug_mode = DebugMode::Basic;
+                        return Ok(REQUEST_CONTINUE);
+                    } else if "casl2".eq_ignore_ascii_case(param) {
+                        writeln!(stdout, "現在CASL2デバッグモードです")?;
+                    } else {
+                        writeln!(stdout, "引数が不正です")?;
+                    }
+                } else {
+                    writeln!(stdout, "現在CASL2デバッグモードです")?;
+                }
+            }
             "quit" => {
                 writeln!(stdout, "テスト実行を中止します")?;
                 return Ok(REQUEST_QUIT);
@@ -1462,12 +1535,12 @@ fn set_by_file<W: Write>(
             "default-cmd" => {
                 if let Some(defcmd) = cmd_and_param.next() {
                     if "none".eq_ignore_ascii_case(defcmd) {
-                        state.default_cmd = None;
+                        state.default_cmd[DebugMode::Casl2 as usize] = None;
                     } else {
-                        state.default_cmd = Some(defcmd.to_string());
+                        state.default_cmd[DebugMode::Casl2 as usize] = Some(defcmd.to_string());
                     }
                 }
-                if let Some(defcmd) = state.default_cmd.as_ref() {
+                if let Some(defcmd) = state.default_cmd[DebugMode::Casl2 as usize].as_ref() {
                     writeln!(stdout, "デフォルトのデバッガコマンド: {}", defcmd)?;
                 } else {
                     writeln!(stdout, "デフォルトのデバッガコマンド: none")?;
@@ -3588,6 +3661,8 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
                 デバッガコマンドで使用する定数に関する説明を表示する
     list-files
                 読み込んだソースファイルの一覧を表示する
+    mode <MODE>
+                指定したデバッグモードに切り替える
     quit
                 テスト実行を中止する
     remove-breakpoint [<ADDRESS1>[,<ADDRESS2>..]]
@@ -3717,6 +3792,7 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
         "find-value" => todo!(),
         "help" => todo!(),
         "list-files" => todo!(),
+        "mode" => todo!(),
         "quit" => todo!(),
         "remove-breakpoint" => todo!(),
         "reset" => todo!(),
@@ -3789,6 +3865,8 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
                 指定デバッガコマンドの詳細ヘルプを表示する
     list-files
                 読み込んだソースファイルの一覧を表示する
+    mode <MODE>
+                指定したモードに切り替える
     quit
                 テスト実行を中止する
     remove-breakpoint <BASIC_SRC_FILE> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
@@ -3801,6 +3879,8 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
                 次のブレークポイントまで実行する
     set-breakpoint <BASIC_SRC_FILE> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
                 指定したBASICプログラムにブレークポイントを設定する
+    set-by-file <FILE_PATH>
+                ファイルに列挙された設定系のデバッガコマンドを実行する
     show-src [<BASIC_SRC_FILE>]
                 指定したBASICプログラムのコードを表示する
     show-state
@@ -3820,12 +3900,14 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
         "default-cmd" => todo!(),
         "help" => todo!(),
         "list-files" => todo!(),
+        "mode" => todo!(),
         "quit" => todo!(),
         "remove-breakpoint" => todo!(),
         "reset" => todo!(),
         "restart" => todo!(),
         "run" => todo!(),
         "set-breakpoint" => todo!(),
+        "set-by-file" => todo!(),
         "show-src" => todo!(),
         "show-state" => todo!(),
         "show-var" => todo!(),
