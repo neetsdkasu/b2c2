@@ -769,6 +769,7 @@ fn interactive_basic<R: BufRead, W: Write>(
             "set-by-file" => todo!(),
             "set-elem" => set_elem(emu, stdout, cmd_and_param.next())?,
             "set-var" => set_var(emu, stdout, cmd_and_param.next())?,
+            "show-execute-stat" => show_execute_stat(emu, stdout, cmd_and_param.next())?,
             "show-src" => show_src_basic(emu, stdout, cmd_and_param.next())?,
             "show-state" => show_state_basic(emu, stdout, state)?,
             "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
@@ -1704,21 +1705,25 @@ fn set_breakpoint_for_basic<W: Write>(
 }
 
 //
-// show-src [<SRC_FILE>] (BASIC)
+// show-execute-stat [<BASIC_SRC_FILE>]
 //
-fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
-    let (file, _, stmt) = match param {
+fn show_execute_stat<W: Write>(
+    emu: &Emulator,
+    stdout: &mut W,
+    param: Option<&str>,
+) -> io::Result<()> {
+    let (file, label, stmt) = match param {
         Some(".") => match emu.get_current_program() {
             Some(pg) => pg,
             None => {
-                writeln!(stdout, ".のBASICソースの情報が見つかりませんでした")?;
+                writeln!(stdout, ".のBASICコードの情報が見つかりませんでした")?;
                 return Ok(());
             }
         },
         Some(file) => match emu.program_list.iter().find(|(f, _, _)| f == file) {
             Some(pg) => pg,
             None => {
-                writeln!(stdout, "{}のBASICソースの情報が見つかりませんでした", file)?;
+                writeln!(stdout, "{}のBASICコードの情報が見つかりませんでした", file)?;
                 return Ok(());
             }
         },
@@ -1734,12 +1739,98 @@ fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>)
     let info = match emu.basic_info.get(file) {
         Some((_, info)) => info,
         None => {
-            writeln!(stdout, "{}のBASICソースの情報が見つかりませんでした", file)?;
+            writeln!(
+                stdout,
+                "{}({})のBASICコードの情報が見つかりませんでした",
+                label, file
+            )?;
             return Ok(());
         }
     };
 
-    writeln!(stdout, "{}のBASICソース", file)?;
+    writeln!(stdout, "{}({})の実行情報", label, file)?;
+
+    let bps = stmt
+        .iter()
+        .filter_map(|(pos, stmt)| match stmt {
+            casl2::Statement::Code {
+                command: casl2::Command::DebugBasicStep { id },
+                ..
+            } => Some((*pos, *id)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    writeln!(stdout, "実行回数")?;
+    for (i, (n, hint)) in info.status_hint.iter().enumerate() {
+        let (bp, cnt) = match bps.iter().find(|(_, id)| *id == i) {
+            Some((pos, id)) => {
+                assert_eq!(*id, i);
+                let cnt = emu.execute_count[*pos];
+                if emu.break_points[*pos] {
+                    ("*", cnt)
+                } else {
+                    (" ", cnt)
+                }
+            }
+            _ => (" ", 0),
+        };
+        writeln!(
+            stdout,
+            "{0:8} {1:5}: {2} {3:4$}{5}",
+            cnt,
+            i,
+            bp,
+            "",
+            n * 2,
+            hint
+        )?;
+    }
+
+    Ok(())
+}
+
+//
+// show-src [<BASIC_SRC_FILE>] (BASIC)
+//
+fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    let (file, label, stmt) = match param {
+        Some(".") => match emu.get_current_program() {
+            Some(pg) => pg,
+            None => {
+                writeln!(stdout, ".のBASICコードの情報が見つかりませんでした")?;
+                return Ok(());
+            }
+        },
+        Some(file) => match emu.program_list.iter().find(|(f, _, _)| f == file) {
+            Some(pg) => pg,
+            None => {
+                writeln!(stdout, "{}のBASICコードの情報が見つかりませんでした", file)?;
+                return Ok(());
+            }
+        },
+        None => match emu.get_current_program() {
+            Some(pg) => pg,
+            None => {
+                writeln!(stdout, "引数が必要です")?;
+                return Ok(());
+            }
+        },
+    };
+
+    let info = match emu.basic_info.get(file) {
+        Some((_, info)) => info,
+        None => {
+            writeln!(
+                stdout,
+                "{}({})のBASICコードの情報が見つかりませんでした",
+                label, file
+            )?;
+            return Ok(());
+        }
+    };
+
+    writeln!(stdout, "{}({})のBASICコード", label, file)?;
 
     for (_, (_, arg)) in info
         .label_set
@@ -4512,6 +4603,11 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
         "set-by-file" => todo!(),
         "set-elem" => todo!(),
         "set-var" => todo!(),
+        "show-execute-stat" => {
+            r#"
+    show-execute-stat [<BASIC_SRC_FILE>]
+                指定したBASICプログラムのコード実行の統計情報ぽいものを表示する"#
+        }
         "show-src" => todo!(),
         "show-state" => todo!(),
         "show-var" => todo!(),
