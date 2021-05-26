@@ -3721,52 +3721,52 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
 
     if let Some(var_list) = var_list {
         for name in var_list {
-            if let Some((label, _)) = info.label_set.argument_labels.get(name) {
-                print_value_label(emu, stdout, key, name, label)?;
-            } else if let Some((label, _)) = info.label_set.arr_argument_labels.get(name) {
-                print_arr_label(emu, stdout, key, name, label, false)?;
-            } else if let Some((label, _)) = info.label_set.str_argument_labels.get(name) {
-                print_str_label(emu, stdout, key, name, label, false)?;
+            if let Some((label, arg)) = info.label_set.argument_labels.get(name) {
+                print_value_label(emu, stdout, key, name, label, Some(arg))?;
+            } else if let Some((label, arg)) = info.label_set.str_argument_labels.get(name) {
+                print_str_label(emu, stdout, key, name, label, Some(arg), false)?;
+            } else if let Some((label, arg)) = info.label_set.arr_argument_labels.get(name) {
+                print_arr_label(emu, stdout, key, name, label, Some(arg), false)?;
             } else if let Some(label) = info.label_set.bool_var_labels.get(name) {
-                print_value_label(emu, stdout, key, name, label)?;
+                print_value_label(emu, stdout, key, name, label, None)?;
             } else if let Some(label) = info.label_set.int_var_labels.get(name) {
-                print_value_label(emu, stdout, key, name, label)?;
+                print_value_label(emu, stdout, key, name, label, None)?;
             } else if let Some(label) = info.label_set.str_var_labels.get(name) {
-                print_str_label(emu, stdout, key, name, label, false)?;
+                print_str_label(emu, stdout, key, name, label, None, false)?;
             } else if let Some(label) = info.label_set.bool_arr_labels.get(name) {
-                print_arr_label(emu, stdout, key, name, label, false)?;
+                print_arr_label(emu, stdout, key, name, label, None, false)?;
             } else if let Some(label) = info.label_set.int_arr_labels.get(name) {
-                print_arr_label(emu, stdout, key, name, label, false)?;
+                print_arr_label(emu, stdout, key, name, label, None, false)?;
             } else {
                 writeln!(stdout, "{}に変数{}は存在しません", file, name)?;
             }
         }
     } else {
         let mut omit_name = None;
-        for (name, (label, _)) in info
+        for (name, (label, arg)) in info
             .label_set
             .argument_labels
             .iter()
             .collect::<BTreeMap<_, _>>()
         {
-            print_value_label(emu, stdout, key, name, label)?;
+            print_value_label(emu, stdout, key, name, label, Some(arg))?;
         }
-        for (name, (label, _)) in info
+        for (name, (label, arg)) in info
             .label_set
             .str_argument_labels
             .iter()
             .collect::<BTreeMap<_, _>>()
         {
-            print_str_label(emu, stdout, key, name, label, true)?;
+            print_str_label(emu, stdout, key, name, label, Some(arg), true)?;
             omit_name = Some(name);
         }
-        for (name, (label, _)) in info
+        for (name, (label, arg)) in info
             .label_set
             .arr_argument_labels
             .iter()
             .collect::<BTreeMap<_, _>>()
         {
-            print_arr_label(emu, stdout, key, name, label, true)?;
+            print_arr_label(emu, stdout, key, name, label, Some(arg), true)?;
             omit_name = Some(name);
         }
         for (name, label) in info
@@ -3775,7 +3775,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             .iter()
             .collect::<BTreeMap<_, _>>()
         {
-            print_value_label(emu, stdout, key, name, label)?;
+            print_value_label(emu, stdout, key, name, label, None)?;
         }
         for (name, label) in info
             .label_set
@@ -3783,7 +3783,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             .iter()
             .collect::<BTreeMap<_, _>>()
         {
-            print_value_label(emu, stdout, key, name, label)?;
+            print_value_label(emu, stdout, key, name, label, None)?;
         }
         for (name, label) in info
             .label_set
@@ -3791,7 +3791,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             .iter()
             .collect::<BTreeMap<_, _>>()
         {
-            print_str_label(emu, stdout, key, name, label, true)?;
+            print_str_label(emu, stdout, key, name, label, None, true)?;
             omit_name = Some(name);
         }
         for (name, label) in info
@@ -3800,7 +3800,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             .iter()
             .collect::<BTreeMap<_, _>>()
         {
-            print_arr_label(emu, stdout, key, name, label, true)?;
+            print_arr_label(emu, stdout, key, name, label, None, true)?;
             omit_name = Some(name);
         }
         for (name, label) in info
@@ -3809,16 +3809,16 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             .iter()
             .collect::<BTreeMap<_, _>>()
         {
-            print_arr_label(emu, stdout, key, name, label, true)?;
+            print_arr_label(emu, stdout, key, name, label, None, true)?;
             omit_name = Some(name);
         }
         if let Some(name) = omit_name {
             writeln!(stdout)?;
             writeln!(
                 stdout,
-                "※省略された値を確認するには変数名を指定した実行が必要です　( 例: show-var {} {} )",
-                file, name
+                "※省略された値を確認するには変数名を指定した実行が必要です"
             )?;
+            writeln!(stdout, "  ( 例: show-var {} {} )", file, name)?;
         }
     }
     Ok(())

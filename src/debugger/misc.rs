@@ -615,10 +615,23 @@ pub(super) fn print_arr_label<W: Write>(
     key: &str,
     name: &str,
     label: &compiler::ArrayLabel,
+    arg: Option<&parser::ArgumentInfo>,
     omit: bool,
 ) -> io::Result<()> {
-    let map = emu.local_labels.get(key).expect("BUG");
     use compiler::ArrayLabel::*;
+    let arg_hint = match arg {
+        None => "".to_string(),
+        Some(arg) => match arg.var_type {
+            parser::VarType::ArrayOfBoolean(..) | parser::VarType::ArrayOfInteger(..) => {
+                format!(" {}", arg.register1)
+            }
+            parser::VarType::RefArrayOfBoolean(..) | parser::VarType::RefArrayOfInteger(..) => {
+                format!(" {}", arg.register1)
+            }
+            _ => unreachable!("BUG"),
+        },
+    };
+    let map = emu.local_labels.get(key).expect("BUG");
     match label {
         TempArrayOfBoolean(_str_labels, _size) => unreachable!("たぶん来ない"),
         TempArrayOfInteger(_str_labels, _size) => unreachable!("たぶん来ない"),
@@ -628,8 +641,8 @@ pub(super) fn print_arr_label<W: Write>(
             if adr + size > emu.mem.len() {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}             (不正なアドレス)"#,
-                    name, adr, label,
+                    r#" {:18} #{:04X} {:<8}               (不正なアドレス) {:>3}B{}"#,
+                    name, adr, label, size, arg_hint
                 )?;
                 return Ok(());
             }
@@ -651,22 +664,26 @@ pub(super) fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}             Val: (省略){}"#,
+                    r#" {:18} #{:04X} {:<8}               Val: (省略){} {:>3}B{}"#,
                     name,
                     adr,
                     label,
-                    if broken { " (異常値)" } else { "" }
+                    if broken { " (異常値)" } else { "         " },
+                    size,
+                    arg_hint
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}             Val: [{}] [{}]{}"#,
+                    r#" {:18} #{:04X} {:<8}               Val: [{}] [{}]{} {:>3}B{}"#,
                     name,
                     adr,
                     label,
                     s.trim(),
                     t.trim(),
-                    if broken { " (異常値)" } else { "" }
+                    if broken { " (異常値)" } else { "" },
+                    size,
+                    arg_hint
                 )?;
             }
         }
@@ -676,8 +693,8 @@ pub(super) fn print_arr_label<W: Write>(
             if adr + size > emu.mem.len() {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}             (不正なアドレス)"#,
-                    name, adr, label,
+                    r#" {:18} #{:04X} {:<8}               (不正なアドレス) {:>3}I{}"#,
+                    name, adr, label, size, arg_hint
                 )?;
                 return Ok(());
             }
@@ -690,18 +707,20 @@ pub(super) fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}             Val: (省略)"#,
-                    name, adr, label
+                    r#" {:18} #{:04X} {:<8}               Val: (省略)          {:>3}I{}"#,
+                    name, adr, label, size, arg_hint
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}             Val: [{}] [{}]"#,
+                    r#" {:18} #{:04X} {:<8}               Val: [{}] [{}] {:>3}I{}"#,
                     name,
                     adr,
                     label,
                     s.trim(),
-                    t.trim()
+                    t.trim(),
+                    size,
+                    arg_hint
                 )?;
             }
         }
@@ -712,8 +731,8 @@ pub(super) fn print_arr_label<W: Write>(
             if adr + size > emu.mem.len() {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} (不正なアドレス)"#,
-                    name, refer, label, adr
+                    r#" {:18} #{:04X} {:<8}    Ref: #{:04X} (不正なアドレス) {:>3}B{}"#,
+                    name, refer, label, adr, size, arg_hint
                 )?;
                 return Ok(());
             }
@@ -735,24 +754,28 @@ pub(super) fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} Val: (省略){}"#,
+                    r#" {:18} #{:04X} {:<8}    Ref: #{:04X} Val: (省略){} {:>3}B{}"#,
                     name,
                     refer,
                     label,
                     adr,
-                    if broken { " (異常値)" } else { "" }
+                    if broken { " (異常値)" } else { "         " },
+                    size,
+                    arg_hint
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} Val: [{}] [{}]{}"#,
+                    r#" {:18} #{:04X} {:<8}    Ref: #{:04X} Val: [{}] [{}]{} {:>3}B{}"#,
                     name,
                     refer,
                     label,
                     adr,
                     s.trim(),
                     t.trim(),
-                    if broken { " (異常値)" } else { "" }
+                    if broken { " (異常値)" } else { "" },
+                    size,
+                    arg_hint
                 )?;
             }
         }
@@ -763,8 +786,8 @@ pub(super) fn print_arr_label<W: Write>(
             if adr + size > emu.mem.len() {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} (不正なアドレス)"#,
-                    name, refer, label, adr
+                    r#" {:18} #{:04X} {:<8}    Ref: #{:04X} (不正なアドレス) {:>3}I{}"#,
+                    name, refer, label, adr, size, arg_hint
                 )?;
                 return Ok(());
             }
@@ -777,19 +800,21 @@ pub(super) fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} Val: (省略)"#,
-                    name, refer, label, adr
+                    r#" {:18} #{:04X} {:<8}    Ref: #{:04X} Val: (省略)          {:>3}I{}"#,
+                    name, refer, label, adr, size, arg_hint
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} Val: [{}] [{}]"#,
+                    r#" {:18} #{:04X} {:<8}   Ref: #{:04X} Val: [{}] [{}] {:>3}I{}"#,
                     name,
                     refer,
                     label,
                     adr,
                     s.trim(),
-                    t.trim()
+                    t.trim(),
+                    size,
+                    arg_hint
                 )?;
             }
         }
@@ -801,8 +826,8 @@ pub(super) fn print_arr_label<W: Write>(
             if adr + size > emu.mem.len() {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X}            (不正なアドレス)"#,
-                    name, adr, offset
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            (不正なアドレス) {:>3}B{}"#,
+                    name, adr, offset, size, arg_hint
                 )?;
                 return Ok(());
             }
@@ -824,22 +849,26 @@ pub(super) fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X}            Val: (省略){}"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            Val: (省略){} {:>3}B{}"#,
                     name,
                     adr,
                     offset,
-                    if broken { " (異常値)" } else { "" }
+                    if broken { " (異常値)" } else { "         " },
+                    size,
+                    arg_hint
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X}            Val: [{}] [{}]{}"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            Val: [{}] [{}]{} {:>3}B{}"#,
                     name,
                     adr,
                     offset,
                     s.trim(),
                     t.trim(),
-                    if broken { " (異常値)" } else { "" }
+                    if broken { " (異常値)" } else { "" },
+                    size,
+                    arg_hint
                 )?;
             }
         }
@@ -851,8 +880,8 @@ pub(super) fn print_arr_label<W: Write>(
             if adr + size > emu.mem.len() {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X}            (不正なアドレス)"#,
-                    name, adr, offset
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            (不正なアドレス) {:>3}I{}"#,
+                    name, adr, offset, size, arg_hint
                 )?;
                 return Ok(());
             }
@@ -865,18 +894,20 @@ pub(super) fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X}            Val: (省略)"#,
-                    name, adr, offset
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            Val: (省略)          {:>3}I{}"#,
+                    name, adr, offset, size, arg_hint
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X}             Val: [{}] [{}]"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}             Val: [{}] [{}] {:>3}I{}"#,
                     name,
                     adr,
                     offset,
                     s.trim(),
-                    t.trim()
+                    t.trim(),
+                    size,
+                    arg_hint
                 )?;
             }
         }
@@ -888,8 +919,8 @@ pub(super) fn print_arr_label<W: Write>(
             if refer > emu.mem.len() {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X}            (不正なアドレス)"#,
-                    name, refer, offset
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            (不正なアドレス) {:>3}B{}"#,
+                    name, refer, offset, size, arg_hint
                 )?;
                 return Ok(());
             }
@@ -897,8 +928,8 @@ pub(super) fn print_arr_label<W: Write>(
             if adr + size > emu.mem.len() {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} (不正なアドレス)"#,
-                    name, refer, offset, adr
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} (不正なアドレス) {:>3}B{}"#,
+                    name, refer, offset, adr, size, arg_hint
                 )?;
                 return Ok(());
             }
@@ -920,24 +951,28 @@ pub(super) fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: (省略){}"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: (省略){} {:>3}B{}"#,
                     name,
                     refer,
                     offset,
                     adr,
-                    if broken { " (異常値)" } else { "" }
+                    if broken { " (異常値)" } else { "         " },
+                    size,
+                    arg_hint
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: [{}] [{}]{}"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: [{}] [{}]{} {:>3}B{}"#,
                     name,
                     refer,
                     offset,
                     adr,
                     s.trim(),
                     t.trim(),
-                    if broken { " (異常値)" } else { "" }
+                    if broken { " (異常値)" } else { "" },
+                    size,
+                    arg_hint
                 )?;
             }
         }
@@ -949,8 +984,8 @@ pub(super) fn print_arr_label<W: Write>(
             if refer > emu.mem.len() {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X}            (不正なアドレス)"#,
-                    name, refer, offset
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            (不正なアドレス) {:>3}I{}"#,
+                    name, refer, offset, size, arg_hint
                 )?;
                 return Ok(());
             }
@@ -958,8 +993,8 @@ pub(super) fn print_arr_label<W: Write>(
             if adr + size > emu.mem.len() {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} (不正なアドレス)"#,
-                    name, refer, offset, adr
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} (不正なアドレス) {:>3}I{}"#,
+                    name, refer, offset, adr, size, arg_hint
                 )?;
                 return Ok(());
             }
@@ -972,19 +1007,21 @@ pub(super) fn print_arr_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: (省略)"#,
-                    name, refer, offset, adr
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: (省略)          {:>3}I{}"#,
+                    name, refer, offset, adr, size, arg_hint
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: [{}] [{}]"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: [{}] [{}] {:>3}I{}"#,
                     name,
                     refer,
                     offset,
                     adr,
                     s.trim(),
-                    t.trim()
+                    t.trim(),
+                    size,
+                    arg_hint
                 )?;
             }
         }
@@ -998,10 +1035,25 @@ pub(super) fn print_str_label<W: Write>(
     key: &str,
     name: &str,
     label: &compiler::StrLabels,
+    arg: Option<&parser::ArgumentInfo>,
     omit: bool,
 ) -> io::Result<()> {
-    let map = emu.local_labels.get(key).expect("BUG");
     use compiler::StrLabelType::*;
+    let (arg_hint_l, arg_hint_s) = match arg {
+        None => ("".to_string(), "".to_string()),
+        Some(arg) => match arg.var_type {
+            parser::VarType::String => (
+                format!(" {}", arg.register1),
+                format!(" {}", arg.register2.unwrap()),
+            ),
+            parser::VarType::RefString => (
+                format!(" {}", arg.register1),
+                format!(" {}", arg.register2.unwrap()),
+            ),
+            _ => unreachable!("BUG"),
+        },
+    };
+    let map = emu.local_labels.get(key).expect("BUG");
     match &label.label_type {
         Const(_str) => {
             // IN/OUTの定数 LB**/LL**
@@ -1024,20 +1076,21 @@ pub(super) fn print_str_label<W: Write>(
             let broken = len > 256;
             writeln!(
                 stdout,
-                " {:<18} #{:04X} {:<8}             Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} {:<8}               Val: {:6} [#{:04X}]{} L{}",
                 name,
                 adr,
                 label.len,
                 value,
                 len,
-                if broken { " (異常値)" } else { "" }
+                if broken { " (異常値)" } else { "    " },
+                arg_hint_l
             )?;
             let adr = *map.get(&label.pos).expect("BUG");
             if adr + len.min(256) > emu.mem.len() {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}             (不正なアドレス)"#,
-                    "", adr, label.pos
+                    r#" {:18} #{:04X} {:<8}               (不正なアドレス) S{}"#,
+                    "", adr, label.pos, arg_hint_s
                 )?;
                 return Ok(());
             }
@@ -1052,18 +1105,19 @@ pub(super) fn print_str_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}             Val: (省略)"#,
-                    "", adr, label.pos
+                    r#" {:18} #{:04X} {:<8}               Val: (省略)             S{}"#,
+                    "", adr, label.pos, arg_hint_s
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}             Val: "{}" [{}]"#,
+                    r#" {:18} #{:04X} {:<8}               Val: "{}" [{}]     S{}"#,
                     "",
                     adr,
                     label.pos,
                     s.replace('"', r#""""#),
-                    t.trim()
+                    t.trim(),
+                    arg_hint_s
                 )?;
             }
         }
@@ -1076,22 +1130,23 @@ pub(super) fn print_str_label<W: Write>(
             let broken = len > 256;
             writeln!(
                 stdout,
-                " {:<18} #{:04X} {:<8}  Ref: #{:04X} Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} {:<8}    Ref: #{:04X} Val: {:6} [#{:04X}]{} L{}",
                 name,
                 adr,
                 label.len,
                 refer,
                 value,
                 len,
-                if broken { " (異常値)" } else { "" }
+                if broken { " (異常値)" } else { "    " },
+                arg_hint_l
             )?;
             let adr = *map.get(&label.pos).expect("BUG");
             let refer = emu.mem[adr] as usize;
             if refer + len.min(256) > emu.mem.len() {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} (不正なアドレス)"#,
-                    "", adr, label.pos, refer
+                    r#" {:18} #{:04X} {:<8}    Ref: #{:04X} (不正なアドレス) S{}"#,
+                    "", adr, label.pos, refer, arg_hint_s
                 )?;
                 return Ok(());
             }
@@ -1106,19 +1161,20 @@ pub(super) fn print_str_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} Val: (省略)"#,
-                    "", adr, label.pos, refer
+                    r#" {:18} #{:04X} {:<8}    Ref: #{:04X} Val: (省略)             S{}"#,
+                    "", adr, label.pos, refer, arg_hint_s
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} {:<8}  Ref: #{:04X} Val: "{}" [{}]"#,
+                    r#" {:18} #{:04X} {:<8}    Ref: #{:04X} Val: "{}" [{}]    S{}"#,
                     "",
                     adr,
                     label.pos,
                     refer,
                     s.replace('"', r#""""#),
-                    t.trim()
+                    t.trim(),
+                    arg_hint_s
                 )?;
             }
         }
@@ -1130,8 +1186,8 @@ pub(super) fn print_str_label<W: Write>(
             if refer > emu.mem.len() {
                 writeln!(
                     stdout,
-                    " {:<18} #{:04X} (MEM)+#{:04X} Ref: #---- (不正なアドレス)",
-                    name, refer, offset
+                    " {:<18} #{:04X} (MEM)+#{:04X} Ref: #---- (不正なアドレス) L{}",
+                    name, refer, offset, arg_hint_l
                 )?;
                 return Ok(());
             }
@@ -1141,23 +1197,25 @@ pub(super) fn print_str_label<W: Write>(
             let broken = len > 256;
             writeln!(
                 stdout,
-                " {:<18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: {:6} [#{:04X}]{} L{}",
                 name,
                 refer,
                 offset,
                 adr,
                 value,
                 len,
-                if broken { " (異常値)" } else { "" }
+                if broken { " (異常値)" } else { "    " },
+                arg_hint_l
             )?;
             let refer = base_adr + offset + 1;
             if refer > emu.mem.len() {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #---- (不正なアドレス)"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #---- (不正なアドレス) S{}"#,
                     "",
                     refer,
-                    offset + 1
+                    offset + 1,
+                    arg_hint_s
                 )?;
                 return Ok(());
             }
@@ -1165,11 +1223,12 @@ pub(super) fn print_str_label<W: Write>(
             if adr + len > emu.mem.len() {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} (不正なアドレス)"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} (不正なアドレス) S{}"#,
                     "",
                     refer,
                     offset + 1,
-                    adr
+                    adr,
+                    arg_hint_s
                 )?;
                 return Ok(());
             }
@@ -1184,22 +1243,24 @@ pub(super) fn print_str_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: (省略)"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: (省略)             S{}"#,
                     "",
                     refer,
                     offset + 1,
-                    adr
+                    adr,
+                    arg_hint_s
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: "{}" [{}]"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: "{}" [{}]     S{}"#,
                     "",
                     refer,
                     offset + 1,
                     adr,
                     s.replace('"', r#""""#),
-                    t.trim()
+                    t.trim(),
+                    arg_hint_s
                 )?;
             }
         }
@@ -1211,8 +1272,8 @@ pub(super) fn print_str_label<W: Write>(
             if adr > emu.mem.len() {
                 writeln!(
                     stdout,
-                    " {:<18} #{:04X} (MEM)+#{:04X}            (不正なアドレス)",
-                    name, adr, offset
+                    " {:<18} #{:04X} (MEM)+#{:04X}            (不正なアドレス)    L{}",
+                    name, adr, offset, arg_hint_l
                 )?;
                 return Ok(());
             }
@@ -1221,22 +1282,24 @@ pub(super) fn print_str_label<W: Write>(
             let broken = len > 256;
             writeln!(
                 stdout,
-                " {:<18} #{:04X} (MEM)+#{:04X}            Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} (MEM)+#{:04X}            Val: {:6} [#{:04X}]{} L{}",
                 name,
                 adr,
                 offset,
                 value,
                 len,
-                if broken { " (異常値)" } else { "" }
+                if broken { " (異常値)" } else { "    " },
+                arg_hint_l
             )?;
             let adr = base_adr + offset + 1;
             if adr + len.min(256) > emu.mem.len() {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X}            (不正なアドレス)"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            (不正なアドレス) S{}"#,
                     "",
                     adr,
-                    offset + 1
+                    offset + 1,
+                    arg_hint_s
                 )?;
                 return Ok(());
             }
@@ -1251,20 +1314,22 @@ pub(super) fn print_str_label<W: Write>(
             if omit {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X}            Val: (省略)"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            Val: (省略)             S{}"#,
                     "",
                     adr,
-                    offset + 1
+                    offset + 1,
+                    arg_hint_s
                 )?;
             } else {
                 writeln!(
                     stdout,
-                    r#" {:18} #{:04X} (MEM)+#{:04X}            Val: "{}" [{}]"#,
+                    r#" {:18} #{:04X} (MEM)+#{:04X}            Val: "{}" [{}]     S{}"#,
                     "",
                     adr,
                     offset + 1,
                     s.replace('"', r#""""#),
-                    t.trim()
+                    t.trim(),
+                    arg_hint_s
                 )?;
             }
         }
@@ -1278,9 +1343,22 @@ pub(super) fn print_value_label<W: Write>(
     key: &str,
     name: &str,
     label: &compiler::ValueLabel,
+    arg: Option<&parser::ArgumentInfo>,
 ) -> io::Result<()> {
-    let map = emu.local_labels.get(key).expect("BUG");
     use compiler::ValueLabel::*;
+    let arg_hint = match arg {
+        None => "".to_string(),
+        Some(arg) => match arg.var_type {
+            parser::VarType::Boolean | parser::VarType::Integer => {
+                format!(" {}", arg.register1)
+            }
+            parser::VarType::RefBoolean | parser::VarType::RefInteger => {
+                format!(" {}", arg.register1)
+            }
+            _ => unreachable!("BUG"),
+        },
+    };
+    let map = emu.local_labels.get(key).expect("BUG");
     match label {
         VarBoolean(s) => {
             let adr = *map.get(s).expect("BUG");
@@ -1294,17 +1372,18 @@ pub(super) fn print_value_label<W: Write>(
             };
             writeln!(
                 stdout,
-                " {:<18} #{:04X} {:<8}             Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} {:<8}               Val: {:6} [#{:04X}]{} B{}",
                 name,
                 adr,
                 s,
                 value,
                 raw,
                 if is_valid_boolean(raw) {
-                    ""
+                    "    "
                 } else {
                     " (異常値)"
-                }
+                },
+                arg_hint
             )?;
         }
         VarInteger(s) => {
@@ -1313,8 +1392,8 @@ pub(super) fn print_value_label<W: Write>(
             let value = raw as i16;
             writeln!(
                 stdout,
-                " {:<18} #{:04X} {:<8}             Val: {:6} [#{:04X}]",
-                name, adr, s, value, raw
+                " {:<18} #{:04X} {:<8}               Val: {:6} [#{:04X}]     I{}",
+                name, adr, s, value, raw, arg_hint
             )?;
         }
         VarRefBoolean(s) => {
@@ -1330,7 +1409,7 @@ pub(super) fn print_value_label<W: Write>(
             };
             writeln!(
                 stdout,
-                " {:<18} #{:04X} {:<8}  Ref: #{:04X} Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} {:<8}    Ref: #{:04X} Val: {:6} [#{:04X}]{} B{}",
                 name,
                 adr,
                 s,
@@ -1338,10 +1417,11 @@ pub(super) fn print_value_label<W: Write>(
                 value,
                 raw,
                 if is_valid_boolean(raw) {
-                    ""
+                    "    "
                 } else {
                     " (異常値)"
-                }
+                },
+                arg_hint
             )?;
         }
         VarRefInteger(s) => {
@@ -1351,8 +1431,8 @@ pub(super) fn print_value_label<W: Write>(
             let value = raw as i16;
             writeln!(
                 stdout,
-                " {:<18} #{:04X} {:<8}  Ref: #{:04X} Val: {:6} [#{:04X}]",
-                name, adr, s, refer, value, raw
+                " {:<18} #{:04X} {:<8}    Ref: #{:04X} Val: {:6} [#{:04X}]     I{}",
+                name, adr, s, refer, value, raw, arg_hint
             )?;
         }
         MemBoolean(offset) => {
@@ -1368,17 +1448,18 @@ pub(super) fn print_value_label<W: Write>(
             };
             writeln!(
                 stdout,
-                " {:<18} #{:04X} (MEM)+#{:04X}            Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} (MEM)+#{:04X}            Val: {:6} [#{:04X}]{} B{}",
                 name,
                 adr,
                 offset,
                 value,
                 raw,
                 if is_valid_boolean(raw) {
-                    ""
+                    "    "
                 } else {
                     " (異常値)"
-                }
+                },
+                arg_hint
             )?;
         }
         MemInteger(offset) => {
@@ -1388,8 +1469,8 @@ pub(super) fn print_value_label<W: Write>(
             let value = raw as i16;
             writeln!(
                 stdout,
-                " {:<18} #{:04X} (MEM)+#{:04X}            Val: {:6} [#{:04X}]",
-                name, adr, offset, value, raw
+                " {:<18} #{:04X} (MEM)+#{:04X}            Val: {:6} [#{:04X}]     I{}",
+                name, adr, offset, value, raw, arg_hint
             )?;
         }
         MemRefBoolean(offset) => {
@@ -1406,7 +1487,7 @@ pub(super) fn print_value_label<W: Write>(
             };
             writeln!(
                 stdout,
-                " {:<18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: {:6} [#{:04X}]{}",
+                " {:<18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: {:6} [#{:04X}]{} B{}",
                 name,
                 adr,
                 offset,
@@ -1414,10 +1495,11 @@ pub(super) fn print_value_label<W: Write>(
                 value,
                 raw,
                 if is_valid_boolean(raw) {
-                    ""
+                    "    "
                 } else {
                     " (異常値)"
-                }
+                },
+                arg_hint
             )?;
         }
         MemRefInteger(offset) => {
@@ -1428,8 +1510,8 @@ pub(super) fn print_value_label<W: Write>(
             let value = raw as i16;
             writeln!(
                 stdout,
-                " {:<18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: {:6} [#{:04X}]",
-                name, adr, offset, refer, value, raw
+                " {:<18} #{:04X} (MEM)+#{:04X} Ref: #{:04X} Val: {:6} [#{:04X}]     I{}",
+                name, adr, offset, refer, value, raw, arg_hint
             )?;
         }
     }
