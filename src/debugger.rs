@@ -1598,8 +1598,8 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
 }
 
 //
-// remove-breakpoint <BASIC_SRC_FILE> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
-// set-breakpoint <BASIC_SRC_FILE> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
+// remove-breakpoint <BASIC_PROGRAM_ENTRY> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
+// set-breakpoint <BASIC_PROGRAM_ENTRY> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
 //
 fn set_breakpoint_for_basic<W: Write>(
     emu: &mut Emulator,
@@ -1607,35 +1607,37 @@ fn set_breakpoint_for_basic<W: Write>(
     param: Option<&str>,
     value: bool,
 ) -> io::Result<()> {
-    let (file, params) = match param {
+    let (label, params) = match param {
         None => {
             writeln!(stdout, "引数が必要です")?;
             return Ok(());
         }
         Some(param) => {
             let mut iter = param.splitn(2, ' ').map(|s| s.trim());
-            let file = iter.next().unwrap();
+            let label = iter.next().unwrap();
             match iter.next() {
                 None => {
                     writeln!(stdout, "引数が不正です")?;
                     return Ok(());
                 }
-                Some(param) => (file, param),
+                Some(param) => (label, param),
             }
         }
     };
 
     let (bps, points) = {
-        let pg = if file == "." {
+        let pg = if label == "." {
             emu.get_current_program()
         } else {
-            emu.program_list.iter().find(|(f, _, _)| f == file)
+            emu.program_list
+                .iter()
+                .find(|(_, x, _)| x.eq_ignore_ascii_case(label))
         };
 
-        let (file, stmt) = match pg {
-            Some((file, _, stmt)) => (file, stmt),
+        let (file, label, stmt) = match pg {
+            Some((file, label, stmt)) => (file, label, stmt),
             None => {
-                writeln!(stdout, "{}のBASICソースの情報が見つかりませんでした", file)?;
+                writeln!(stdout, "BASICコードの情報が見つかりませんでした")?;
                 return Ok(());
             }
         };
@@ -1643,7 +1645,7 @@ fn set_breakpoint_for_basic<W: Write>(
         let info = match emu.basic_info.get(file) {
             Some((_, info)) => info,
             None => {
-                writeln!(stdout, "{}のBASICソースの情報が見つかりませんでした", file)?;
+                writeln!(stdout, "{}のBASICコードの情報が見つかりませんでした", label)?;
                 return Ok(());
             }
         };
@@ -1679,25 +1681,27 @@ fn set_breakpoint_for_basic<W: Write>(
         }
     }
 
-    let file = if file == "." {
+    let label = if label == "." {
         emu.get_current_program()
-            .map(|(file, _, _)| file.as_str())
+            .map(|(_, label, _)| label.as_str())
             .unwrap()
     } else {
-        file
+        label
     };
 
     if value {
         writeln!(
             stdout,
             "{}の{}にブレークポイントを設定しました",
-            file, params
+            label.to_ascii_uppercase(),
+            params
         )?;
     } else {
         writeln!(
             stdout,
             "{}の{}からブレークポイントを解除しました",
-            file, params
+            label.to_ascii_uppercase(),
+            params
         )?;
     }
 
@@ -4560,7 +4564,7 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
                 指定したモードに切り替える
     quit
                 テスト実行を中止する
-    remove-breakpoint <BASIC_SRC_FILE> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
+    remove-breakpoint <BASIC_PROGRAM_ENTRY> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
                 指定したBASICプログラムからブレークポイントを解除する
     reset
                 プログラムを最初から実行しなおす。プログラムをファイルから読み込みなおし配置される
@@ -4568,7 +4572,7 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
                 プログラムを最初の位置から実行しなおす。メモリの状態はクリアされずに最後の実行状態のまま維持される
     run [<BASIC_STEP_LIMIT> [<COMET2_STEP_LIMIT>]]
                 次のブレークポイントまで実行する
-    set-breakpoint <BASIC_SRC_FILE> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
+    set-breakpoint <BASIC_PROGRAM_ENTRY> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
                 指定したBASICプログラムにブレークポイントを設定する
     set-by-file <FILE_PATH>
                 ファイルに列挙された設定系のデバッガコマンドを実行する
