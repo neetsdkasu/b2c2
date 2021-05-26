@@ -188,9 +188,9 @@ pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
             match state.debug_mode {
                 DebugMode::Basic => {
                     show_state_basic(&emu, &mut stdout, &state)?;
-                    if let Some((file, _, _)) = emu.get_current_program() {
+                    if let Some((file, label, _)) = emu.get_current_program() {
                         if emu.basic_info.contains_key(file) {
-                            show_var(&emu, &mut stdout, Some(file.as_str()))?;
+                            show_var(&emu, &mut stdout, Some(label.as_str()))?;
                         }
                     }
 
@@ -3943,25 +3943,25 @@ fn list_files<W: Write>(emu: &Emulator, stdout: &mut W) -> io::Result<()> {
 }
 
 //
-// show-var [<FILE_NAME> [<VAR_NAME1>[,<VAR_NAME2>..]]]
+// show-var [<BASIC_PROGRAM_ENTRY> [<VAR_NAME1>[,<VAR_NAME2>..]]]
 //
 fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
-    let (file, info, var_list) = match param {
+    let (info, var_list) = match param {
         None => {
             let (file, _, _) = emu.program_list.first().expect("BUG");
-            (file.as_str(), emu.basic_info.get(file), None)
+            (emu.basic_info.get(file), None)
         }
         Some(param) => {
             let mut iter = param.splitn(2, ' ');
-            let file = iter.next().unwrap();
-            let info = if file == "." {
+            let label = iter.next().unwrap();
+            let info = if label == "." {
                 emu.get_current_program()
                     .and_then(|(file, _, _)| emu.basic_info.get(file))
             } else {
-                emu.basic_info.get(&file.to_string())
+                emu.basic_info.values().find(|(x, _)| x.eq_ignore_ascii_case(label))
             };
             let var_list = iter.next().map(|s| s.split(',').collect::<Vec<_>>());
-            (file, info, var_list)
+            (info, var_list)
         }
     };
 
@@ -3973,7 +3973,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
         Some((key, info)) => (key, info),
     };
 
-    writeln!(stdout, "{}の変数 (エントリラベルは{})", file, key)?;
+    writeln!(stdout, "{}の変数", key)?;
 
     if let Some(var_list) = var_list {
         for name in var_list {
@@ -3994,7 +3994,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             } else if let Some(label) = info.label_set.int_arr_labels.get(name) {
                 print_arr_label(emu, stdout, key, name, label, None, false)?;
             } else {
-                writeln!(stdout, "{}に変数{}は存在しません", file, name)?;
+                writeln!(stdout, "{}に変数{}は存在しません", key, name)?;
             }
         }
     } else {
@@ -4074,7 +4074,7 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
                 stdout,
                 "※省略された値を確認するには変数名を指定した実行が必要です"
             )?;
-            writeln!(stdout, "  ( 例: show-var {} {} )", file, name)?;
+            writeln!(stdout, "  ( 例: show-var {} {} )", key, name)?;
         }
     }
     Ok(())
@@ -4386,7 +4386,7 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
                 指定したアドレス位置から指定長さ分の範囲にあるコードを表示する
     show-state
                 直近の実行(run,skip,step)の結果を再表示する
-    show-var [<BASIC_SRC_FILE> [<VAR_NAME1>[,<VAR_NAME2>..]]]
+    show-var [<BASIC_PROGRAM_ENTRY> [<VAR_NAME1>[,<VAR_NAME2>..]]]
                 指定したBASICプログラムの変数名と対応するラベルとアドレスと値を表示する
     skip [<STEP_LIMIT>]
                 現在のサブルーチンのRETまで実行する。ステップ制限数までにRETに到達しない場合はそこで停止する
@@ -4578,7 +4578,7 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
                 指定したBASICプログラムのコードを表示する
     show-state
                 直近の実行(run,skip,step)の結果を再表示する
-    show-var [<BASIC_SRC_FILE> [<VAR_NAME1>[,<VAR_NAME2>..]]]
+    show-var [<BASIC_PROGRAM_ENTRY> [<VAR_NAME1>[,<VAR_NAME2>..]]]
                 指定したBASICプログラムの変数名と対応するラベルとアドレスと値を表示する
     s    [<BASIC_STEP_COUNT> [<COMET2_STEP_LIMIT>]]
     step [<BASIC_STEP_COUNT> [<COMET2_STEP_LIMIT>]]
