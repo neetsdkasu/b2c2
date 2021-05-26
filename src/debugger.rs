@@ -1791,21 +1791,25 @@ fn show_execute_stat<W: Write>(
 }
 
 //
-// show-src [<BASIC_SRC_FILE>] (BASIC)
+// show-src [<BASIC_PROGRAM_ENTRY>] (BASIC)
 //
 fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let (file, label, stmt) = match param {
         Some(".") => match emu.get_current_program() {
             Some(pg) => pg,
             None => {
-                writeln!(stdout, ".のBASICコードの情報が見つかりませんでした")?;
+                writeln!(stdout, "BASICコードの情報が見つかりませんでした")?;
                 return Ok(());
             }
         },
-        Some(file) => match emu.program_list.iter().find(|(f, _, _)| f == file) {
+        Some(label) => match emu
+            .program_list
+            .iter()
+            .find(|(_, x, _)| x.eq_ignore_ascii_case(label))
+        {
             Some(pg) => pg,
             None => {
-                writeln!(stdout, "{}のBASICコードの情報が見つかりませんでした", file)?;
+                writeln!(stdout, "{}のBASICコードの情報が見つかりませんでした", label)?;
                 return Ok(());
             }
         },
@@ -1821,16 +1825,12 @@ fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>)
     let info = match emu.basic_info.get(file) {
         Some((_, info)) => info,
         None => {
-            writeln!(
-                stdout,
-                "{}({})のBASICコードの情報が見つかりませんでした",
-                label, file
-            )?;
+            writeln!(stdout, "{}のBASICコードの情報が見つかりませんでした", label)?;
             return Ok(());
         }
     };
 
-    writeln!(stdout, "{}({})のBASICコード", label, file)?;
+    writeln!(stdout, "{}のBASICコード", label)?;
 
     for (_, (_, arg)) in info
         .label_set
@@ -2621,7 +2621,7 @@ fn show_src<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
     let mut pos = adr;
     let mut view_some = false;
 
-    for (file, label, statements) in emu.program_list.iter() {
+    for (_file, label, statements) in emu.program_list.iter() {
         if statements.is_empty() {
             continue;
         }
@@ -2631,7 +2631,7 @@ fn show_src<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
             continue;
         }
         view_some = true;
-        writeln!(stdout, "Program: {} ({})", file, label)?;
+        writeln!(stdout, "Program: {}", label)?;
         let mut view = false;
         for (p, stmt) in statements.iter().skip_while(move |(p, _)| *p < pos) {
             if pos < *p {
@@ -4576,7 +4576,7 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
                 現在地点のプログラムの配列変数の要素に値を設定する。値はBASICリテラルのみ
     set-var <VAR_NAME> <VALUE1>[,<VALUE2>..]
                 現在地点のプログラムの変数に値を設定する。値はBASICリテラルのみ
-    show-src [<BASIC_SRC_FILE>]
+    show-src [<BASIC_PROGRAM_ENTRY>]
                 指定したBASICプログラムのコードを表示する
     show-state
                 直近の実行(run,skip,step)の結果を再表示する
