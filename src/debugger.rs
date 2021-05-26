@@ -2006,11 +2006,7 @@ fn show_state_basic<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> 
             write!(stdout, " >")?;
         }
         if let Some((k, _)) = emu.all_label_list.iter().find(|(_, v)| v == pos) {
-            if let Some((f, _, _)) = emu.program_list.iter().find(|(_, lb, _)| lb == k) {
-                write!(stdout, " {} ({})", k, f)?;
-            } else {
-                write!(stdout, " {}", k)?;
-            }
+            write!(stdout, " {}", k)?;
         } else {
             write!(stdout, " ????")?;
         }
