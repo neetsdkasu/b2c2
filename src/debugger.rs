@@ -1181,7 +1181,7 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
     };
 
     use parser::VarType as V;
-    use tokenizer::{Operator as Op, Token as T};
+    use tokenizer::Token as T;
 
     match target {
         Ok((pos, None, V::Boolean)) => {
@@ -1226,17 +1226,20 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
         }
         Ok((len, Some(pos), V::String)) => {
             if let [T::String(s)] = values.as_slice() {
-                let s = jis_x_201::convert_kana_wide_full_to_half(s);
-                emu.mem[len] = s.chars().count().min(256) as u16;
-                for (i, ch) in s.chars().enumerate().take(256) {
-                    emu.mem[pos + i] = jis_x_201::convert_from_char(ch) as u16;
-                }
-                let s = s
+                let s = jis_x_201::convert_kana_wide_full_to_half(s)
                     .chars()
                     .take(256)
-                    .collect::<String>()
-                    .replace('"', r#""""#);
-                writeln!(stdout, r#"{}に"{}"を設定しました"#, var_name, s)?;
+                    .collect::<String>();
+                emu.mem[len] = s.chars().count() as u16;
+                for (i, ch) in s.chars().enumerate() {
+                    emu.mem[pos + i] = jis_x_201::convert_from_char(ch) as u16;
+                }
+                writeln!(
+                    stdout,
+                    r#"{}に"{}"を設定しました"#,
+                    var_name,
+                    s.replace('"', r#""""#)
+                )?;
                 return Ok(());
             }
             if let Some((vs, s)) = take_basic_int_values(&values) {
@@ -1380,7 +1383,47 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
                     }
                 }
             }
-            V::RefString => todo!(),
+            V::RefString => {
+                if !emu.enough_remain(257) {
+                    writeln!(stdout, "メモリ不足でリテラル領域を確保できませんでした")?;
+                    return Ok(());
+                }
+                if let [T::String(s)] = values.as_slice() {
+                    let t = jis_x_201::convert_kana_wide_full_to_half(s)
+                        .chars()
+                        .take(256)
+                        .collect::<String>();
+                    let pos = emu.compile_pos;
+                    emu.compile_pos += 257;
+                    emu.general_registers[arg.register1 as usize] = pos as u16;
+                    emu.general_registers[arg.register2.unwrap() as usize] = pos as u16 + 1;
+                    emu.mem[pos] = t.chars().count() as u16;
+                    for (i, ch) in t.chars().enumerate() {
+                        emu.mem[pos + i + 1] = jis_x_201::convert_from_char(ch) as u16;
+                    }
+                    writeln!(
+                        stdout,
+                        r#"{}に"{}"を設定しました"#,
+                        var_name,
+                        t.replace('"', r#""""#)
+                    )?;
+                    return Ok(());
+                }
+                if let Some((vs, s)) = take_basic_int_values(&values) {
+                    if vs.len() <= 256 {
+                        let pos = emu.compile_pos;
+                        emu.compile_pos += 257;
+                        emu.general_registers[arg.register1 as usize] = pos as u16;
+                        emu.general_registers[arg.register2.unwrap() as usize] = pos as u16 + 1;
+                        emu.mem[pos] = vs.len() as u16;
+                        for (i, v) in vs.iter().enumerate() {
+                            emu.mem[pos + i + 1] = *v;
+                        }
+                        writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
+                        return Ok(());
+                    }
+                }
+            }
         },
     }
 
