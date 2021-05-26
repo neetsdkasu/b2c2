@@ -1185,95 +1185,44 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
 
     match target {
         Ok((pos, None, V::Boolean)) => {
-            if let [T::Boolean(v)] = values.as_slice() {
-                emu.mem[pos] = if *v { 0xFFFF } else { 0x0000 };
-                let v = if *v { "True" } else { "False" };
-                writeln!(stdout, "{}に{}を設定しました", var_name, v)?;
-                return Ok(());
-            }
-        }
-        Ok((pos, None, V::Integer)) => match values.as_slice() {
-            [T::Integer(v)] if *v <= 0xFFFF => {
-                emu.mem[pos] = *v as u16;
-                writeln!(stdout, "{}に{}を設定しました", var_name, v)?;
-                return Ok(());
-            }
-            [T::Character(ch)] => {
-                let s = jis_x_201::convert_kana_wide_full_to_half(&ch.to_string());
-                let v = jis_x_201::convert_from_char(s.chars().next().unwrap());
-                emu.mem[pos] = v as u16;
-                writeln!(stdout, "{}に{}を設定しました", var_name, v)?;
-                return Ok(());
-            }
-            [T::Operator(Op::Sub), T::Integer(v)] => {
-                let v = -*v;
-                emu.mem[pos] = v as u16;
-                writeln!(stdout, "{}に{}を設定しました", var_name, v as i16)?;
-                return Ok(());
-            }
-            _ => {}
-        },
-        Ok((pos, None, V::ArrayOfBoolean(size))) => {
-            let mut vs = Vec::with_capacity(size);
-            for tk in values.split(|tk| matches!(tk, T::Operator(Op::Comma))) {
-                if let [T::Boolean(v)] = tk {
-                    vs.push(*v);
-                } else {
-                    writeln!(stdout, "引数が不正です")?;
+            if let Some((vs, s)) = take_basic_bool_values(&values) {
+                if let [v] = vs.as_slice() {
+                    emu.mem[pos] = *v;
+                    writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
                     return Ok(());
                 }
             }
-            if vs.len() != size {
-                writeln!(stdout, "引数が不正です")?;
-                return Ok(());
-            }
-            let mut s = String::new();
-            for (i, v) in vs.iter().enumerate() {
-                emu.mem[pos + i] = if *v { 0xFFFF } else { 0x0000 };
-                if i != 0 {
-                    s.push(',');
+        }
+        Ok((pos, None, V::Integer)) => {
+            if let Some((vs, s)) = take_basic_int_values(&values) {
+                if let [v] = vs.as_slice() {
+                    emu.mem[pos] = *v;
+                    writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
+                    return Ok(());
                 }
-                s.push_str(if *v { "True" } else { "False" });
             }
-            writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
-            return Ok(());
+        }
+        Ok((pos, None, V::ArrayOfBoolean(size))) => {
+            if let Some((vs, s)) = take_basic_bool_values(&values) {
+                if vs.len() == size {
+                    for (i, v) in vs.iter().enumerate() {
+                        emu.mem[pos + i] = *v;
+                    }
+                    writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
+                    return Ok(());
+                }
+            }
         }
         Ok((pos, None, V::ArrayOfInteger(size))) => {
-            let mut vs = Vec::with_capacity(size);
-            for tk in values.split(|tk| matches!(tk, T::Operator(Op::Comma))) {
-                match tk {
-                    [T::Integer(v)] if *v <= 0xFFFF => {
-                        vs.push(*v as u16);
+            if let Some((vs, s)) = take_basic_int_values(&values) {
+                if vs.len() == size {
+                    for (i, v) in vs.iter().enumerate() {
+                        emu.mem[pos + i] = *v;
                     }
-                    [T::Character(ch)] => {
-                        let s = jis_x_201::convert_kana_wide_full_to_half(&ch.to_string());
-                        let v = jis_x_201::convert_from_char(s.chars().next().unwrap());
-                        vs.push(v as u16);
-                    }
-                    [T::Operator(Op::Sub), T::Integer(v)] => {
-                        let v = -*v;
-                        vs.push(v as u16);
-                    }
-                    _ => {
-                        writeln!(stdout, "引数が不正です")?;
-                        return Ok(());
-                    }
+                    writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
+                    return Ok(());
                 }
             }
-            if vs.len() != size {
-                writeln!(stdout, "引数が不正です")?;
-                return Ok(());
-            }
-            let mut s = String::new();
-            for (i, v) in vs.iter().enumerate() {
-                emu.mem[pos + i] = *v;
-                if i != 0 {
-                    s.push(',');
-                }
-                s.push_str(&(*v as i16).to_string());
-            }
-            writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
-            return Ok(());
         }
         Ok((len, Some(pos), V::String)) => {
             if let [T::String(s)] = values.as_slice() {
@@ -1290,75 +1239,37 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
                 writeln!(stdout, r#"{}に"{}"を設定しました"#, var_name, s)?;
                 return Ok(());
             }
-            let mut vs = Vec::with_capacity(256);
-            for tk in values.split(|tk| matches!(tk, T::Operator(Op::Comma))) {
-                match tk {
-                    [T::Integer(v)] if *v <= 0xFFFF => {
-                        vs.push(*v as u16);
+            if let Some((vs, s)) = take_basic_int_values(&values) {
+                if vs.len() <= 256 {
+                    emu.mem[len] = vs.len() as u16;
+                    for (i, v) in vs.iter().enumerate() {
+                        emu.mem[pos + i] = *v;
                     }
-                    [T::Character(ch)] => {
-                        let s = jis_x_201::convert_kana_wide_full_to_half(&ch.to_string());
-                        let v = jis_x_201::convert_from_char(s.chars().next().unwrap());
-                        vs.push(v as u16);
-                    }
-                    [T::Operator(Op::Sub), T::Integer(v)] => {
-                        let v = -*v;
-                        vs.push(v as u16);
-                    }
-                    _ => {
-                        writeln!(stdout, "引数が不正です")?;
-                        return Ok(());
-                    }
-                }
-            }
-            if vs.len() > 256 {
-                writeln!(stdout, "引数が不正です")?;
-                return Ok(());
-            }
-            emu.mem[len] = vs.len() as u16;
-            let mut s = String::new();
-            for (i, v) in vs.iter().enumerate() {
-                emu.mem[pos + i] = *v;
-                if i != 0 {
-                    s.push(',');
-                }
-                s.push_str(&(*v as i16).to_string());
-            }
-            writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
-            return Ok(());
-        }
-        Ok(_) => unreachable!("BUG"),
-        Err(arg) => match &arg.var_type {
-            V::Boolean => {
-                if let [T::Boolean(v)] = values.as_slice() {
-                    let s = if *v { "True" } else { "False" };
-                    let v = if *v { 0xFFFF } else { 0x0000 };
-                    emu.general_registers[arg.register1 as usize] = v;
                     writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
                     return Ok(());
                 }
             }
-            V::Integer => match values.as_slice() {
-                [T::Integer(v)] if *v <= 0xFFFF => {
-                    emu.general_registers[arg.register1 as usize] = *v as u16;
-                    writeln!(stdout, "{}に{}を設定しました", var_name, v)?;
-                    return Ok(());
+        }
+        Ok(_) => unreachable!("BUG"),
+        Err(arg) => match arg.var_type {
+            V::Boolean => {
+                if let Some((vs, s)) = take_basic_bool_values(&values) {
+                    if let [v] = vs.as_slice() {
+                        emu.general_registers[arg.register1 as usize] = *v;
+                        writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
+                        return Ok(());
+                    }
                 }
-                [T::Character(ch)] => {
-                    let s = jis_x_201::convert_kana_wide_full_to_half(&ch.to_string());
-                    let v = jis_x_201::convert_from_char(s.chars().next().unwrap());
-                    emu.general_registers[arg.register1 as usize] = v as u16;
-                    writeln!(stdout, "{}に{}を設定しました", var_name, v)?;
-                    return Ok(());
+            }
+            V::Integer => {
+                if let Some((vs, s)) = take_basic_int_values(&values) {
+                    if let [v] = vs.as_slice() {
+                        emu.general_registers[arg.register1 as usize] = *v;
+                        writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
+                        return Ok(());
+                    }
                 }
-                [T::Operator(Op::Sub), T::Integer(v)] => {
-                    let v = -*v;
-                    emu.general_registers[arg.register1 as usize] = v as u16;
-                    writeln!(stdout, "{}に{}を設定しました", var_name, v as i16)?;
-                    return Ok(());
-                }
-                _ => {}
-            },
+            }
             V::String => {
                 if let [T::String(s)] = values.as_slice() {
                     if s.is_empty() {
@@ -1367,10 +1278,7 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
                         writeln!(stdout, r#"{}に""を設定しました"#, var_name)?;
                     } else {
                         match emu.make_literal_str(s) {
-                            Err(_) => {
-                                writeln!(stdout, "引数が不正です")?;
-                                return Ok(());
-                            }
+                            Err(s) => writeln!(stdout, "{}", s)?,
                             Ok((pos, s)) => {
                                 emu.general_registers[arg.register1 as usize] =
                                     s.chars().count().min(256) as u16;
@@ -1386,15 +1294,93 @@ fn set_var<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
                     }
                     return Ok(());
                 }
-                todo!()
+                if let Some((vs, s)) = take_basic_int_values(&values) {
+                    if vs.len() <= 256 {
+                        if !emu.enough_remain(vs.len()) {
+                            writeln!(stdout, "メモリ不足でリテラル領域を確保できませんでした")?;
+                            return Ok(());
+                        }
+                        let pos = emu.compile_pos;
+                        emu.compile_pos += vs.len();
+                        emu.general_registers[arg.register1 as usize] = vs.len() as u16;
+                        emu.general_registers[arg.register2.unwrap() as usize] = pos as u16;
+                        for (i, v) in vs.iter().enumerate() {
+                            emu.mem[pos + i] = *v;
+                        }
+                        writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
+                        return Ok(());
+                    }
+                }
             }
-            V::ArrayOfBoolean(..) => todo!(),
-            V::ArrayOfInteger(..) => todo!(),
-            V::RefBoolean => todo!(),
-            V::RefInteger => todo!(),
+            V::ArrayOfBoolean(size) | V::RefArrayOfBoolean(size) => {
+                if !emu.enough_remain(size) {
+                    writeln!(stdout, "メモリ不足でリテラル領域を確保できません")?;
+                    return Ok(());
+                }
+                if let Some((vs, s)) = take_basic_bool_values(&values) {
+                    if vs.len() == size {
+                        let pos = emu.compile_pos;
+                        emu.compile_pos += vs.len();
+                        emu.general_registers[arg.register1 as usize] = pos as u16;
+                        for (i, v) in vs.iter().enumerate() {
+                            emu.mem[pos + i] = *v;
+                        }
+                        writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
+                        return Ok(());
+                    }
+                }
+            }
+            V::ArrayOfInteger(size) | V::RefArrayOfInteger(size) => {
+                if !emu.enough_remain(size) {
+                    writeln!(stdout, "メモリ不足でリテラル領域を確保できません")?;
+                    return Ok(());
+                }
+                if let Some((vs, s)) = take_basic_int_values(&values) {
+                    if vs.len() == size {
+                        let pos = emu.compile_pos;
+                        emu.compile_pos += vs.len();
+                        emu.general_registers[arg.register1 as usize] = pos as u16;
+                        for (i, v) in vs.iter().enumerate() {
+                            emu.mem[pos + i] = *v;
+                        }
+                        writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
+                        return Ok(());
+                    }
+                }
+            }
+            V::RefBoolean => {
+                if !emu.enough_remain(1) {
+                    writeln!(stdout, "メモリ不足でリテラル領域を確保できません")?;
+                    return Ok(());
+                }
+                if let Some((vs, s)) = take_basic_bool_values(&values) {
+                    if let [v] = vs.as_slice() {
+                        let pos = emu.compile_pos;
+                        emu.compile_pos += 1;
+                        emu.general_registers[arg.register1 as usize] = pos as u16;
+                        emu.mem[pos] = *v;
+                        writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
+                        return Ok(());
+                    }
+                }
+            }
+            V::RefInteger => {
+                if !emu.enough_remain(1) {
+                    writeln!(stdout, "メモリ不足でリテラル領域を確保できません")?;
+                    return Ok(());
+                }
+                if let Some((vs, s)) = take_basic_int_values(&values) {
+                    if let [v] = vs.as_slice() {
+                        let pos = emu.compile_pos;
+                        emu.compile_pos += 1;
+                        emu.general_registers[arg.register1 as usize] = pos as u16;
+                        emu.mem[pos] = *v;
+                        writeln!(stdout, "{}に{}を設定しました", var_name, s)?;
+                        return Ok(());
+                    }
+                }
+            }
             V::RefString => todo!(),
-            V::RefArrayOfBoolean(..) => todo!(),
-            V::RefArrayOfInteger(..) => todo!(),
         },
     }
 

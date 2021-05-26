@@ -1,5 +1,59 @@
 use super::*;
 
+pub(super) fn take_basic_bool_values(values: &[tokenizer::Token]) -> Option<(Vec<u16>, String)> {
+    use tokenizer::{Operator as Op, Token as T};
+    let mut vs = Vec::with_capacity(256);
+    let mut s = String::new();
+    for tk in values.split(|tk| matches!(tk, T::Operator(Op::Comma))) {
+        if !s.is_empty() {
+            s.push(',');
+        }
+        if let [T::Boolean(b)] = tk {
+            if *b {
+                vs.push(0xFFFF);
+                s.push_str("True");
+            } else {
+                vs.push(0x0000);
+                s.push_str("False");
+            }
+        } else {
+            return None;
+        }
+    }
+    Some((vs, s))
+}
+
+pub(super) fn take_basic_int_values(values: &[tokenizer::Token]) -> Option<(Vec<u16>, String)> {
+    use std::fmt::Write;
+    use tokenizer::{Operator as Op, Token as T};
+    let mut vs = Vec::with_capacity(256);
+    let mut s = String::new();
+    for tk in values.split(|tk| matches!(tk, T::Operator(Op::Comma))) {
+        if !s.is_empty() {
+            s.push(',');
+        }
+        match tk {
+            [T::Integer(v)] if *v < 0x8000 => {
+                vs.push(*v as u16);
+                write!(&mut s, "{}", *v as i16).unwrap();
+            }
+            [T::Character(ch)] => {
+                let t = jis_x_201::convert_kana_wide_full_to_half(&ch.to_string());
+                let v = jis_x_201::convert_from_char(t.chars().next().unwrap());
+                vs.push(v as u16);
+                write!(&mut s, "{}", v as i16).unwrap();
+            }
+            [T::Operator(Op::Sub), T::Integer(v)] => {
+                let v = -*v;
+                vs.push(v as u16);
+                write!(&mut s, "{}", v as i16).unwrap();
+            }
+            _ => return None,
+        }
+    }
+    Some((vs, s))
+}
+
 pub(super) fn parse_casl2_command(
     emu: &Emulator,
     cmd: &str,
