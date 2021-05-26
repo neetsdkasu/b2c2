@@ -639,6 +639,7 @@ fn interactive_basic<R: BufRead, W: Write>(
             "run",
             "set-breakpoint",
             "set-by-file",
+            "set-elem",
             "set-var",
             "show-src",
             "show-state",
@@ -766,6 +767,7 @@ fn interactive_basic<R: BufRead, W: Write>(
             }
             "set-breakpoint" => set_breakpoint_for_basic(emu, stdout, cmd_and_param.next(), true)?,
             "set-by-file" => todo!(),
+            "set-elem" => set_elem(emu, stdout, cmd_and_param.next())?,
             "set-var" => set_var(emu, stdout, cmd_and_param.next())?,
             "show-src" => show_src_basic(emu, stdout, cmd_and_param.next())?,
             "show-state" => show_state_basic(emu, stdout, state)?,
@@ -1044,6 +1046,169 @@ fn interactive_casl2<R: BufRead, W: Write>(
             }
         }
     }
+}
+
+//
+// set-elem <VAR_NAME> <INDEX> <VALUE>
+//
+fn set_elem<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    if matches!(emu.basic_step, Some(0) | None) {
+        writeln!(stdout, "現在地点での変数の設定は行えません")?;
+        return Ok(());
+    }
+    let (var_name, index, value) = match param {
+        None => {
+            writeln!(stdout, "引数が必要です")?;
+            return Ok(());
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let var_name = iter.next().unwrap();
+            let mut iter = match iter.next() {
+                Some(rest) => rest.splitn(2, ' ').map(|s| s.trim()),
+                None => {
+                    writeln!(stdout, "引数が不正です")?;
+                    return Ok(());
+                }
+            };
+            let index = iter.next().unwrap();
+            match iter.next() {
+                Some(value) => (var_name, index, value),
+                None => {
+                    writeln!(stdout, "引数が不正です")?;
+                    return Ok(());
+                }
+            }
+        }
+    };
+
+    let target = {
+        let (file, pg_label, label_set) = match emu.get_current_program() {
+            None => {
+                writeln!(stdout, "現在地点での変数の設定は行えません")?;
+                return Ok(());
+            }
+            Some((file, _, _)) => match emu.basic_info.get(file) {
+                Some((label, info)) => (file, label, &info.label_set),
+                None => {
+                    writeln!(stdout, "現在地点での変数の設定は行えません")?;
+                    return Ok(());
+                }
+            },
+        };
+
+        let target = {
+            if label_set.argument_labels.contains_key(var_name) {
+                writeln!(stdout, "{}は要素アクセスできません", var_name)?;
+                return Ok(());
+            } else if let Some((label, _)) = label_set.arr_argument_labels.get(var_name) {
+                emu.resolve_label(pg_label, label)
+            } else if let Some((label, _)) = label_set.str_argument_labels.get(var_name) {
+                emu.resolve_label(pg_label, label)
+            } else if label_set.int_var_labels.contains_key(var_name)
+                || label_set.bool_var_labels.contains_key(var_name)
+            {
+                writeln!(stdout, "{}は要素アクセスできません", var_name)?;
+                return Ok(());
+            } else if let Some(label) = label_set
+                .int_arr_labels
+                .get(var_name)
+                .or_else(|| label_set.bool_arr_labels.get(var_name))
+            {
+                emu.resolve_label(pg_label, label)
+            } else if let Some(label) = label_set.str_var_labels.get(var_name) {
+                emu.resolve_label(pg_label, label)
+            } else {
+                None
+            }
+        };
+
+        match target {
+            Some(target) => target,
+            None => {
+                writeln!(stdout, "{}に変数{}が見つかりません", file, var_name)?;
+                return Ok(());
+            }
+        }
+    };
+
+    let index = match index.parse::<u16>() {
+        Ok(index) => index as usize,
+        Err(_) => {
+            writeln!(stdout, "Indexが不正です")?;
+            return Ok(());
+        }
+    };
+
+    let value = {
+        let res = match tokenizer::Tokenizer::new(value.as_bytes()).next() {
+            Some(res) => res?,
+            None => {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+        };
+        match res {
+            Ok((_, tokens)) => tokens.into_iter().map(|(_, tk)| tk).collect::<Vec<_>>(),
+            Err(_) => {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+        }
+    };
+
+    use parser::VarType as V;
+
+    match target {
+        (pos, None, V::ArrayOfBoolean(size)) => {
+            if index >= size {
+                writeln!(stdout, "Indexが不正です")?;
+                return Ok(());
+            }
+            if let Some((vs, s)) = take_basic_bool_values(&value) {
+                if let [v] = vs.as_slice() {
+                    emu.mem[pos + index] = *v;
+                    writeln!(stdout, "{}({})に{}を設定しました", var_name, index, s)?;
+                    return Ok(());
+                }
+            }
+        }
+        (pos, None, V::ArrayOfInteger(size)) => {
+            if index >= size {
+                writeln!(stdout, "Indexが不正です")?;
+                return Ok(());
+            }
+            if let Some((vs, s)) = take_basic_int_values(&value) {
+                if let [v] = vs.as_slice() {
+                    emu.mem[pos + index] = *v;
+                    writeln!(stdout, "{}({})に{}を設定しました", var_name, index, s)?;
+                    return Ok(());
+                }
+            }
+        }
+        (len, Some(pos), V::String) => {
+            let size = emu.mem[len] as usize;
+            if size > 256 {
+                writeln!(stdout, "{}は壊れています", var_name)?;
+                return Ok(());
+            }
+            if index >= size {
+                writeln!(stdout, "Indexが不正です")?;
+                return Ok(());
+            }
+            if let Some((vs, s)) = take_basic_int_values(&value) {
+                if let [v] = vs.as_slice() {
+                    emu.mem[pos + index] = *v;
+                    writeln!(stdout, "{}({})に{}を設定しました", var_name, index, s)?;
+                    return Ok(());
+                }
+            }
+        }
+        _ => unreachable!("BUG"),
+    }
+
+    writeln!(stdout, "引数が不正です")?;
+    Ok(())
 }
 
 //
@@ -4314,6 +4479,8 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
                 指定したBASICプログラムにブレークポイントを設定する
     set-by-file <FILE_PATH>
                 ファイルに列挙された設定系のデバッガコマンドを実行する
+    set-elem <VAR_NAME> <INDEX> <VALUE>
+                現在地点のプログラムの配列変数の要素に値を設定する。値はBASICリテラルのみ
     set-var <VAR_NAME> <VALUE1>[,<VALUE2>..]
                 現在地点のプログラムの変数に値を設定する。値はBASICリテラルのみ
     show-src [<BASIC_SRC_FILE>]
@@ -4343,6 +4510,7 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
         "run" => todo!(),
         "set-breakpoint" => todo!(),
         "set-by-file" => todo!(),
+        "set-elem" => todo!(),
         "set-var" => todo!(),
         "show-src" => todo!(),
         "show-state" => todo!(),
