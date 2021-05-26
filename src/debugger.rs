@@ -1705,7 +1705,7 @@ fn set_breakpoint_for_basic<W: Write>(
 }
 
 //
-// show-execute-stat [<BASIC_SRC_FILE>]
+// show-execute-stat [<BASIC_PROGRAM_ENTRY>]
 //
 fn show_execute_stat<W: Write>(
     emu: &Emulator,
@@ -1716,14 +1716,18 @@ fn show_execute_stat<W: Write>(
         Some(".") => match emu.get_current_program() {
             Some(pg) => pg,
             None => {
-                writeln!(stdout, ".のBASICコードの情報が見つかりませんでした")?;
+                writeln!(stdout, "BASICコードの情報が見つかりませんでした")?;
                 return Ok(());
             }
         },
-        Some(file) => match emu.program_list.iter().find(|(f, _, _)| f == file) {
+        Some(label) => match emu
+            .program_list
+            .iter()
+            .find(|(_, x, _)| x.eq_ignore_ascii_case(label))
+        {
             Some(pg) => pg,
             None => {
-                writeln!(stdout, "{}のBASICコードの情報が見つかりませんでした", file)?;
+                writeln!(stdout, "{}のBASICコードの情報が見つかりませんでした", label)?;
                 return Ok(());
             }
         },
@@ -1739,16 +1743,12 @@ fn show_execute_stat<W: Write>(
     let info = match emu.basic_info.get(file) {
         Some((_, info)) => info,
         None => {
-            writeln!(
-                stdout,
-                "{}({})のBASICコードの情報が見つかりませんでした",
-                label, file
-            )?;
+            writeln!(stdout, "{}のBASICコードの情報が見つかりませんでした", label)?;
             return Ok(());
         }
     };
 
-    writeln!(stdout, "{}({})の実行情報", label, file)?;
+    writeln!(stdout, "{}の実行情報", label)?;
 
     let bps = stmt
         .iter()
@@ -3958,7 +3958,9 @@ fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io
                 emu.get_current_program()
                     .and_then(|(file, _, _)| emu.basic_info.get(file))
             } else {
-                emu.basic_info.values().find(|(x, _)| x.eq_ignore_ascii_case(label))
+                emu.basic_info
+                    .values()
+                    .find(|(x, _)| x.eq_ignore_ascii_case(label))
             };
             let var_list = iter.next().map(|s| s.split(',').collect::<Vec<_>>());
             (info, var_list)
@@ -4605,7 +4607,7 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
         "set-var" => todo!(),
         "show-execute-stat" => {
             r#"
-    show-execute-stat [<BASIC_SRC_FILE>]
+    show-execute-stat [<BASIC_PROGRAM_ENTRY>]
                 指定したBASICプログラムのコード実行の統計情報ぽいものを表示する"#
         }
         "show-src" => todo!(),
