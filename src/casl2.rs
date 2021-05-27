@@ -628,7 +628,7 @@ impl fmt::Display for Command {
             Pop { r } => format!("{:<9} {}", "POP", r),
             Ret => return "RET".fmt(f),
             Nop => return "NOP".fmt(f),
-            DebugBasicStep { id } => format!("; DEBUGBASICSTEP {}", id),
+            DebugBasicStep { id } => format!("NOP ; DEBUGBASICSTEP {}", id),
         };
         s.fmt(f)
     }
