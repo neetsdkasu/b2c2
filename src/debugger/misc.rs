@@ -393,6 +393,11 @@ pub(super) fn auto_resolve_files<R: BufRead, W: Write>(
 ) -> io::Result<i32> {
     let mut label_cache = HashMap::new();
     let dst_dir = flags.create_dst_dir()?;
+    let flags = {
+        let mut flags = flags.clone();
+        flags.compiler.program_name = None;
+        flags
+    };
     let casl2_flags = {
         let mut flags = flags.clone();
         flags.compiler = Default::default();
