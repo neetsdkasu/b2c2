@@ -1095,13 +1095,13 @@ fn show_var_for_basic<W: Write>(
         }
     };
 
-    let is_current = !stmt.is_empty() || {
+    let is_current = !stmt.is_empty() && {
         let &(fp, _) = stmt.first().unwrap();
         let &(lp, _) = stmt.last().unwrap();
         (fp..=lp).contains(&emu.program_register)
     };
 
-    let is_running = !stmt.is_empty() || {
+    let is_running = !stmt.is_empty() && {
         let &(fp, _) = stmt.first().unwrap();
         let &(lp, _) = stmt.last().unwrap();
         emu.program_stack
@@ -1111,11 +1111,188 @@ fn show_var_for_basic<W: Write>(
 
     writeln!(stdout, "{}の変数", pg_label)?;
 
-    if !is_running || (is_current && matches!(emu.basic_step, Some(0) | None)) {
+    if !(is_running || is_current) || (is_current && matches!(emu.basic_step, Some(0) | None)) {
         return print_var_def(stdout, label_set, var_list);
     }
 
     use parser::VarType as V;
+
+    if let Some(list) = var_list {
+        for name in list {
+            if let Some((label, arg)) = label_set.argument_labels.get(name) {
+                match arg.var_type {
+                    V::Boolean | V::Integer => write!(stdout, " ByVal {:<18} = ", name)?,
+                    V::RefBoolean | V::RefInteger => write!(stdout, " ByRef {:<18} = ", name)?,
+                    _ => unreachable!("BUG"),
+                }
+                match emu.resolve_label(pg_label, label) {
+                    Some((pos, None, V::Boolean)) => match emu.mem[pos] {
+                        0x0000 => writeln!(stdout, "False")?,
+                        0xFFFF => writeln!(stdout, "True")?,
+                        _ => writeln!(stdout, "????")?,
+                    },
+                    Some((pos, None, V::Integer)) => writeln!(stdout, "{}", emu.mem[pos] as i16)?,
+                    _ => writeln!(stdout, "(データ破損)")?,
+                }
+            } else if let Some((label, arg)) = label_set.str_argument_labels.get(name) {
+                match arg.var_type {
+                    V::String => write!(stdout, " ByVal {:<18} = ", name)?,
+                    V::RefString => write!(stdout, " ByRef {:<18} = ", name)?,
+                    _ => unreachable!("BUG"),
+                }
+                match emu.resolve_label(pg_label, label) {
+                    Some((len, Some(pos), V::String)) => {
+                        let len = emu.mem[len] as usize;
+                        let s = format!(
+                            r#""{}""#,
+                            emu.mem[pos..pos + len.min(256)]
+                                .iter()
+                                .map(|x| jis_x_201::convert_to_char(*x as u8, true))
+                                .collect::<String>()
+                                .replace('"', r#""""#)
+                        );
+                        if len <= 256 {
+                            writeln!(stdout, "({:>3}) {}", len, s)?;
+                        } else {
+                            let s = s.chars().take(30).collect::<String>();
+                            writeln!(stdout, "({:>3}) {}  (データ破損)", len, s)?;
+                        }
+                        if (1..=256).contains(&len) {
+                            let t = emu.mem[pos..pos + len.min(256)]
+                                .iter()
+                                .map(|v| format!("{}", *v as i16))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            writeln!(stdout, " {:5} {:18} = {}", "", "", t)?;
+                        }
+                    }
+                    _ => writeln!(stdout, "(データ破損)")?,
+                }
+            } else if let Some((label, arg)) = label_set.arr_argument_labels.get(name) {
+                match arg.var_type {
+                    V::ArrayOfBoolean(size) | V::ArrayOfInteger(size) => {
+                        write!(stdout, " ByVal {:<18} = ", format!("{}({})", name, size))?
+                    }
+                    V::RefArrayOfBoolean(size) | V::RefArrayOfInteger(size) => {
+                        write!(stdout, " ByRef {:<18} = ", format!("{}({})", name, size))?
+                    }
+                    _ => unreachable!("BUG"),
+                }
+                match emu.resolve_label(pg_label, label) {
+                    Some((pos, None, V::ArrayOfBoolean(size))) => {
+                        let s = emu.mem[pos..pos + size]
+                            .iter()
+                            .map(|v| match *v {
+                                0x0000 => "False",
+                                0xFFFF => "True ",
+                                _ => "???? ",
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        writeln!(stdout, "{}", s)?;
+                    }
+                    Some((pos, None, V::ArrayOfInteger(size))) => {
+                        let s = emu.mem[pos..pos + size]
+                            .iter()
+                            .map(|v| format!("{}", *v as i16))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        writeln!(stdout, "{}", s)?;
+                    }
+                    _ => writeln!(stdout, "(データ破損)")?,
+                }
+            } else if let Some(label) = label_set.bool_var_labels.get(name) {
+                write!(stdout, " Dim   {:<18} = ", name)?;
+                match emu.resolve_label(pg_label, label) {
+                    Some((pos, None, V::Boolean)) => match emu.mem[pos] {
+                        0x0000 => writeln!(stdout, "False")?,
+                        0xFFFF => writeln!(stdout, "True")?,
+                        _ => writeln!(stdout, "????")?,
+                    },
+                    _ => writeln!(stdout, "(データ破損)")?,
+                }
+            } else if let Some(label) = label_set.int_var_labels.get(name) {
+                write!(stdout, " Dim   {:<18} = ", name)?;
+                match emu.resolve_label(pg_label, label) {
+                    Some((pos, None, V::Integer)) => writeln!(stdout, "{}", emu.mem[pos] as i16)?,
+                    _ => writeln!(stdout, "(データ破損)")?,
+                }
+            } else if let Some(label) = label_set.str_var_labels.get(name) {
+                write!(stdout, " Dim   {:<18} = ", name)?;
+                match emu.resolve_label(pg_label, label) {
+                    Some((len, Some(pos), V::String)) => {
+                        let len = emu.mem[len] as usize;
+                        let s = format!(
+                            r#""{}""#,
+                            emu.mem[pos..pos + len.min(256)]
+                                .iter()
+                                .map(|x| jis_x_201::convert_to_char(*x as u8, true))
+                                .collect::<String>()
+                                .replace('"', r#""""#)
+                        );
+                        if len <= 256 {
+                            writeln!(stdout, "({:>3}) {}", len, s)?;
+                        } else {
+                            let s = s.chars().take(30).collect::<String>();
+                            writeln!(stdout, "({:>3}) {}  (データ破損)", len, s)?;
+                        }
+                        if (1..=256).contains(&len) {
+                            let t = emu.mem[pos..pos + len.min(256)]
+                                .iter()
+                                .map(|v| format!("{}", *v as i16))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            writeln!(stdout, " {:5} {:18} = {}", "", "", t)?;
+                        }
+                    }
+                    _ => writeln!(stdout, "(データ破損)")?,
+                }
+            } else if let Some(label) = label_set.bool_arr_labels.get(name) {
+                match emu.resolve_label(pg_label, label) {
+                    Some((pos, None, V::ArrayOfBoolean(size))) => {
+                        let s = emu.mem[pos..pos + size]
+                            .iter()
+                            .map(|v| match *v {
+                                0x0000 => "False",
+                                0xFFFF => "True",
+                                _ => "????",
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        writeln!(
+                            stdout,
+                            " Dim   {:<18} = {}",
+                            format!("{}({})", name, size),
+                            s
+                        )?;
+                    }
+                    _ => writeln!(stdout, " Dim   {:<18} = (データ破損)", "")?,
+                }
+            } else if let Some(label) = label_set.int_arr_labels.get(name) {
+                match emu.resolve_label(pg_label, label) {
+                    Some((pos, None, V::ArrayOfInteger(size))) => {
+                        let s = emu.mem[pos..pos + size]
+                            .iter()
+                            .map(|v| format!("{}", *v as i16))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        writeln!(
+                            stdout,
+                            " Dim   {:<18} = {}",
+                            format!("{}({})", name, size),
+                            s
+                        )?;
+                    }
+                    _ => writeln!(stdout, " Dim   {:<18} = (データ破損)", "")?,
+                }
+            } else {
+                writeln!(stdout, "変数{}は存在しません", name)?;
+            }
+        }
+        return Ok(());
+    }
+
+    let mut omit_name: Option<&String> = None;
 
     for (name, (label, arg)) in label_set.argument_labels.iter().collect::<BTreeMap<_, _>>() {
         match arg.var_type {
@@ -1160,21 +1337,25 @@ fn show_var_for_basic<W: Write>(
                 } else if len <= 256 {
                     let s = s.chars().take(30).collect::<String>();
                     writeln!(stdout, "({:>3}) {}  (省略)", len, s)?;
+                    omit_name = Some(name);
                 } else {
                     let s = s.chars().take(30).collect::<String>();
                     writeln!(stdout, "({:>3}) {}  (データ破損)", len, s)?;
                 }
-                let t = emu.mem[pos..pos + len.min(256)]
-                    .iter()
-                    .map(|v| format!("{}", *v as i16))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                write!(stdout, " {:5} {:18} = ", "", "")?;
-                if t.chars().count() < 46 {
-                    writeln!(stdout, "{}", t)?;
-                } else {
-                    let t = t.chars().take(36).collect::<String>();
-                    writeln!(stdout, "{}  (省略)", t)?;
+                if (1..=256).contains(&len) {
+                    let t = emu.mem[pos..pos + len.min(256)]
+                        .iter()
+                        .map(|v| format!("{}", *v as i16))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    write!(stdout, " {:5} {:18} = ", "", "")?;
+                    if t.chars().count() < 46 {
+                        writeln!(stdout, "{}", t)?;
+                    } else {
+                        let t = t.chars().take(36).collect::<String>();
+                        writeln!(stdout, "{}  (省略)", t)?;
+                        omit_name = Some(name);
+                    }
                 }
             }
             _ => writeln!(stdout, "(データ破損)")?,
@@ -1211,6 +1392,7 @@ fn show_var_for_basic<W: Write>(
                 } else {
                     let s = s.chars().take(36).collect::<String>();
                     writeln!(stdout, "{}  (省略)", s)?;
+                    omit_name = Some(name);
                 }
             }
             Some((pos, None, V::ArrayOfInteger(size))) => {
@@ -1224,6 +1406,7 @@ fn show_var_for_basic<W: Write>(
                 } else {
                     let s = s.chars().take(36).collect::<String>();
                     writeln!(stdout, "{}  (省略)", s)?;
+                    omit_name = Some(name);
                 }
             }
             _ => writeln!(stdout, "(データ破損)")?,
@@ -1268,21 +1451,25 @@ fn show_var_for_basic<W: Write>(
                 } else if len <= 256 {
                     let s = s.chars().take(30).collect::<String>();
                     writeln!(stdout, "({:>3}) {}  (省略)", len, s)?;
+                    omit_name = Some(name);
                 } else {
                     let s = s.chars().take(30).collect::<String>();
                     writeln!(stdout, "({:>3}) {}  (データ破損)", len, s)?;
                 }
-                let t = emu.mem[pos..pos + len.min(256)]
-                    .iter()
-                    .map(|v| format!("{}", *v as i16))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                write!(stdout, " {:5} {:18} = ", "", "")?;
-                if t.chars().count() < 46 {
-                    writeln!(stdout, "{}", t)?;
-                } else {
-                    let t = t.chars().take(36).collect::<String>();
-                    writeln!(stdout, "{}  (省略)", t)?;
+                if (1..=256).contains(&len) {
+                    let t = emu.mem[pos..pos + len.min(256)]
+                        .iter()
+                        .map(|v| format!("{}", *v as i16))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    write!(stdout, " {:5} {:18} = ", "", "")?;
+                    if t.chars().count() < 46 {
+                        writeln!(stdout, "{}", t)?;
+                    } else {
+                        let t = t.chars().take(36).collect::<String>();
+                        writeln!(stdout, "{}  (省略)", t)?;
+                        omit_name = Some(name);
+                    }
                 }
             }
             _ => writeln!(stdout, "(データ破損)")?,
@@ -1307,9 +1494,10 @@ fn show_var_for_basic<W: Write>(
                 } else {
                     let s = s.chars().take(36).collect::<String>();
                     writeln!(stdout, "{}  (省略)", s)?;
+                    omit_name = Some(name);
                 }
             }
-            _ => writeln!(stdout, "(データ破損)")?,
+            _ => writeln!(stdout, " Dim   {:<18} = (データ破損)", "")?,
         }
     }
 
@@ -1327,10 +1515,20 @@ fn show_var_for_basic<W: Write>(
                 } else {
                     let s = s.chars().take(36).collect::<String>();
                     writeln!(stdout, "{}  (省略)", s)?;
+                    omit_name = Some(name);
                 }
             }
-            _ => writeln!(stdout, "(データ破損)")?,
+            _ => writeln!(stdout, " Dim   {:<18} = (データ破損)", "")?,
         }
+    }
+
+    if let Some(name) = omit_name {
+        writeln!(stdout)?;
+        writeln!(
+            stdout,
+            "※省略された値を確認するには変数名を指定した実行が必要です"
+        )?;
+        writeln!(stdout, "  ( 例: show-var {} {} )", pg_label, name)?;
     }
 
     Ok(())
