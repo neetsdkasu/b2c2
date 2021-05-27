@@ -22,6 +22,8 @@ impl Compiler {
 
         let cond_reg = self.compile_int_expr(condition);
 
+        self.add_debugger_hint(|| "(begin do)".to_string());
+
         self.code(format!(
             r#" AND {reg},{reg}
                 JZE {exit}"#,
@@ -38,6 +40,7 @@ impl Compiler {
         self.nest_depth -= 1;
         self.add_debugger_hint(|| "Loop".to_string());
         self.comment("Loop");
+        self.add_debugger_hint(|| "(end do)".to_string());
         self.code(format!(" JUMP {next}", next = loop_label));
         self.labeled(exit_label, casl2::Command::Nop);
     }
@@ -63,6 +66,8 @@ impl Compiler {
 
         let cond_reg = self.compile_int_expr(condition);
 
+        self.add_debugger_hint(|| "(begin do)".to_string());
+
         self.code(format!(
             r#" AND {reg},{reg}
                 JNZ {exit}"#,
@@ -79,6 +84,7 @@ impl Compiler {
         self.nest_depth -= 1;
         self.add_debugger_hint(|| "Loop".to_string());
         self.comment("Loop");
+        self.add_debugger_hint(|| "(end do)".to_string());
         self.code(format!(" JUMP {next}", next = loop_label));
         self.labeled(exit_label, casl2::Command::Nop);
     }
@@ -104,6 +110,8 @@ impl Compiler {
 
         self.labeled(&top_label, casl2::Command::Nop);
 
+        self.add_debugger_hint(|| "(begin do)".to_string());
+
         for stmt in block.iter() {
             self.compile(stmt);
         }
@@ -114,6 +122,8 @@ impl Compiler {
         self.labeled(loop_label, casl2::Command::Nop);
 
         let cond_reg = self.compile_int_expr(condition);
+
+        self.add_debugger_hint(|| "(end do)".to_string());
 
         self.code(format!(
             r#" AND {reg},{reg}
@@ -148,6 +158,8 @@ impl Compiler {
 
         self.labeled(&top_label, casl2::Command::Nop);
 
+        self.add_debugger_hint(|| "(begin do)".to_string());
+
         for stmt in block.iter() {
             self.compile(stmt);
         }
@@ -158,6 +170,8 @@ impl Compiler {
         self.labeled(loop_label, casl2::Command::Nop);
 
         let cond_reg = self.compile_int_expr(condition);
+
+        self.add_debugger_hint(|| "(end do)".to_string());
 
         self.code(format!(
             r#" AND {reg},{reg}
@@ -180,6 +194,7 @@ impl Compiler {
         self.nest_depth += 1;
         self.comment("Do");
         self.labeled(&loop_label, casl2::Command::Nop);
+        self.add_debugger_hint(|| "(begin do)".to_string());
 
         for stmt in block.iter() {
             self.compile(stmt);
@@ -188,6 +203,7 @@ impl Compiler {
         self.nest_depth -= 1;
         self.add_debugger_hint(|| "Loop".to_string());
         self.comment("Loop");
+        self.add_debugger_hint(|| "(end do)".to_string());
         self.code(casl2::Command::P {
             code: casl2::P::Jump,
             adr: casl2::Adr::label(&loop_label),
