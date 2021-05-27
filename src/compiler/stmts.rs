@@ -994,6 +994,8 @@ impl Compiler {
 
         let condition_reg = self.compile_int_expr(condition);
 
+        self.add_debugger_hint(|| "(then)".to_string());
+
         self.set_register_idle(condition_reg);
 
         self.code(format!(
@@ -1026,6 +1028,8 @@ impl Compiler {
                     self.labeled(head, casl2::Command::Nop);
 
                     let condition_reg = self.compile_int_expr(condition);
+
+                    self.add_debugger_hint(|| "(then)".to_string());
 
                     self.set_register_idle(condition_reg);
 
