@@ -1,5 +1,222 @@
 use super::*;
 
+pub(super) fn print_var_def<W: Write>(
+    stdout: &mut W,
+    label_set: &compiler::LabelSet,
+    var_list: Option<Vec<&str>>,
+) -> io::Result<()> {
+    if let Some(list) = var_list {
+        for name in list {
+            if let Some((_, arg)) = label_set.argument_labels.get(name) {
+                match &arg.var_type {
+                    parser::VarType::Boolean => writeln!(
+                        stdout,
+                        " ByVal {:<18} As Boolean From {}",
+                        arg.var_name, arg.register1
+                    )?,
+                    parser::VarType::RefBoolean => writeln!(
+                        stdout,
+                        " ByRef {:<18} As Boolean From {}",
+                        arg.var_name, arg.register1
+                    )?,
+                    parser::VarType::Integer => writeln!(
+                        stdout,
+                        " ByVal {:<18} As Integer From {}",
+                        arg.var_name, arg.register1
+                    )?,
+                    parser::VarType::RefInteger => writeln!(
+                        stdout,
+                        " ByRef {:<18} As Integer From {}",
+                        arg.var_name, arg.register1
+                    )?,
+                    _ => unreachable!("BUG"),
+                }
+            } else if let Some((_, arg)) = label_set.str_argument_labels.get(name) {
+                match &arg.var_type {
+                    parser::VarType::String => writeln!(
+                        stdout,
+                        " ByVal {:<18} As String  From {},{}",
+                        arg.var_name,
+                        arg.register1,
+                        arg.register2.unwrap()
+                    )?,
+                    parser::VarType::RefString => writeln!(
+                        stdout,
+                        " ByRef {:<18} As String  From {},{}",
+                        arg.var_name,
+                        arg.register1,
+                        arg.register2.unwrap()
+                    )?,
+                    _ => unreachable!("BUG"),
+                }
+            } else if let Some((_, arg)) = label_set.arr_argument_labels.get(name) {
+                match &arg.var_type {
+                    parser::VarType::ArrayOfBoolean(size) => writeln!(
+                        stdout,
+                        " ByVal {:<18} As Boolean From {}",
+                        format!("{}({})", arg.var_name, size - 1),
+                        arg.register1
+                    )?,
+                    parser::VarType::RefArrayOfBoolean(size) => writeln!(
+                        stdout,
+                        " ByRef {:<18} As Boolean From {}",
+                        format!("{}({})", arg.var_name, size - 1),
+                        arg.register1
+                    )?,
+                    parser::VarType::ArrayOfInteger(size) => writeln!(
+                        stdout,
+                        " ByVal {:<18} As Integer From {}",
+                        format!("{}({})", arg.var_name, size - 1),
+                        arg.register1
+                    )?,
+                    parser::VarType::RefArrayOfInteger(size) => writeln!(
+                        stdout,
+                        " ByRef {:<18} As Integer From {}",
+                        format!("{}({})", arg.var_name, size - 1),
+                        arg.register1
+                    )?,
+                    _ => unreachable!("BUG"),
+                }
+            } else if label_set.bool_var_labels.contains_key(name) {
+                writeln!(stdout, " Dim   {:<18} As Boolean", name)?;
+            } else if label_set.int_var_labels.contains_key(name) {
+                writeln!(stdout, " Dim   {:<18} As Integer", name)?;
+            } else if label_set.str_var_labels.contains_key(name) {
+                writeln!(stdout, " Dim   {:<18} As String", name)?;
+            } else if let Some(label) = label_set.bool_arr_labels.get(name) {
+                writeln!(
+                    stdout,
+                    " Dim   {:<18} As Boolean",
+                    format!("{}({})", name, label.size() - 1)
+                )?;
+            } else if let Some(label) = label_set.int_arr_labels.get(name) {
+                writeln!(
+                    stdout,
+                    " Dim   {:<18} As Integer",
+                    format!("{}({})", name, label.size() - 1)
+                )?;
+            } else {
+                writeln!(stdout, "変数{}は存在しません", name)?;
+            }
+        }
+        return Ok(());
+    }
+
+    for (_, (_, arg)) in label_set.argument_labels.iter().collect::<BTreeMap<_, _>>() {
+        match &arg.var_type {
+            parser::VarType::Boolean => writeln!(
+                stdout,
+                " ByVal {:<18} As Boolean From {}",
+                arg.var_name, arg.register1
+            )?,
+            parser::VarType::RefBoolean => writeln!(
+                stdout,
+                " ByRef {:<18} As Boolean From {}",
+                arg.var_name, arg.register1
+            )?,
+            parser::VarType::Integer => writeln!(
+                stdout,
+                " ByVal {:<18} As Integer From {}",
+                arg.var_name, arg.register1
+            )?,
+            parser::VarType::RefInteger => writeln!(
+                stdout,
+                " ByRef {:<18} As Integer From {}",
+                arg.var_name, arg.register1
+            )?,
+            _ => unreachable!("BUG"),
+        }
+    }
+
+    for (_, (_, arg)) in label_set
+        .str_argument_labels
+        .iter()
+        .collect::<BTreeMap<_, _>>()
+    {
+        match &arg.var_type {
+            parser::VarType::String => writeln!(
+                stdout,
+                " ByVal {:<18} As String  From {},{}",
+                arg.var_name,
+                arg.register1,
+                arg.register2.unwrap()
+            )?,
+            parser::VarType::RefString => writeln!(
+                stdout,
+                " ByRef {:<18} As String  From {},{}",
+                arg.var_name,
+                arg.register1,
+                arg.register2.unwrap()
+            )?,
+            _ => unreachable!("BUG"),
+        }
+    }
+
+    for (_, (_, arg)) in label_set
+        .arr_argument_labels
+        .iter()
+        .collect::<BTreeMap<_, _>>()
+    {
+        match &arg.var_type {
+            parser::VarType::ArrayOfBoolean(size) => writeln!(
+                stdout,
+                " ByVal {:<18} As Boolean From {}",
+                format!("{}({})", arg.var_name, size - 1),
+                arg.register1
+            )?,
+            parser::VarType::RefArrayOfBoolean(size) => writeln!(
+                stdout,
+                " ByRef {:<18} As Boolean From {}",
+                format!("{}({})", arg.var_name, size - 1),
+                arg.register1
+            )?,
+            parser::VarType::ArrayOfInteger(size) => writeln!(
+                stdout,
+                " ByVal {:<18} As Integer From {}",
+                format!("{}({})", arg.var_name, size - 1),
+                arg.register1
+            )?,
+            parser::VarType::RefArrayOfInteger(size) => writeln!(
+                stdout,
+                " ByRef {:<18} As Integer From {}",
+                format!("{}({})", arg.var_name, size - 1),
+                arg.register1
+            )?,
+            _ => unreachable!("BUG"),
+        }
+    }
+
+    for (name, _) in label_set.bool_var_labels.iter().collect::<BTreeMap<_, _>>() {
+        writeln!(stdout, " Dim   {:<18} As Boolean", name)?;
+    }
+
+    for (name, _) in label_set.int_var_labels.iter().collect::<BTreeMap<_, _>>() {
+        writeln!(stdout, " Dim   {:<18} As Integer", name)?;
+    }
+
+    for (name, _) in label_set.str_var_labels.iter().collect::<BTreeMap<_, _>>() {
+        writeln!(stdout, " Dim   {:<18} As String", name)?;
+    }
+
+    for (name, label) in label_set.bool_arr_labels.iter().collect::<BTreeMap<_, _>>() {
+        writeln!(
+            stdout,
+            " Dim   {:<18} As Boolean",
+            format!("{}({})", name, label.size() - 1)
+        )?;
+    }
+
+    for (name, label) in label_set.int_arr_labels.iter().collect::<BTreeMap<_, _>>() {
+        writeln!(
+            stdout,
+            " Dim   {:<18} As Integer",
+            format!("{}({})", name, label.size() - 1)
+        )?;
+    }
+
+    Ok(())
+}
+
 pub(super) fn take_basic_bool_values(values: &[tokenizer::Token]) -> Option<(Vec<u16>, String)> {
     use tokenizer::{Operator as Op, Token as T};
     let mut vs = Vec::with_capacity(256);

@@ -190,7 +190,7 @@ pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
                     show_state_basic(&emu, &mut stdout, &state)?;
                     if let Some((file, label, _)) = emu.get_current_program() {
                         if emu.basic_info.contains_key(file) {
-                            show_var(&emu, &mut stdout, Some(label.as_str()))?;
+                            show_var_for_basic(&emu, &mut stdout, Some(label.as_str()))?;
                         }
                     }
 
@@ -772,7 +772,7 @@ fn interactive_basic<R: BufRead, W: Write>(
             "show-execute-stat" => show_execute_stat(emu, stdout, cmd_and_param.next())?,
             "show-src" => show_src_basic(emu, stdout, cmd_and_param.next())?,
             "show-state" => show_state_basic(emu, stdout, state)?,
-            "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
+            "show-var" => show_var_for_basic(emu, stdout, cmd_and_param.next())?,
             "step" | "s" => {
                 if let Some(param) = cmd_and_param.next() {
                     let mut iter = param.splitn(2, ' ').map(|s| s.trim());
@@ -1047,6 +1047,75 @@ fn interactive_casl2<R: BufRead, W: Write>(
             }
         }
     }
+}
+
+//
+// show-var [<BASIC_PROGRAM_ENTRY> [<VAR_NAME1>[,<VAR_NAME2>..]]]
+//
+fn show_var_for_basic<W: Write>(
+    emu: &Emulator,
+    stdout: &mut W,
+    param: Option<&str>,
+) -> io::Result<()> {
+    let (pg, var_list) = match param {
+        None => (emu.get_current_program(), None),
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let label = iter.next().unwrap();
+            let pg = if label == "." {
+                emu.get_current_program()
+            } else {
+                emu.program_list
+                    .iter()
+                    .find(|(_, x, _)| x.eq_ignore_ascii_case(label))
+            };
+            match iter.next() {
+                None => (pg, None),
+                Some(param) => {
+                    let list = param.split(',').map(|s| s.trim()).collect::<Vec<_>>();
+                    (pg, Some(list))
+                }
+            }
+        }
+    };
+
+    let (file, label, stmt) = match pg {
+        Some(pg) => pg,
+        None => {
+            writeln!(stdout, "BASICコードの情報が見つかりませんでした")?;
+            return Ok(());
+        }
+    };
+
+    let label_set = match emu.basic_info.get(file) {
+        Some((_, info)) => &info.label_set,
+        None => {
+            writeln!(stdout, "BASICコードの情報が見つかりませんでした")?;
+            return Ok(());
+        }
+    };
+
+    let is_current = !stmt.is_empty() || {
+        let &(fp, _) = stmt.first().unwrap();
+        let &(lp, _) = stmt.last().unwrap();
+        (fp..=lp).contains(&emu.program_register)
+    };
+
+    let is_running = !stmt.is_empty() || {
+        let &(fp, _) = stmt.first().unwrap();
+        let &(lp, _) = stmt.last().unwrap();
+        emu.program_stack
+            .iter()
+            .any(|(_, ret)| (fp..=lp).contains(ret))
+    };
+
+    writeln!(stdout, "{}の変数", label)?;
+
+    if !is_running || (is_current && matches!(emu.basic_step, Some(0) | None)) {
+        return print_var_def(stdout, label_set, var_list);
+    }
+
+    todo!()
 }
 
 //
@@ -1836,138 +1905,7 @@ fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>)
 
     writeln!(stdout, "{}のBASICコード", label)?;
 
-    for (_, (_, arg)) in info
-        .label_set
-        .argument_labels
-        .iter()
-        .collect::<BTreeMap<_, _>>()
-    {
-        match &arg.var_type {
-            parser::VarType::Boolean => writeln!(
-                stdout,
-                " ByVal {} As Boolean From {}",
-                arg.var_name, arg.register1
-            )?,
-            parser::VarType::RefBoolean => writeln!(
-                stdout,
-                " ByRef {} As Boolean From {}",
-                arg.var_name, arg.register1
-            )?,
-            parser::VarType::Integer => writeln!(
-                stdout,
-                " ByVal {} As Integer From {}",
-                arg.var_name, arg.register1
-            )?,
-            parser::VarType::RefInteger => writeln!(
-                stdout,
-                " ByRef {} As Integer From {}",
-                arg.var_name, arg.register1
-            )?,
-            _ => unreachable!("BUG"),
-        }
-    }
-    for (_, (_, arg)) in info
-        .label_set
-        .str_argument_labels
-        .iter()
-        .collect::<BTreeMap<_, _>>()
-    {
-        match &arg.var_type {
-            parser::VarType::String => writeln!(
-                stdout,
-                " ByVal {} As String From {},{}",
-                arg.var_name,
-                arg.register1,
-                arg.register2.unwrap()
-            )?,
-            parser::VarType::RefString => writeln!(
-                stdout,
-                " ByRef {} As String From {},{}",
-                arg.var_name,
-                arg.register1,
-                arg.register2.unwrap()
-            )?,
-            _ => unreachable!("BUG"),
-        }
-    }
-    for (_, (_, arg)) in info
-        .label_set
-        .arr_argument_labels
-        .iter()
-        .collect::<BTreeMap<_, _>>()
-    {
-        match &arg.var_type {
-            parser::VarType::ArrayOfBoolean(size) => writeln!(
-                stdout,
-                " ByVal {}({}) As Boolean From {}",
-                arg.var_name,
-                size - 1,
-                arg.register1
-            )?,
-            parser::VarType::RefArrayOfBoolean(size) => writeln!(
-                stdout,
-                " ByRef {}({}) As Boolean From {}",
-                arg.var_name,
-                size - 1,
-                arg.register1
-            )?,
-            parser::VarType::ArrayOfInteger(size) => writeln!(
-                stdout,
-                " ByVal {}({}) As Integer From {}",
-                arg.var_name,
-                size - 1,
-                arg.register1
-            )?,
-            parser::VarType::RefArrayOfInteger(size) => writeln!(
-                stdout,
-                " ByRef {}({}) As Integer From {}",
-                arg.var_name,
-                size - 1,
-                arg.register1
-            )?,
-            _ => unreachable!("BUG"),
-        }
-    }
-    for (name, _) in info
-        .label_set
-        .bool_var_labels
-        .iter()
-        .collect::<BTreeMap<_, _>>()
-    {
-        writeln!(stdout, " Dim {} As Boolean", name)?;
-    }
-    for (name, _) in info
-        .label_set
-        .int_var_labels
-        .iter()
-        .collect::<BTreeMap<_, _>>()
-    {
-        writeln!(stdout, " Dim {} As Integer", name)?;
-    }
-    for (name, _) in info
-        .label_set
-        .str_var_labels
-        .iter()
-        .collect::<BTreeMap<_, _>>()
-    {
-        writeln!(stdout, " Dim {} As String", name)?;
-    }
-    for (name, label) in info
-        .label_set
-        .bool_arr_labels
-        .iter()
-        .collect::<BTreeMap<_, _>>()
-    {
-        writeln!(stdout, " Dim {}({}) As Boolean", name, label.size() - 1)?;
-    }
-    for (name, label) in info
-        .label_set
-        .int_arr_labels
-        .iter()
-        .collect::<BTreeMap<_, _>>()
-    {
-        writeln!(stdout, " Dim {}({}) As Integer", name, label.size() - 1)?;
-    }
+    print_var_def(stdout, &info.label_set, None)?;
 
     let bps = stmt
         .iter()
@@ -3948,8 +3886,10 @@ fn list_files<W: Write>(emu: &Emulator, stdout: &mut W) -> io::Result<()> {
 fn show_var<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let (info, var_list) = match param {
         None => {
-            let (file, _, _) = emu.program_list.first().expect("BUG");
-            (emu.basic_info.get(file), None)
+            let info = emu
+                .get_current_program()
+                .and_then(|(file, _, _)| emu.basic_info.get(file));
+            (info, None)
         }
         Some(param) => {
             let mut iter = param.splitn(2, ' ');
