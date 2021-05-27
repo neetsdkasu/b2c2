@@ -174,7 +174,7 @@ pub fn compile_for_debugger(
     compiler.for_debug_basic = flag.for_debug_basic;
     compiler.add_debugger_hint_message(|| "Sub MAIN".to_string());
     compiler.nest_depth = 1;
-    compiler.add_debugger_hint_message(|| "(Initialize)".to_string());
+    compiler.add_debugger_hint_message(|| "(initialize)".to_string());
 
     for stmt in src.iter() {
         compiler.compile(stmt);
