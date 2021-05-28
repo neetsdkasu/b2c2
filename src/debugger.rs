@@ -641,6 +641,7 @@ fn interactive_basic<R: BufRead, W: Write>(
             "set-by-file",
             "set-elem",
             "set-var",
+            "show-execute-stat",
             "show-src",
             "show-state",
             "show-var",
@@ -4932,6 +4933,8 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
                 現在地点のプログラムの配列変数の要素に値を設定する。値はBASICリテラルのみ
     set-var <VAR_NAME> <VALUE1>[,<VALUE2>..]
                 現在地点のプログラムの変数に値を設定する。値はBASICリテラルのみ
+    show-execute-stat [<BASIC_PROGRAM_ENTRY>]
+                指定したBASICプログラムのコード実行の統計情報ぽいものを表示する
     show-src [<BASIC_PROGRAM_ENTRY>]
                 指定したBASICプログラムのコードを表示する
     show-state
@@ -4961,11 +4964,7 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
         "set-by-file" => todo!(),
         "set-elem" => todo!(),
         "set-var" => todo!(),
-        "show-execute-stat" => {
-            r#"
-    show-execute-stat [<BASIC_PROGRAM_ENTRY>]
-                指定したBASICプログラムのコード実行の統計情報ぽいものを表示する"#
-        }
+        "show-execute-stat" => todo!(),
         "show-src" => todo!(),
         "show-state" => todo!(),
         "show-var" => todo!(),
