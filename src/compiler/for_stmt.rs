@@ -86,6 +86,7 @@ impl Compiler {
             self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
 
         self.code(format!("{cond} NOP", cond = condition_label));
+        self.add_debugger_hint(|| "(begin for)".to_string());
         self.code(saves);
         if let Some(end_var) = end_var.as_ref() {
             self.code(format!(
@@ -138,6 +139,7 @@ impl Compiler {
             step = step
         ));
         self.code(recovers);
+        self.add_debugger_hint(|| "(end for)".to_string());
         self.code(format!(" JUMP {cond}", cond = condition_label));
         self.code(format!("{exit} NOP", exit = exit_label));
 
@@ -241,6 +243,7 @@ impl Compiler {
             self.get_save_registers_src(std::slice::from_ref(&casl2::Register::Gr1));
 
         self.code(format!("{cond} NOP", cond = condition_label));
+        self.add_debugger_hint(|| "(begin for)".to_string());
         self.code(saves);
         if let Some(end_var) = end_var.as_ref() {
             self.code(format!(
@@ -311,6 +314,7 @@ impl Compiler {
             step = step_var
         ));
         self.code(recovers);
+        self.add_debugger_hint(|| "(end for)".to_string());
         self.code(format!(" JUMP {cond}", cond = condition_label));
         self.code(format!("{exit} NOP", exit = exit_label));
 
