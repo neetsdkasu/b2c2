@@ -36,6 +36,10 @@ impl Compiler {
         self.code(value_labels.lad_pos(casl2::Register::Gr1));
         self.code(value_labels.ld_len(casl2::Register::Gr2));
 
+        self.set_debugger_hint_extra_info(|| ExtraInfo::SelectStr {
+            len_value: casl2::Register::Gr2,
+            pos_address: casl2::Register::Gr1,
+        });
         self.show_debugger_hint();
 
         self.return_temp_str_var_label(value_labels);
@@ -80,7 +84,7 @@ impl Compiler {
                         "Case {}",
                         values
                             .iter()
-                            .map(|s| format!("'{}'", s.replace('\'', "''")))
+                            .map(|s| format!(r#""{}""#, s.replace('"', r#""""#)))
                             .collect::<Vec<_>>()
                             .join(", ")
                     ));
@@ -91,7 +95,7 @@ impl Compiler {
                             "Case {}",
                             values
                                 .iter()
-                                .map(|s| format!("'{}'", s.replace('\'', "''")))
+                                .map(|s| format!(r#""{}""#, s.replace('"', r#""""#)))
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         )
@@ -166,6 +170,7 @@ impl Compiler {
         // 想定では GR7
         let value_reg = self.compile_int_expr(value);
 
+        self.set_debugger_hint_extra_info(|| ExtraInfo::SelectInt(value_reg));
         self.show_debugger_hint();
 
         for (case_stmt, label) in case_blocks.iter() {

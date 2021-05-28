@@ -22,23 +22,17 @@ impl Compiler {
             unreachable!("BUG");
         };
 
-        self.add_debugger_hint(|| {
-            format!(
-                "For {counter} = {init} To {end} Step {step}",
-                counter = counter,
-                init = init,
-                end = end,
-                step = step
-            )
-        });
-        self.nest_depth += 1;
-        self.comment(format!(
+        let comment = format!(
             "For {counter} = {init} To {end} Step {step}",
             counter = counter,
             init = init,
             end = end,
             step = step
-        ));
+        );
+
+        self.add_debugger_hint(|| comment.clone());
+        self.nest_depth += 1;
+        self.comment(comment.as_str());
 
         // calc {end}
         let end_var = if let parser::Expr::LitInteger(_) = end {
@@ -64,6 +58,12 @@ impl Compiler {
             self.get_int_var_label(counter)
         };
 
+        self.set_debugger_hint_extra_info(|| ExtraInfo::For {
+            counter: counter_var.clone(),
+            to: end_var.clone(),
+            step: None,
+        });
+
         // calc {init} and assign to {counter}
         // 想定では GR7
         let init_reg = self.compile_int_expr(init);
@@ -87,6 +87,7 @@ impl Compiler {
 
         self.code(format!("{cond} NOP", cond = condition_label));
         self.add_debugger_hint(|| "(begin for)".to_string());
+        self.set_debugger_hint_extra_info(|| ExtraInfo::RelatedCode(comment.clone()));
         self.code(saves);
         if let Some(end_var) = end_var.as_ref() {
             self.code(format!(
@@ -140,6 +141,7 @@ impl Compiler {
         ));
         self.code(recovers);
         self.add_debugger_hint(|| "(end for)".to_string());
+        self.set_debugger_hint_extra_info(|| ExtraInfo::RelatedCode(comment));
         self.code(format!(" JUMP {cond}", cond = condition_label));
         self.code(format!("{exit} NOP", exit = exit_label));
 
@@ -165,23 +167,17 @@ impl Compiler {
             unreachable!("BUG");
         };
 
-        self.add_debugger_hint(|| {
-            format!(
-                "For {counter} = {init} To {end} Step {step}",
-                counter = counter,
-                init = init,
-                end = end,
-                step = step
-            )
-        });
-        self.nest_depth += 1;
-        self.comment(format!(
+        let comment = format!(
             "For {counter} = {init} To {end} Step {step}",
             counter = counter,
             init = init,
             end = end,
             step = step
-        ));
+        );
+
+        self.add_debugger_hint(|| comment.clone());
+        self.nest_depth += 1;
+        self.comment(comment.as_str());
 
         // calc {step}
         let step_var = self.get_temp_int_var_label();
@@ -219,6 +215,12 @@ impl Compiler {
             self.get_int_var_label(counter)
         };
 
+        self.set_debugger_hint_extra_info(|| ExtraInfo::For {
+            counter: counter_var.clone(),
+            to: end_var.clone(),
+            step: Some(step_var.clone()),
+        });
+
         // calc {init} and assign to {counter}
         // 想定では GR7
         let init_reg = self.compile_int_expr(init);
@@ -244,6 +246,7 @@ impl Compiler {
 
         self.code(format!("{cond} NOP", cond = condition_label));
         self.add_debugger_hint(|| "(begin for)".to_string());
+        self.set_debugger_hint_extra_info(|| ExtraInfo::RelatedCode(comment.clone()));
         self.code(saves);
         if let Some(end_var) = end_var.as_ref() {
             self.code(format!(
@@ -315,6 +318,7 @@ impl Compiler {
         ));
         self.code(recovers);
         self.add_debugger_hint(|| "(end for)".to_string());
+        self.set_debugger_hint_extra_info(|| ExtraInfo::RelatedCode(comment));
         self.code(format!(" JUMP {cond}", cond = condition_label));
         self.code(format!("{exit} NOP", exit = exit_label));
 

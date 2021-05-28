@@ -142,9 +142,25 @@ pub struct LabelSet {
 }
 
 #[derive(Clone)]
+pub enum ExtraInfo {
+    For {
+        counter: ValueLabel,
+        to: Option<String>,
+        step: Option<String>,
+    },
+    Condition(casl2::Register),
+    RelatedCode(String),
+    SelectInt(casl2::Register),
+    SelectStr {
+        len_value: casl2::Register,
+        pos_address: casl2::Register,
+    },
+}
+
+#[derive(Clone)]
 pub struct DebugInfo {
     pub label_set: LabelSet,
-    pub status_hint: Vec<(usize, String)>,
+    pub status_hint: Vec<(usize, String, Option<ExtraInfo>)>,
 }
 
 // デバッグ用コンパイル
@@ -195,9 +211,9 @@ pub fn compile_for_debugger(
         label_set,
         status_hint: if flag.for_debug_basic {
             let mut hint = compiler.debugger_hint.clone();
-            hint.push((0, "End Sub".to_string()));
+            hint.push((0, "End Sub".to_string(), None));
             if let Some(pn) = compiler.program_name.as_ref() {
-                let (_, msg) = hint.first_mut().unwrap();
+                let (_, msg, _) = hint.first_mut().unwrap();
                 *msg = msg.replace("MAIN", pn);
             }
             hint
@@ -267,7 +283,7 @@ struct Compiler {
     nest_depth: usize,
 
     // debuggerで利用するためのヒント (ネストの深さ、ヒントメッセージ)
-    debugger_hint: Vec<(usize, String)>,
+    debugger_hint: Vec<(usize, String, Option<ExtraInfo>)>,
 
     // プログラム名
     program_name: Option<String>,
@@ -469,6 +485,18 @@ impl Compiler {
         }
     }
 
+    fn set_debugger_hint_extra_info<F>(&mut self, extra: F)
+    where
+        F: FnOnce() -> ExtraInfo,
+    {
+        if !self.for_debug_basic {
+            return;
+        }
+        if let Some((_, _, v)) = self.debugger_hint.last_mut() {
+            *v = Some(extra());
+        }
+    }
+
     // debugger用のヒント表示のみを追加する
     fn show_debugger_hint(&mut self) {
         if let Some(cmd) = self.get_current_debugger_hint() {
@@ -485,7 +513,7 @@ impl Compiler {
             return;
         }
         let nest = self.nest_depth;
-        self.debugger_hint.push((nest, hint()));
+        self.debugger_hint.push((nest, hint(), None));
     }
 
     // debugger用のヒントを追加する
@@ -500,7 +528,7 @@ impl Compiler {
             self.code(cmd);
         }
         let nest = self.nest_depth;
-        self.debugger_hint.push((nest, hint()));
+        self.debugger_hint.push((nest, hint(), None));
     }
 }
 

@@ -2252,7 +2252,7 @@ fn show_execute_stat<W: Write>(
         .collect::<Vec<_>>();
 
     writeln!(stdout, "実行回数")?;
-    for (i, (n, hint)) in info.status_hint.iter().enumerate() {
+    for (i, (n, hint, _)) in info.status_hint.iter().enumerate() {
         let (bp, cnt) = match bps.iter().find(|(_, id)| *id == i) {
             Some((pos, id)) => {
                 assert_eq!(*id, i);
@@ -2335,7 +2335,7 @@ fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>)
         })
         .collect::<Vec<_>>();
 
-    for (i, (n, hint)) in info.status_hint.iter().enumerate() {
+    for (i, (n, hint, _)) in info.status_hint.iter().enumerate() {
         let bp = match bps.iter().find(|(_, id)| *id == i) {
             Some((pos, id)) if emu.break_points[*pos] => {
                 assert_eq!(*id, i);
@@ -2374,14 +2374,67 @@ fn show_state_basic<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> 
         " "
     };
 
-    if let Some(((_, info), hint_id)) = emu
+    if let Some(((pg_label, info), hint_id)) = emu
         .get_current_program()
         .and_then(|(file, _, _)| emu.basic_info.get(file))
         .zip(emu.basic_step)
     {
-        if let Some((n, s)) = info.status_hint.get(hint_id as usize) {
+        if let Some((n, s, extra)) = info.status_hint.get(hint_id as usize) {
             writeln!(stdout, "Last:")?;
             writeln!(stdout, "{0:5}: {1} {2:3$}{4}", hint_id, bp, "", n * 2, s)?;
+            if let Some(extra) = extra {
+                use compiler::ExtraInfo::*;
+                writeln!(stdout, "Info:")?;
+                match extra {
+                    For { counter, to, step } => {
+                        let local_labels = emu.local_labels.get(pg_label).expect("BUG");
+                        match emu.resolve_label(pg_label, counter) {
+                            Some((pos, None, parser::VarType::Integer)) => {
+                                write!(stdout, "  counter: {}", emu.mem[pos] as i16)?;
+                                if let Some(to) = to {
+                                    let to = emu.mem[*local_labels.get(to).expect("BUG")];
+                                    write!(stdout, ", to: {}", to)?;
+                                }
+                                if let Some(step) = step {
+                                    let step = emu.mem[*local_labels.get(step).expect("BUG")];
+                                    write!(stdout, ", step: {}", step)?;
+                                }
+                                writeln!(stdout)?;
+                            }
+                            _ => writeln!(stdout, "  counter: (データ破損)")?,
+                        }
+                    }
+                    Condition(reg) => {
+                        let v = match emu.general_registers[*reg as usize] {
+                            0x0000 => "False",
+                            0xFFFF => "True",
+                            _ => "????",
+                        };
+                        writeln!(stdout, "  condition: {}", v)?;
+                    }
+                    RelatedCode(code) => writeln!(stdout, "  related code: {}", code)?,
+                    SelectInt(reg) => {
+                        writeln!(stdout, "  value: {}", emu.general_registers[*reg as usize])?;
+                    }
+                    SelectStr {
+                        len_value,
+                        pos_address,
+                    } => {
+                        let len = emu.general_registers[*len_value as usize] as usize;
+                        let pos = emu.general_registers[*pos_address as usize] as usize;
+                        if len <= 256 {
+                            let s = emu.mem[pos..pos + len]
+                                .iter()
+                                .map(|v| jis_x_201::convert_to_char(*v as u8, true))
+                                .collect::<String>()
+                                .replace('"', r#""""#);
+                            writeln!(stdout, r#"  value: "{}""#, s)?;
+                        } else {
+                            writeln!(stdout, "  value: (データ破損)")?;
+                        }
+                    }
+                }
+            }
         } else {
             writeln!(stdout, "Last:")?;
             writeln!(stdout, "{0:5}: {1} ?????", hint_id, bp)?;

@@ -994,7 +994,12 @@ impl Compiler {
 
         let condition_reg = self.compile_int_expr(condition);
 
+        self.set_debugger_hint_extra_info(|| ExtraInfo::Condition(condition_reg));
+
         self.add_debugger_hint(|| "(then)".to_string());
+        self.set_debugger_hint_extra_info(|| {
+            ExtraInfo::RelatedCode(format!("If {} Then", condition))
+        });
 
         self.set_register_idle(condition_reg);
 
@@ -1029,7 +1034,11 @@ impl Compiler {
 
                     let condition_reg = self.compile_int_expr(condition);
 
+                    self.set_debugger_hint_extra_info(|| ExtraInfo::Condition(condition_reg));
                     self.add_debugger_hint(|| "(then)".to_string());
+                    self.set_debugger_hint_extra_info(|| {
+                        ExtraInfo::RelatedCode(format!("ElseIf {} Then", condition))
+                    });
 
                     self.set_register_idle(condition_reg);
 
