@@ -640,6 +640,7 @@ fn interactive_basic<R: BufRead, W: Write>(
             "set-breakpoint",
             "set-by-file",
             "set-elem",
+            "set-len",
             "set-var",
             "show-execute-stat",
             "show-src",
@@ -769,6 +770,7 @@ fn interactive_basic<R: BufRead, W: Write>(
             "set-breakpoint" => set_breakpoint_for_basic(emu, stdout, cmd_and_param.next(), true)?,
             "set-by-file" => todo!(),
             "set-elem" => set_elem(emu, stdout, cmd_and_param.next())?,
+            "set-len" => set_len(emu, stdout, cmd_and_param.next())?,
             "set-var" => set_var(emu, stdout, cmd_and_param.next())?,
             "show-execute-stat" => show_execute_stat(emu, stdout, cmd_and_param.next())?,
             "show-src" => show_src_basic(emu, stdout, cmd_and_param.next())?,
@@ -1531,6 +1533,84 @@ fn show_var_for_basic<W: Write>(
         )?;
         writeln!(stdout, "  ( 例: show-var {} {} )", pg_label, name)?;
     }
+
+    Ok(())
+}
+
+//
+// set-len <STR_VAR_NAME> <LENGTH>
+//
+fn set_len<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    if matches!(emu.basic_step, Some(0) | None) {
+        writeln!(stdout, "現在地点での変数の設定は行えません")?;
+        return Ok(());
+    }
+    let (var_name, new_len) = match param {
+        None => {
+            writeln!(stdout, "引数が必要です")?;
+            return Ok(());
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let var_name = iter.next().unwrap();
+            let rest = match iter.next() {
+                Some(rest) => rest,
+                None => {
+                    writeln!(stdout, "引数が不正です")?;
+                    return Ok(());
+                }
+            };
+            match rest.parse::<u8>() {
+                Ok(len) => (var_name, len as u16),
+                Err(_) => {
+                    writeln!(stdout, "引数が不正です")?;
+                    return Ok(());
+                }
+            }
+        }
+    };
+
+    let target = {
+        let (file, pg_label, label_set) = match emu.get_current_program() {
+            None => {
+                writeln!(stdout, "現在地点での変数の設定は行えません")?;
+                return Ok(());
+            }
+            Some((file, _, _)) => match emu.basic_info.get(file) {
+                Some((label, info)) => (file, label, &info.label_set),
+                None => {
+                    writeln!(stdout, "現在地点での変数の設定は行えません")?;
+                    return Ok(());
+                }
+            },
+        };
+
+        let target = {
+            if let Some((label, _)) = label_set.str_argument_labels.get(var_name) {
+                emu.resolve_label(pg_label, label)
+            } else if let Some(label) = label_set.str_var_labels.get(var_name) {
+                emu.resolve_label(pg_label, label)
+            } else {
+                None
+            }
+        };
+
+        match target {
+            Some(target) => target,
+            None => {
+                writeln!(stdout, "{}に文字列変数{}が見つかりません", file, var_name)?;
+                return Ok(());
+            }
+        }
+    };
+
+    if let (len, Some(_), parser::VarType::String) = target {
+        emu.mem[len] = new_len;
+    } else {
+        unreachable!("たぶん");
+    }
+
+    writeln!(stdout, "{}の長さを{}を設定しました", var_name, new_len)?;
 
     Ok(())
 }
@@ -4984,6 +5064,8 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
                 ファイルに列挙された設定系のデバッガコマンドを実行する
     set-elem <VAR_NAME> <INDEX> <VALUE>
                 現在地点のプログラムの配列変数の要素に値を設定する。値はBASICリテラルのみ
+    set-len <STR_VAR_NAME> <LENGTH>
+                現在地点のプログラムの文字列変数の長さ情報のみを書き換える
     set-var <VAR_NAME> <VALUE1>[,<VALUE2>..]
                 現在地点のプログラムの変数に値を設定する。値はBASICリテラルのみ
     show-execute-stat [<BASIC_PROGRAM_ENTRY>]
@@ -4993,10 +5075,10 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
     show-state
                 直近の実行(run,skip,step)の結果を再表示する
     show-var [<BASIC_PROGRAM_ENTRY> [<VAR_NAME1>[,<VAR_NAME2>..]]]
-                指定したBASICプログラムの変数名と対応するラベルとアドレスと値を表示する
+                指定したBASICプログラムの変数名を表示する。可能な場合は値も表示する
     s    [<BASIC_STEP_COUNT> [<COMET2_STEP_LIMIT>]]
     step [<BASIC_STEP_COUNT> [<COMET2_STEP_LIMIT>]]
-                指定ステップ数だけ実行する。STEP_COUNT省略時は1ステップだけ実行する
+                指定ステップ数だけ実行する。BASIC_STEP_COUNT省略時は1ステップだけ実行する
 "#
             )?;
             return Ok(());
@@ -5016,6 +5098,7 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
         "set-breakpoint" => todo!(),
         "set-by-file" => todo!(),
         "set-elem" => todo!(),
+        "set-len" => todo!(),
         "set-var" => todo!(),
         "show-execute-stat" => todo!(),
         "show-src" => todo!(),
