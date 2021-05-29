@@ -5254,7 +5254,7 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
     mode <MODE>
                 指定したデバッグモードに切り替える
     quit
-                テスト実行を中止する
+                テスト実行を中止しデバッガを終了する
     remove-breakpoint [<ADDRESS1>[,<ADDRESS2>..]]
                 指定アドレスのブレークポイントを解除する。アドレス省略時はPRの示すアドレス
     reset
@@ -5315,7 +5315,7 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
                     例: 'X'
                         'Abc123'
                         'Let''s go!'
-    アドレス定数
+    アドレス定数 (当デバッガの拡張仕様となっている)
         ラベル
                         グローバルラベル (各プログラムのエントリラベル、デバッガコマンドで定義したラベル)
                             例: MAIN
@@ -5349,7 +5349,8 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
                 領域を確保し値を格納の後そのアドレスを返す
                     例: =123
                         =#ABCD
-                        ='XYZ'"#
+                        ='XYZ'
+"#
         )?;
         return Ok(());
     }
@@ -5359,63 +5360,198 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
             r#"
     add-dc <LABEL> <VALUE1>[,<VALUE2>..]
                 新しく領域を作り値を格納し先頭アドレスを示すラベルも作る。CASL2のDC相当
-                VALUEには10進定数、16進定数、文字定数、アドレス定数、リテラルを指定できる
+                LABEL  .. CASL2のラベル仕様に従う。デバッガで未使用のラベル名を指定する
+                VALUE* .. 10進定数、16進定数、文字定数、アドレス定数、リテラルを指定できる
 "#
         }
-        "add-ds" => todo!(),
-        "copy-mem" => todo!(),
-        "default-cmd" => todo!(),
-        "dump-code" => todo!(),
-        "dump-mem" => todo!(),
+        "add-ds" => {
+            r#"
+    add-ds <LABEL> <SIZE>
+                新しく領域を確保し先頭アドレスを示すラベルを作る。CASL2のDS相当
+                LABEL .. CASL2のラベル仕様に従う。デバッガで未使用のラベル名を指定する
+                SIZE  .. 確保する領域のサイズ(単位は語)。正の10進数か16進定数で指定する
+"#
+        }
+        "copy-mem" => {
+            r#"
+    copy-mem <ADDRESS_FROM> <ADDRESS_TO> <LENGTH>
+                メモリのデータをコピーする
+                ADDRESS_FROM .. コピー元の先頭アドレス。16進定数かアドレス定数を指定できる
+                ADDRESS_TO   .. コピー先の先頭アドレス。16進定数かアドレス定数を指定できる
+                LENGTH       .. コピーするサイズ(単位は語)。正の10進数か16進定数で指定する
+"#
+        }
+        "default-cmd" => {
+            r#"
+    default-cmd [<DEBUG_COMMAND>]
+    default-cmd none
+                空行が入力されたときの挙動を設定する
+                DEBUG_COMMAND .. デバッガコマンドとその引数を空行入力時のコマンドとして割り当てる
+                                 未指定の場合は現在の割り当てコマンドを表示する
+                none　　　　　　　　　.. コマンド割り当てを解除する
+"#
+        }
+        "dump-code" => {
+            r#"
+    dump-code [<ADDRESS> [<SIZE>]]
+                メモリをコード表示する
+                各メモリ位置をCOMET2命令として解釈できる箇所をコード表示していく
+                ADDRESS .. 表示対象の先頭アドレス。16進定数かアドレス定数を指定する
+                SIZE    .. 表示対象のサイズ(単位は語)。正の10進数か16進定数で指定する
+"#
+        }
+        "dump-mem" => {
+            r#"
+    dump-mem [<ADDRESS> [<SIZE>]]
+                メモリダンプする
+                各メモリ位置の16進定数表記と8bitごとを文字表記とを表示する
+                ADDRESS .. 表示対象の先頭アドレス。16進定数かアドレス定数を指定する
+                SIZE    .. 表示対象のサイズ(単位は語)。正の10進数か16進定数で指定する
+"#
+        }
         "fill-mem" => {
             r#"
     fill-mem <ADDRESS> <LENGTH> <VALUE>
                 メモリの指定アドレスから指定の長さ分を指定の値で埋める
-                    ADDRESS  .. 16進定数,アドレス定数
-                    LENGTH   .. 正の10進数,16進定数
-                    VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル
-
-                ※各種定数については help constat で説明"#
+                ADDRESS  .. 16進定数,アドレス定数
+                LENGTH   .. 正の10進数,16進定数
+                VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル
+"#
         }
-        "find-code" => todo!(),
-        "find-src" => todo!(),
-        "find-value" => todo!(),
-        "help" => todo!(),
-        "list-files" => todo!(),
-        "mode" => todo!(),
-        "quit" => todo!(),
-        "remove-breakpoint" => todo!(),
-        "reset" => todo!(),
-        "restart" => todo!(),
-        "run" => todo!(),
-        "set-breakpoint" => todo!(),
-        "set-by-file" => todo!(),
-        "set-label" => todo!(),
+        "find-code" => {
+            r#"
+    find-code <ADDRESS> <COMET2_COMMAND>
+                指定のCOMET2コマンドを指定アドレス位置以降から探し最初に見つかったメモリ上のコードを表示する
+                ADDRESS        .. 検索開始位置のアドレス。16進定数かアドレス定数で指定
+                COMET2_COMMAND .. COMET2のコマンドをCASL2形式で指定する
+                                  (アドレス定数にはデバッガの拡張された形式が使用可能)
+                例:
+                    find-code MAIN LAD GR1,MAIN:FOO,GR2
+"#
+        }
+        "find-src" => {
+            r#"
+    find-src <ADDRESS> <CASL2_COMMAND>
+                指定のCASL2コマンドを指定アドレス位置以降から探し最初に見つかったコードを表示する
+                CASL2ソースまたはBASICから変換されたCASL2ソースから検索する
+                ADDRESS        .. 検索開始位置のアドレス。16進定数かアドレス定数で指定
+                COMET2_COMMAND .. CASL2のコマンドをソースに記載されている形で指定する
+                例:
+                    find-src MAIN LAD GR1,FOO,GR2
+"#
+        }
+        "find-value" => {
+            r#"
+    find-value <ADDRESS> <VALUE>
+                指定の値をメモリの指定アドレス位置から探し最初に見つかった位置を表示する
+                ADDRESS .. 検索開始位置のアドレス。16進定数かアドレス定数で指定
+                VALUE   .. 検索する値。10進定数、16進定数、文字定数、アドレス定数を指定できる
+"#
+        }
+        "help" => {
+            r#"
+    help <COMMAND_NAME>
+                指定デバッガコマンドの詳細ヘルプを表示する
+    help constant
+                デバッガコマンドで使用する定数に関する説明を表示する
+"#
+        }
+        "list-files" => {
+            r#"
+    list-files
+                読み込んだソースファイルの一覧を表示する
+                ソースファイルとラベルの対応を表示する
+"#
+        }
+        "mode" => {
+            r#"
+    mode <MODE>
+                指定したデバッグモードに切り替える(BASICデバッグモードで起動した場合にのみ有効)
+                MODE .. BASICかCASL2を指定して切り替える
+"#
+        }
+        "quit" => {
+            r#"
+    quit
+                テスト実行を中止しデバッガを終了する
+"#
+        }
+        "remove-breakpoint" => {
+            r#"
+    remove-breakpoint [<ADDRESS1>[,<ADDRESS2>..]]
+                指定アドレスのブレークポイントを解除する。アドレス省略時はPRの示すアドレス
+                ADDRESS* .. 解除対象のアドレス。16進定数かアドレス定数で指定
+"#
+        }
+        "reset" => {
+            r#"
+    reset
+                プログラムを最初から実行しなおす。プログラムをファイルから読み込みなおし配置される
+"#
+        }
+        "restart" => {
+            r#"
+    restart
+                プログラムを最初の位置から実行しなおす。メモリやGRやFRは終了時点の状態クリアされずに最後の実行状態のまま維持される
+                スタート位置はset-startコマンドで指定されている場合以外は-src指定のファイルのプログラムからとなる
+"#
+        }
+        "run" => {
+            r#"
+    run [<STEP_LIMIT>]
+                次のブレークポイントまで実行する。ステップ制限数までにブレークポイントに到達しない場合はそこで停止する
+                STEP_LIMIT .. ステップ制限数。正の10進数で指定する(最大値は18446744073709551616)
+                              省略した場合は 10000
+"#
+        }
+        "set-breakpoint" => {
+            r#"
+    set-breakpoint [<ADDRESS1>[,<ADDRESS2>..]]
+                指定アドレスにブレークポイントを設定する。アドレス省略時はPRの示すアドレス
+                ADDRESS* .. 解除対象のアドレス。16進定数かアドレス定数で指定
+"#
+        }
+        "set-by-file" => {
+            r#"
+    set-by-file <FILE_PATH>
+                ファイルに列挙された設定系のデバッガコマンドを実行する
+                1行につき1コマンドを配置できる                
+                ファイルに指定できないデバッガコマンド:
+                    quit reset restart run set-by-file skip s step
+"#
+        }
+        "set-label" => {
+            r#"
+    set-label <LABEL> <ADDRESS>
+                アドレスのエイリアスである新しいラベルを作る。
+                LABEL   .. CASL2のラベル仕様に従う。デバッガで未使用のラベル名を指定する
+                ADDRESS .. エイリアス対象のアドレス。16進定数かアドレス定数で指定
+"#
+        }
         "set-mem" => {
             r#"
     set-mem <ADDRESS> <VALUE1>[,<VALUE2>..]
                 値をメモリの指定アドレスに書き込む
                 値を複数列挙した場合はアドレスから連続した領域に書き込まれる
                 値が文字定数の場合は文字数分の連続した領域に書き込まれる
-                    ADDRESS  .. 16進定数,アドレス定数
-                    VALUE*   .. 10進定数,16進定数,文字定数,アドレス定数,リテラル
-
-                ※各種定数については help constat で説明"#
+                ADDRESS  .. 16進定数,アドレス定数
+                VALUE*   .. 10進定数,16進定数,文字定数,アドレス定数,リテラル
+"#
         }
         "set-reg" => {
             r#"
     set-reg <REGISTER> <VALUE>
                 値をレジスタに設定する
-                    REGISTER .. GR0～GR7
-                    VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル
 
-                    REGISTER .. OF,SF,ZF
-                    VALUE    .. 0,1
+                REGISTER .. GR0～GR7
+                VALUE    .. 10進定数,16進定数,文字定数(1文字),アドレス定数,リテラル
 
-                    REGISTER .. PR,SP
-                    VALUE    .. 16進定数,アドレス定数
+                REGISTER .. OF,SF,ZF
+                VALUE    .. 0,1
 
-                ※各種定数については help constat で説明"#
+                REGISTER .. PR,SP
+                VALUE    .. 16進定数,アドレス定数
+"#
         }
         "set-start" => todo!(),
         "show-labels" => todo!(),
