@@ -215,7 +215,7 @@ pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
                     show_state(&emu, &mut stdout, &state)?;
                     show_reg(&emu, &mut stdout)?;
 
-                    match interactive_casl2(&mut emu, &mut stdin, &mut stdout, &mut state) {
+                    match interactive_casl2(&mut emu, &mut stdin, &mut stdout, &mut state, true) {
                         Ok(0) => {}
                         Ok(REQUEST_CONTINUE) => {
                             if matches!(state.debug_mode, DebugMode::Basic) {
@@ -336,7 +336,7 @@ pub fn run_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
             show_state(&emu, &mut stdout, &state)?;
             show_reg(&emu, &mut stdout)?;
 
-            match interactive_casl2(&mut emu, &mut stdin, &mut stdout, &mut state) {
+            match interactive_casl2(&mut emu, &mut stdin, &mut stdout, &mut state, false) {
                 Ok(0) => {}
                 Ok(REQUEST_CONTINUE) => {
                     if matches!(state.debug_mode, DebugMode::Basic) {
@@ -845,7 +845,7 @@ fn interactive_basic<R: BufRead, W: Write>(
                 }
             }
             "set-breakpoint" => set_breakpoint_for_basic(emu, stdout, cmd_and_param.next(), true)?,
-            "set-by-file" => todo!(),
+            "set-by-file" => set_by_file(emu, stdout, state, cmd_and_param.next(), true)?,
             "set-elem" => set_elem(emu, stdout, cmd_and_param.next())?,
             "set-len" => set_len(emu, stdout, cmd_and_param.next())?,
             "set-start" => {
@@ -959,6 +959,7 @@ fn interactive_casl2<R: BufRead, W: Write>(
     stdin: &mut R,
     stdout: &mut W,
     state: &mut State,
+    is_basic_mode: bool,
 ) -> io::Result<i32> {
     let mut line = String::new();
 
@@ -1109,7 +1110,7 @@ fn interactive_casl2<R: BufRead, W: Write>(
                 return Ok(0);
             }
             "set-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), true)?,
-            "set-by-file" => set_by_file(emu, stdout, state, cmd_and_param.next())?,
+            "set-by-file" => set_by_file(emu, stdout, state, cmd_and_param.next(), is_basic_mode)?,
             "set-label" => set_label(emu, stdout, cmd_and_param.next())?,
             "set-mem" => set_mem(emu, stdout, cmd_and_param.next())?,
             "set-reg" => {
@@ -2991,6 +2992,7 @@ fn set_by_file<W: Write>(
     stdout: &mut W,
     state: &mut State,
     param: Option<&str>,
+    can_basic_mode: bool,
 ) -> io::Result<()> {
     let file = match param {
         Some(file) => file,
@@ -3015,79 +3017,176 @@ fn set_by_file<W: Write>(
     for line in text.lines() {
         let mut cmd_and_param = line.trim().splitn(2, ' ').map(|s| s.trim());
         let cmd = cmd_and_param.next().unwrap();
-        match cmd {
-            "add-dc" => add_dc(emu, stdout, cmd_and_param.next())?,
-            "add-ds" => add_ds(emu, stdout, cmd_and_param.next())?,
-            "copy-mem" => copy_mem(emu, stdout, cmd_and_param.next())?,
-            "default-cmd" => {
-                if let Some(defcmd) = cmd_and_param.next() {
-                    if "none".eq_ignore_ascii_case(defcmd) {
-                        state.default_cmd[DebugMode::Casl2 as usize] = None;
+        match state.debug_mode {
+            DebugMode::Casl2 => match cmd {
+                "add-dc" => add_dc(emu, stdout, cmd_and_param.next())?,
+                "add-ds" => add_ds(emu, stdout, cmd_and_param.next())?,
+                "copy-mem" => copy_mem(emu, stdout, cmd_and_param.next())?,
+                "default-cmd" => {
+                    if let Some(defcmd) = cmd_and_param.next() {
+                        if "none".eq_ignore_ascii_case(defcmd) {
+                            state.default_cmd[DebugMode::Casl2 as usize] = None;
+                        } else {
+                            state.default_cmd[DebugMode::Casl2 as usize] = Some(defcmd.to_string());
+                        }
+                    }
+                    if let Some(defcmd) = state.default_cmd[DebugMode::Casl2 as usize].as_ref() {
+                        writeln!(stdout, "デフォルトのデバッガコマンド: {}", defcmd)?;
                     } else {
-                        state.default_cmd[DebugMode::Casl2 as usize] = Some(defcmd.to_string());
+                        writeln!(stdout, "デフォルトのデバッガコマンド: none")?;
                     }
                 }
-                if let Some(defcmd) = state.default_cmd[DebugMode::Casl2 as usize].as_ref() {
-                    writeln!(stdout, "デフォルトのデバッガコマンド: {}", defcmd)?;
-                } else {
-                    writeln!(stdout, "デフォルトのデバッガコマンド: none")?;
-                }
-            }
-            "dump-code" => dump_code(emu, stdout, cmd_and_param.next())?,
-            "dump-mem" => dump_mem(emu, stdout, cmd_and_param.next())?,
-            "fill-mem" => fill_mem(emu, stdout, cmd_and_param.next())?,
-            "find-code" => find_code(emu, stdout, cmd_and_param.next())?,
-            "find-src" => find_src(emu, stdout, cmd_and_param.next())?,
-            "find-value" => find_value(emu, stdout, cmd_and_param.next())?,
-            "help" => show_command_help(cmd_and_param.next(), stdout)?,
-            "list-files" => list_files(emu, stdout)?,
-            "remove-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), false)?,
-            "set-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), true)?,
-            "set-label" => set_label(emu, stdout, cmd_and_param.next())?,
-            "set-mem" => set_mem(emu, stdout, cmd_and_param.next())?,
-            "set-reg" => {
-                let msg = set_reg(emu, cmd_and_param.next());
-                writeln!(stdout, "{}", msg)?;
-            }
-            "set-start" => {
-                if let Some(s) = cmd_and_param.next() {
-                    let s = s.to_ascii_uppercase();
-                    let mut tokenizer = casl2::Tokenizer::new(s.as_str());
-                    match tokenizer.extended_label() {
-                        Ok(Some(lb)) => {
-                            if !tokenizer.rest().is_empty() {
-                                writeln!(stdout, "引数が不正です")?;
+                "dump-code" => dump_code(emu, stdout, cmd_and_param.next())?,
+                "dump-mem" => dump_mem(emu, stdout, cmd_and_param.next())?,
+                "fill-mem" => fill_mem(emu, stdout, cmd_and_param.next())?,
+                "find-code" => find_code(emu, stdout, cmd_and_param.next())?,
+                "find-src" => find_src(emu, stdout, cmd_and_param.next())?,
+                "find-value" => find_value(emu, stdout, cmd_and_param.next())?,
+                "help" => show_command_help(cmd_and_param.next(), stdout)?,
+                "list-files" => list_files(emu, stdout)?,
+                "mode" => {
+                    if let Some(param) = cmd_and_param.next() {
+                        if "basic".eq_ignore_ascii_case(param) {
+                            state.debug_mode = DebugMode::Basic;
+                            if can_basic_mode {
+                                writeln!(stdout, "BASICデバッグモードに切り替えます")?;
                             } else {
-                                match lb.get_address(emu) {
-                                    Ok(adr) => {
-                                        state.start_point = Some(adr);
-                                        writeln!(stdout, "スタートポイントを{}に設定しました", lb)?;
+                                writeln!(stdout, "BASICデバッグモードは使用できません")?;
+                            }
+                        } else if "casl2".eq_ignore_ascii_case(param) {
+                            writeln!(stdout, "現在CASL2デバッグモードです")?;
+                        } else {
+                            writeln!(stdout, "引数が不正です")?;
+                        }
+                    } else {
+                        writeln!(stdout, "現在CASL2デバッグモードです")?;
+                    }
+                }
+                "remove-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), false)?,
+                "set-breakpoint" => set_breakpoint(emu, stdout, cmd_and_param.next(), true)?,
+                "set-label" => set_label(emu, stdout, cmd_and_param.next())?,
+                "set-mem" => set_mem(emu, stdout, cmd_and_param.next())?,
+                "set-reg" => {
+                    let msg = set_reg(emu, cmd_and_param.next());
+                    writeln!(stdout, "{}", msg)?;
+                }
+                "set-start" => {
+                    if let Some(s) = cmd_and_param.next() {
+                        let s = s.to_ascii_uppercase();
+                        let mut tokenizer = casl2::Tokenizer::new(s.as_str());
+                        match tokenizer.extended_label() {
+                            Ok(Some(lb)) => {
+                                if !tokenizer.rest().is_empty() {
+                                    writeln!(stdout, "引数が不正です")?;
+                                } else {
+                                    match lb.get_address(emu) {
+                                        Ok(adr) => {
+                                            state.start_point = Some(adr);
+                                            writeln!(stdout, "スタートポイントを{}に設定しました(次のrestartから有効です)", lb)?;
+                                        }
+                                        Err(msg) => writeln!(stdout, "{}", msg)?,
                                     }
-                                    Err(msg) => writeln!(stdout, "{}", msg)?,
                                 }
                             }
+                            Ok(_) => writeln!(stdout, "引数が不正です")?,
+                            Err(msg) => writeln!(stdout, "{}", msg)?,
                         }
-                        Ok(_) => writeln!(stdout, "引数が不正です")?,
-                        Err(msg) => writeln!(stdout, "{}", msg)?,
+                    } else {
+                        state.start_point = None;
+                        let name = emu.start_point.as_ref().expect("BUG");
+                        writeln!(
+                            stdout,
+                            "スタートポイントを{}に戻しました(次のrestartから有効です)",
+                            name
+                        )?;
                     }
-                } else {
-                    state.start_point = None;
-                    let name = emu.start_point.as_ref().expect("BUG");
-                    writeln!(stdout, "スタートポイントを{}に戻しました", name)?;
                 }
-            }
-            "show-labels" => show_labels(emu, stdout, cmd_and_param.next())?,
-            "show-mem" => show_mem(emu, stdout, cmd_and_param.next())?,
-            "show-mem-stat" => show_mem_stat(emu, stdout, cmd_and_param.next())?,
-            "show-reg" => show_reg(emu, stdout)?,
-            "show-src" => show_src(emu, stdout, cmd_and_param.next())?,
-            "show-state" => show_state(emu, stdout, state)?,
-            "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
-            "write-code" => write_code(emu, stdout, cmd_and_param.next())?,
-            "" => {}
-            _ => {
-                writeln!(stdout, "コメント行としてスキップします: {}", line)?;
-            }
+                "show-labels" => show_labels(emu, stdout, cmd_and_param.next())?,
+                "show-mem" => show_mem(emu, stdout, cmd_and_param.next())?,
+                "show-mem-stat" => show_mem_stat(emu, stdout, cmd_and_param.next())?,
+                "show-reg" => show_reg(emu, stdout)?,
+                "show-src" => show_src(emu, stdout, cmd_and_param.next())?,
+                "show-state" => show_state(emu, stdout, state)?,
+                "show-var" => show_var(emu, stdout, cmd_and_param.next())?,
+                "write-code" => write_code(emu, stdout, cmd_and_param.next())?,
+                "" => {}
+                _ => {
+                    writeln!(stdout, "コメント行としてスキップします: {}", line)?;
+                }
+            },
+            DebugMode::Basic => match cmd {
+                "default-cmd" => {
+                    if let Some(defcmd) = cmd_and_param.next() {
+                        if "none".eq_ignore_ascii_case(defcmd) {
+                            state.default_cmd[DebugMode::Basic as usize] = None;
+                        } else {
+                            state.default_cmd[DebugMode::Basic as usize] = Some(defcmd.to_string());
+                        }
+                    }
+                    if let Some(defcmd) = state.default_cmd[DebugMode::Basic as usize].as_ref() {
+                        writeln!(stdout, "デフォルトのデバッガコマンド: {}", defcmd)?;
+                    } else {
+                        writeln!(stdout, "デフォルトのデバッガコマンド: none")?;
+                    }
+                }
+                "fill-arr" => fill_arr(emu, stdout, cmd_and_param.next())?,
+                "help" => show_command_help_for_basic(cmd_and_param.next(), stdout)?,
+                "list-files" => list_files(emu, stdout)?,
+                "mode" => {
+                    if let Some(param) = cmd_and_param.next() {
+                        if "casl2".eq_ignore_ascii_case(param) {
+                            state.debug_mode = DebugMode::Casl2;
+                            writeln!(stdout, "CASL2デバッグモードに切り替えます")?;
+                        } else if "basic".eq_ignore_ascii_case(param) {
+                            writeln!(stdout, "現在BASICデバッグモードです")?;
+                        } else {
+                            writeln!(stdout, "引数が不正です")?;
+                        }
+                    } else {
+                        writeln!(stdout, "現在BASICデバッグモードです")?;
+                    }
+                }
+                "remove-breakpoint" => {
+                    set_breakpoint_for_basic(emu, stdout, cmd_and_param.next(), false)?
+                }
+                "set-breakpoint" => {
+                    set_breakpoint_for_basic(emu, stdout, cmd_and_param.next(), true)?
+                }
+                "set-elem" => set_elem(emu, stdout, cmd_and_param.next())?,
+                "set-len" => set_len(emu, stdout, cmd_and_param.next())?,
+                "set-start" => {
+                    if let Some(s) = cmd_and_param.next() {
+                        let name = s.to_ascii_uppercase();
+                        if let Some(pos) = emu.program_labels.get(&name) {
+                            state.start_point = Some(*pos);
+                            writeln!(
+                                stdout,
+                                "スタートポイントを{}に設定しました(次のrestartから有効です)",
+                                name
+                            )?;
+                        } else {
+                            writeln!(stdout, "プログラムエントリ名{}が見つかりません", name)?;
+                        }
+                    } else {
+                        state.start_point = None;
+                        let name = emu.start_point.as_ref().unwrap();
+                        writeln!(
+                            stdout,
+                            "スタートポイントを{}に戻しました(次のrestartから有効です)",
+                            name
+                        )?;
+                    }
+                }
+                "set-var" => set_var(emu, stdout, cmd_and_param.next())?,
+                "show-execute-stat" => show_execute_stat(emu, stdout, cmd_and_param.next())?,
+                "show-src" => show_src_basic(emu, stdout, cmd_and_param.next())?,
+                "show-state" => show_state_basic(emu, stdout, state)?,
+                "show-var" => show_var_for_basic(emu, stdout, cmd_and_param.next())?,
+                "" => {}
+                _ => {
+                    writeln!(stdout, "コメント行としてスキップします: {}", line)?;
+                }
+            },
         }
     }
 
