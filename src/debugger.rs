@@ -40,6 +40,10 @@ enum RunMode {
         basic_limit: u64,
         comet2_limit: u64,
     },
+    SkipBasicSubroutine {
+        basic_limit: u64,
+        comet2_limit: u64,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -263,6 +267,17 @@ pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
                         basic_limit,
                         comet2_limit,
                     ),
+                    RunMode::SkipBasicSubroutine {
+                        basic_limit,
+                        comet2_limit,
+                    } => do_skip_subroutine_for_basic(
+                        &mut emu,
+                        &mut stdin,
+                        &mut stdout,
+                        &mut state,
+                        basic_limit,
+                        comet2_limit,
+                    ),
                 };
                 match result {
                     Ok(0) => {}
@@ -350,7 +365,9 @@ pub fn run_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
                     RunMode::Step(count) => {
                         do_step(&mut emu, &mut stdin, &mut stdout, &mut state, count)
                     }
-                    RunMode::BasicStep { .. } | RunMode::GoToBasicBreakPoint { .. } => {
+                    RunMode::BasicStep { .. }
+                    | RunMode::GoToBasicBreakPoint { .. }
+                    | RunMode::SkipBasicSubroutine { .. } => {
                         unreachable!("BUG")
                     }
                 };
@@ -470,6 +487,62 @@ fn do_step_basic<R: BufRead, W: Write>(
                 comet2_limit
             )?;
         }
+    }
+    Ok(0)
+}
+
+//
+// スキップ (BASIC)
+//
+fn do_skip_subroutine_for_basic<R: BufRead, W: Write>(
+    emu: &mut Emulator,
+    stdin: &mut R,
+    stdout: &mut W,
+    state: &mut State,
+    basic_limit: u64,
+    comet2_limit: u64,
+) -> io::Result<i32> {
+    let nest = emu.program_stack.len();
+    let mut step_limit = basic_limit;
+    let mut limit = comet2_limit;
+    let mut reach = false;
+    while step_limit > 0 && limit > 0 {
+        limit -= 1;
+        match emu.step_through_code(stdin, stdout) {
+            Ok(_) => {}
+            Err(RuntimeError::IoError(error)) => return Err(error),
+            Err(error) => {
+                reach = emu.program_stack.len() < nest;
+                state.err = Some(error);
+                break;
+            }
+        }
+        if emu.basic_step.is_some() {
+            step_limit -= 1;
+            limit = comet2_limit;
+            if emu.program_stack.len() < nest {
+                reach = true;
+                break;
+            }
+        }
+    }
+    writeln!(stdout)?;
+    if reach {
+        writeln!(stdout, "スキップ実行はサブルーチンを脱出し停止しました")?;
+    } else if state.err.is_some() {
+        writeln!(stdout, "スキップ実行はエラーで停止しました")?;
+    } else if step_limit == 0 {
+        writeln!(
+            stdout,
+            "スキップ実行はステップ制限数({})に到達で停止しました",
+            basic_limit
+        )?;
+    } else if limit == 0 {
+        writeln!(
+            stdout,
+            "スキップ実行はCOMET2ステップ制限数({})に到達で停止しました",
+            comet2_limit
+        )?;
     }
     Ok(0)
 }
@@ -647,6 +720,7 @@ fn interactive_basic<R: BufRead, W: Write>(
             "show-src",
             "show-state",
             "show-var",
+            "skip",
             "step",
         ] {
             if tmp.len() + cmd.len() + 1 >= 80 {
@@ -778,6 +852,40 @@ fn interactive_basic<R: BufRead, W: Write>(
             "show-src" => show_src_basic(emu, stdout, cmd_and_param.next())?,
             "show-state" => show_state_basic(emu, stdout, state)?,
             "show-var" => show_var_for_basic(emu, stdout, cmd_and_param.next())?,
+            "skip" => {
+                if let Some(param) = cmd_and_param.next() {
+                    let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+                    match iter.next().unwrap().parse::<u64>() {
+                        Ok(basic_limit) if basic_limit > 0 => {
+                            if let Some(rest) = iter.next() {
+                                match rest.parse::<u64>() {
+                                    Ok(comet2_limit) if comet2_limit > 0 => {
+                                        state.run_mode = RunMode::SkipBasicSubroutine {
+                                            basic_limit,
+                                            comet2_limit,
+                                        };
+                                        return Ok(0);
+                                    }
+                                    _ => writeln!(stdout, "引数が不正です")?,
+                                }
+                            } else {
+                                state.run_mode = RunMode::SkipBasicSubroutine {
+                                    basic_limit,
+                                    comet2_limit: DEFAULT_COMET2_LIMIT_ON_BASIC_MODE,
+                                };
+                                return Ok(0);
+                            }
+                        }
+                        _ => writeln!(stdout, "引数が不正です")?,
+                    };
+                } else {
+                    state.run_mode = RunMode::SkipBasicSubroutine {
+                        basic_limit: 10000,
+                        comet2_limit: DEFAULT_COMET2_LIMIT_ON_BASIC_MODE,
+                    };
+                    return Ok(0);
+                }
+            }
             "step" | "s" => {
                 if let Some(param) = cmd_and_param.next() {
                     let mut iter = param.splitn(2, ' ').map(|s| s.trim());
@@ -5215,6 +5323,8 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
                 直近の実行(run,skip,step)の結果を再表示する
     show-var [<BASIC_PROGRAM_ENTRY> [<VAR_NAME1>[,<VAR_NAME2>..]]]
                 指定したBASICプログラムの変数名を表示する。可能な場合は値も表示する
+    skip [<BASIC_STEP_LIMIT> [<COMET2_STEP_LIMIT>]]
+                現在地点のサブルーチンを抜けるまで実行する
     s    [<BASIC_STEP_COUNT> [<COMET2_STEP_LIMIT>]]
     step [<BASIC_STEP_COUNT> [<COMET2_STEP_LIMIT>]]
                 指定ステップ数だけ実行する。BASIC_STEP_COUNT省略時は1ステップだけ実行する
@@ -5244,6 +5354,7 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
         "show-src" => todo!(),
         "show-state" => todo!(),
         "show-var" => todo!(),
+        "skip" => todo!(),
         "step" => todo!(),
         _ => "コマンド名が正しくありません",
     };
