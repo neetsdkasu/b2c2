@@ -629,6 +629,7 @@ fn interactive_basic<R: BufRead, W: Write>(
         let mut tmp = String::new();
         for cmd in &[
             "default-cmd",
+            "fill-arr",
             "help",
             "list-files",
             "mode",
@@ -698,6 +699,7 @@ fn interactive_basic<R: BufRead, W: Write>(
                     writeln!(stdout, "デフォルトのデバッガコマンド: none")?;
                 }
             }
+            "fill-arr" => fill_arr(emu, stdout, cmd_and_param.next())?,
             "help" => show_command_help_for_basic(cmd_and_param.next(), stdout)?,
             "list-files" => list_files(emu, stdout)?,
             "mode" => {
@@ -1612,6 +1614,141 @@ fn set_len<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) ->
 
     writeln!(stdout, "{}の長さを{}を設定しました", var_name, new_len)?;
 
+    Ok(())
+}
+
+//
+// fill-arr <VAR_NAME> <VALUE>
+//
+fn fill_arr<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
+    if matches!(emu.basic_step, Some(0) | None) {
+        writeln!(stdout, "現在地点での変数の設定は行えません")?;
+        return Ok(());
+    }
+    let (var_name, value) = match param {
+        None => {
+            writeln!(stdout, "引数が必要です")?;
+            return Ok(());
+        }
+        Some(param) => {
+            let mut iter = param.splitn(2, ' ').map(|s| s.trim());
+            let var_name = iter.next().unwrap();
+            match iter.next() {
+                Some(value) => (var_name, value),
+                None => {
+                    writeln!(stdout, "引数が不正です")?;
+                    return Ok(());
+                }
+            }
+        }
+    };
+
+    let target = {
+        let (file, pg_label, label_set) = match emu.get_current_program() {
+            None => {
+                writeln!(stdout, "現在地点での変数の設定は行えません")?;
+                return Ok(());
+            }
+            Some((file, _, _)) => match emu.basic_info.get(file) {
+                Some((label, info)) => (file, label, &info.label_set),
+                None => {
+                    writeln!(stdout, "現在地点での変数の設定は行えません")?;
+                    return Ok(());
+                }
+            },
+        };
+
+        let target = {
+            if label_set.argument_labels.contains_key(var_name) {
+                writeln!(stdout, "{}は要素アクセスできません", var_name)?;
+                return Ok(());
+            } else if let Some((label, _)) = label_set.arr_argument_labels.get(var_name) {
+                emu.resolve_label(pg_label, label)
+            } else if let Some((label, _)) = label_set.str_argument_labels.get(var_name) {
+                emu.resolve_label(pg_label, label)
+            } else if label_set.int_var_labels.contains_key(var_name)
+                || label_set.bool_var_labels.contains_key(var_name)
+            {
+                writeln!(stdout, "{}は要素アクセスできません", var_name)?;
+                return Ok(());
+            } else if let Some(label) = label_set
+                .int_arr_labels
+                .get(var_name)
+                .or_else(|| label_set.bool_arr_labels.get(var_name))
+            {
+                emu.resolve_label(pg_label, label)
+            } else if let Some(label) = label_set.str_var_labels.get(var_name) {
+                emu.resolve_label(pg_label, label)
+            } else {
+                None
+            }
+        };
+
+        match target {
+            Some(target) => target,
+            None => {
+                writeln!(stdout, "{}に変数{}が見つかりません", file, var_name)?;
+                return Ok(());
+            }
+        }
+    };
+
+    let value = {
+        let res = match tokenizer::Tokenizer::new(value.as_bytes()).next() {
+            Some(res) => res?,
+            None => {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+        };
+        match res {
+            Ok((_, tokens)) => tokens.into_iter().map(|(_, tk)| tk).collect::<Vec<_>>(),
+            Err(_) => {
+                writeln!(stdout, "引数が不正です")?;
+                return Ok(());
+            }
+        }
+    };
+
+    use parser::VarType as V;
+
+    match target {
+        (pos, None, V::ArrayOfBoolean(size)) => {
+            if let Some((vs, s)) = take_basic_bool_values(&value) {
+                if let [v] = vs.as_slice() {
+                    emu.mem[pos..pos + size].fill(*v);
+                    writeln!(stdout, "{}の内容を{}で埋めました", var_name, s)?;
+                    return Ok(());
+                }
+            }
+        }
+        (pos, None, V::ArrayOfInteger(size)) => {
+            if let Some((vs, s)) = take_basic_int_values(&value) {
+                if let [v] = vs.as_slice() {
+                    emu.mem[pos..pos + size].fill(*v);
+                    writeln!(stdout, "{}の内容を{}で埋めました", var_name, s)?;
+                    return Ok(());
+                }
+            }
+        }
+        (len, Some(pos), V::String) => {
+            let size = emu.mem[len] as usize;
+            if size > 256 {
+                writeln!(stdout, "{}は壊れています", var_name)?;
+                return Ok(());
+            }
+            if let Some((vs, s)) = take_basic_int_values(&value) {
+                if let [v] = vs.as_slice() {
+                    emu.mem[pos..pos + size].fill(*v);
+                    writeln!(stdout, "{}の内容を{}で埋めました", var_name, s)?;
+                    return Ok(());
+                }
+            }
+        }
+        _ => unreachable!("BUG"),
+    }
+
+    writeln!(stdout, "引数が不正です")?;
     Ok(())
 }
 
@@ -5042,6 +5179,8 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
                 r#"
     default-cmd [<DEBUG_COMMAND>]
                 空行が入力されたときの挙動を設定する
+    fill-arr <VAR_NAME> <VALUE>
+                現在地点のプログラムの配列変数の全ての要素を指定の値で埋める。値はBASICリテラルのみ
     help <COMMAND_NAME>
                 指定デバッガコマンドの詳細ヘルプを表示する
     list-files
@@ -5087,6 +5226,7 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
 
     let description = match cmd.as_str() {
         "default-cmd" => todo!(),
+        "fill-arr" => todo!(),
         "help" => todo!(),
         "list-files" => todo!(),
         "mode" => todo!(),
