@@ -715,6 +715,7 @@ fn interactive_basic<R: BufRead, W: Write>(
             "set-by-file",
             "set-elem",
             "set-len",
+            "set-start",
             "set-var",
             "show-execute-stat",
             "show-src",
@@ -803,7 +804,7 @@ fn interactive_basic<R: BufRead, W: Write>(
                 return Ok(REQUEST_BREAK);
             }
             "restart" => {
-                emu.init_to_start(None);
+                emu.init_to_start(state.start_point);
                 state.err = None;
                 writeln!(stdout, "プログラムをリスタートします")?;
                 writeln!(stdout)?;
@@ -847,6 +848,29 @@ fn interactive_basic<R: BufRead, W: Write>(
             "set-by-file" => todo!(),
             "set-elem" => set_elem(emu, stdout, cmd_and_param.next())?,
             "set-len" => set_len(emu, stdout, cmd_and_param.next())?,
+            "set-start" => {
+                if let Some(s) = cmd_and_param.next() {
+                    let name = s.to_ascii_uppercase();
+                    if let Some(pos) = emu.program_labels.get(&name) {
+                        state.start_point = Some(*pos);
+                        writeln!(
+                            stdout,
+                            "スタートポイントを{}に設定しました(次のrestartから有効です)",
+                            name
+                        )?;
+                    } else {
+                        writeln!(stdout, "プログラムエントリ名{}が見つかりません", name)?;
+                    }
+                } else {
+                    state.start_point = None;
+                    let name = emu.start_point.as_ref().unwrap();
+                    writeln!(
+                        stdout,
+                        "スタートポイントを{}に戻しました(次のrestartから有効です)",
+                        name
+                    )?;
+                }
+            }
             "set-var" => set_var(emu, stdout, cmd_and_param.next())?,
             "show-execute-stat" => show_execute_stat(emu, stdout, cmd_and_param.next())?,
             "show-src" => show_src_basic(emu, stdout, cmd_and_param.next())?,
@@ -1104,7 +1128,7 @@ fn interactive_casl2<R: BufRead, W: Write>(
                                 match lb.get_address(emu) {
                                     Ok(adr) => {
                                         state.start_point = Some(adr);
-                                        writeln!(stdout, "スタートポイントを{}に設定しました", lb)?;
+                                        writeln!(stdout, "スタートポイントを{}に設定しました(次のrestartから有効です)", lb)?;
                                     }
                                     Err(msg) => writeln!(stdout, "{}", msg)?,
                                 }
@@ -1116,7 +1140,11 @@ fn interactive_casl2<R: BufRead, W: Write>(
                 } else {
                     state.start_point = None;
                     let name = emu.start_point.as_ref().expect("BUG");
-                    writeln!(stdout, "スタートポイントを{}に戻しました", name)?;
+                    writeln!(
+                        stdout,
+                        "スタートポイントを{}に戻しました(次のrestartから有効です)",
+                        name
+                    )?;
                 }
             }
             "show-labels" => show_labels(emu, stdout, cmd_and_param.next())?,
@@ -2678,6 +2706,43 @@ fn show_src_basic<W: Write>(emu: &Emulator, stdout: &mut W, param: Option<&str>)
 // show-state (BASIC)
 //
 fn show_state_basic<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> io::Result<()> {
+    if let Some(pos) = state.start_point {
+        let mut label = None;
+        for (lb, p) in emu.all_label_list.iter() {
+            if *p == pos {
+                label = Some(lb);
+                break;
+            }
+        }
+        if label.is_none() {
+            for (lb, (p, _)) in emu.labels_for_debug.iter() {
+                if *p == pos {
+                    label = Some(lb);
+                    break;
+                }
+            }
+        }
+        if label.is_none() {
+            for (lb, p) in emu.alias_labels.iter() {
+                if *p == pos {
+                    label = Some(lb);
+                    break;
+                }
+            }
+        }
+        if let Some(lb) = label {
+            writeln!(stdout, "Start Point: {}", lb)?;
+        } else {
+            writeln!(stdout, "Start Point: #{:04X}", pos)?;
+        }
+    } else {
+        writeln!(
+            stdout,
+            "Start Point: {}",
+            emu.start_point.as_ref().expect("BUG")
+        )?;
+    }
+
     writeln!(stdout, "Step Count: {}", emu.basic_step_count)?;
 
     write!(stdout, "Call State:")?;
