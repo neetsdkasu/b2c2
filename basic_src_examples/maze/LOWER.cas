@@ -72,20 +72,6 @@ I001      DS        1
                                    ; Dim ch As Integer
 I002      DS        1
 T001      DS        1
-                                   ; UtilFill
-C010      PUSH      0,GR1
-          PUSH      0,GR2
-          PUSH      0,GR3
-          ADDL      GR3,GR1
-J011      CPL       GR1,GR3
-          JZE       J012
-          ST        GR2,0,GR1
-          LAD       GR1,1,GR1
-          JUMP      J011
-J012      POP       GR3
-          POP       GR2
-          POP       GR1
-          RET
                                    ; UtilLoadElement
 C011      AND       GR2,GR2
           JNZ       J004

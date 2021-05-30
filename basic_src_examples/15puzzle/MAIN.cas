@@ -87,18 +87,4 @@ I004      DS        1
 IA002     DS        16
 LL001     DC        9
 LB001     DC        'Complete!'
-                                   ; UtilFill
-C010      PUSH      0,GR1
-          PUSH      0,GR2
-          PUSH      0,GR3
-          ADDL      GR3,GR1
-J006      CPL       GR1,GR3
-          JZE       J007
-          ST        GR2,0,GR1
-          LAD       GR1,1,GR1
-          JUMP      J006
-J007      POP       GR3
-          POP       GR2
-          POP       GR1
-          RET
           END

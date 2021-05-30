@@ -73,7 +73,7 @@ J012      LD        GR6,GR0
           SUBA      GR6,='A'
           ST        GR6,0,GR7
           JUMP      J005
-                                   ; ElseIf Not ((s(i) < "a"c) Or (s(i) > "z"c)) Then
+                                   ; ElseIf Not(((s(i) < "a"c) Or (s(i) > "z"c))) Then
 J006      NOP
           LD        GR7,I002
           LD        GR1,GR7

@@ -163,7 +163,7 @@ J019      NOP
           LD        GR2,ARG2
           LAD       GR3,B005
           CALL      CHECK
-                                   ; If Not over Then
+                                   ; If Not(over) Then
           LD        GR7,B005
           XOR       GR7,=#FFFF
           AND       GR7,GR7

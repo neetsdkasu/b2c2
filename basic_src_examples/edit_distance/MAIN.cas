@@ -400,7 +400,7 @@ J061      NOP
 J062      NOP
                                    ; End If
 J040      NOP
-                                   ; turn = Not turn
+                                   ; turn = Not(turn)
           LD        GR7,B012
           XOR       GR7,=#FFFF
           ST        GR7,B012

@@ -86,12 +86,12 @@ J004      NOP
           AND       GR0,GR0
           JZE       J011
           JUMP      J005
-                                   ; Case 'end'
+                                   ; Case "end"
 J006      NOP
                                    ; Exit Do
           JUMP      J003
           JUMP      J005
-                                   ; Case 'up', 'u'
+                                   ; Case "up", "u"
 J007      NOP
                                    ; cmd = -15
           LAD       GR7,-15
@@ -100,7 +100,7 @@ J007      NOP
                                    ; Exit Do
           JUMP      J003
           JUMP      J005
-                                   ; Case 'right', 'r'
+                                   ; Case "right", "r"
 J008      NOP
                                    ; cmd = 1
           LAD       GR7,1
@@ -109,7 +109,7 @@ J008      NOP
                                    ; Exit Do
           JUMP      J003
           JUMP      J005
-                                   ; Case 'down', 'd'
+                                   ; Case "down", "d"
 J009      NOP
                                    ; cmd = 15
           LAD       GR7,15
@@ -118,7 +118,7 @@ J009      NOP
                                    ; Exit Do
           JUMP      J003
           JUMP      J005
-                                   ; Case 'left', 'l'
+                                   ; Case "left", "l"
 J010      NOP
                                    ; cmd = -1
           LAD       GR7,-1
@@ -127,7 +127,7 @@ J010      NOP
                                    ; Exit Do
           JUMP      J003
           JUMP      J005
-                                   ; Case 'view', 'v'
+                                   ; Case "view", "v"
 J011      NOP
                                    ; cmd = 1000
           LAD       GR7,1000
@@ -181,20 +181,6 @@ J015      OR        GR0,=1
 J016      POP       GR5
           POP       GR4
           POP       GR3
-          POP       GR2
-          POP       GR1
-          RET
-                                   ; UtilFill
-C010      PUSH      0,GR1
-          PUSH      0,GR2
-          PUSH      0,GR3
-          ADDL      GR3,GR1
-J017      CPL       GR1,GR3
-          JZE       J018
-          ST        GR2,0,GR1
-          LAD       GR1,1,GR1
-          JUMP      J017
-J018      POP       GR3
           POP       GR2
           POP       GR1
           RET

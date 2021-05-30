@@ -94,7 +94,7 @@ J004      NOP
           JUMP      J003
                                    ; End If
 J006      NOP
-                                   ; turn = Not turn
+                                   ; turn = Not(turn)
           LD        GR7,B006
           XOR       GR7,=#FFFF
           ST        GR7,B006
@@ -105,7 +105,7 @@ J007      NOP
           LD        GR1,I002
           CPA       GR1,=30000
           JPL       J009
-                                   ; turn = Not Not Not Not turn
+                                   ; turn = Not(Not(Not(Not(turn))))
           LD        GR7,B006
           XOR       GR7,=#FFFF
           XOR       GR7,=#FFFF
