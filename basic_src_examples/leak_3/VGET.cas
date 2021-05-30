@@ -1,0 +1,19 @@
+VGET      START
+          RPUSH
+                                   ; Argument var
+          ST        GR1,ARG1
+                                   ; Argument value
+          ST        GR2,ARG2
+                                   ; value = var
+          LD        GR7,ARG1
+          LD        GR7,0,GR7
+          LD        GR6,ARG2
+          ST        GR7,0,GR6
+EXIT      NOP
+          RPOP
+          RET
+                                   ; ByRef var As Integer [GR1]
+ARG1      DS        1
+                                   ; ByRef value As Integer [GR2]
+ARG2      DS        1
+          END

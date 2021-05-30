@@ -1,0 +1,49 @@
+MAIN      START
+          RPUSH
+                                   ; Init Variables
+          LAD       GR1,SL001
+          XOR       GR2,GR2
+          LAD       GR3,771
+          CALL      C010
+                                   ; Call LEAK
+                                   ;   ByRef s As String [GR1,GR2]
+                                   ;   s = s
+                                   ;   ByVal size As Integer [GR3]
+                                   ;   size = 600
+          LAD       GR7,600
+          ST        GR7,T001
+                                   ;   Set Arguments And Call LEAK
+          LAD       GR1,SL001
+          LAD       GR2,SB001
+          LD        GR3,T001
+          CALL      LEAK
+                                   ; Print s
+          OUT       SB001,SL001
+EXIT      NOP
+          RPOP
+          RET
+                                   ; Dim s As String
+SL001     DS        1
+SB001     DS        256
+                                   ; Dim s_dummy1 As String
+SL002     DS        1
+SB002     DS        256
+                                   ; Dim s_dummy2 As String
+SL003     DS        1
+SB003     DS        256
+T001      DS        1
+                                   ; UtilFill
+C010      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J001      CPL       GR1,GR3
+          JZE       J002
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J001
+J002      POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+          END

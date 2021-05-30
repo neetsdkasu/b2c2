@@ -1,0 +1,18 @@
+LEAK      START
+          RPUSH
+                                   ; Argument var_adr
+          ST        GR1,ARG1
+                                   ; Argument adr
+          ST        GR2,ARG2
+                                   ; adr = var_adr
+          LD        GR7,ARG1
+          LD        GR6,ARG2
+          ST        GR7,0,GR6
+EXIT      NOP
+          RPOP
+          RET
+                                   ; ByVal var_adr As Integer [GR1]
+ARG1      DS        1
+                                   ; ByRef adr As Integer [GR2]
+ARG2      DS        1
+          END
