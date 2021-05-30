@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 
 mod casl2;
 mod compiler;
-#[allow(dead_code)]
 mod debugger;
 mod jis_x_201;
 mod parser;

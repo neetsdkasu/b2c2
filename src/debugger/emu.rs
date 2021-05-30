@@ -31,7 +31,6 @@ pub(super) const INITIAL_PROGRAM_REGISTER: usize = 0x0040; // 64
 
 #[derive(Default)]
 pub(super) struct CodeInfo {
-    pub(super) pos: usize,
     pub(super) mem_code: String,
     pub(super) src_code: Option<(usize, String)>,
     pub(super) src_file: Option<String>,
@@ -50,11 +49,6 @@ pub(super) enum RuntimeError {
     },
     ExecutePermissionDenied {
         position: usize,
-    },
-    AccessPermissionDenied {
-        position: usize,
-        op_code: String,
-        address: usize,
     },
     MemoryAccessOutOfBounds {
         position: usize,
@@ -270,7 +264,6 @@ impl Emulator {
         use std::fmt::Write;
         let pos = pos as usize;
         let mut info = CodeInfo {
-            pos,
             alias_labels: self
                 .alias_labels
                 .iter()
@@ -376,30 +369,6 @@ impl Emulator {
                 }
             }
         }
-    }
-}
-
-impl Emulator {
-    pub(super) fn get_label(&self, pos: u16) -> (Vec<String>, Vec<String>) {
-        let pos = pos as usize;
-        let mut plabel = Vec::new();
-        for (lb, p) in self.all_label_list.iter() {
-            if *p == pos {
-                plabel.push(lb.clone());
-            }
-        }
-        let mut dlabel = Vec::new();
-        for (lb, (p, _)) in self.labels_for_debug.iter() {
-            if *p == pos {
-                dlabel.push(lb.clone());
-            }
-        }
-        for (lb, p) in self.alias_labels.iter() {
-            if *p == pos {
-                dlabel.push(lb.clone());
-            }
-        }
-        (plabel, dlabel)
     }
 }
 

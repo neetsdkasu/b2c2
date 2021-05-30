@@ -686,15 +686,6 @@ impl fmt::Display for RuntimeError {
                 position
             )
             .fmt(f),
-            Self::AccessPermissionDenied {
-                position,
-                op_code,
-                address,
-            } => format!(
-                "許可されてないアドレスへのアクセスが発生 (発生位置: #{:04X} コード: {} 参照先: {})",
-                position, op_code, address
-            )
-            .fmt(f),
             Self::MemoryAccessOutOfBounds {
                 position,
                 op_code,
