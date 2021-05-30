@@ -1,12 +1,12 @@
 [package]
 name = "b2c2"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["Leonardone <neetsdkasu@gmail.com>"]
 edition = "2018"
-description = "Translate basic-like to casl2" 
+description = "BASIC言語風の独自のプログラミング言語(?)のソースコードファイルからCASL2のソースコードファイルを生成します" 
 readme = "README.md"
 license = "MIT"
-repository = "https://bitbucket.org/neetsdkasu/b2c2/"
+repository = "https://github.com/neetsdkasu/b2c2/"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
