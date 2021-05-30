@@ -3195,7 +3195,7 @@ fn set_by_file<W: Write>(
 }
 
 //
-// write-code <ADDRESS> <COMET2_COMMAND>
+// write-code <ADDRESS> <CASL2_COMMAND>
 //
 fn write_code<W: Write>(emu: &mut Emulator, stdout: &mut W, param: Option<&str>) -> io::Result<()> {
     let (pos, cmd) = match param {
@@ -5295,8 +5295,8 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
     s    [<STEP_COUNT>]
     step [<STEP_COUNT>]
                 指定ステップ数だけ実行する。STEP_COUNT省略時は1ステップだけ実行する
-    write-code <ADDRESS> <COMET2_COMMAND>
-                アドレス位置に指定のCOMET2コマンドを書き込む
+    write-code <ADDRESS> <CASL2_COMMAND>
+                アドレス位置に指定のCASL2コマンドを書き込む
 "#
             )?;
             return Ok(());
@@ -5335,11 +5335,13 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
                                 (#1234)
         アドレス定数+アドレス定数
         アドレス定数+16進定数
+        アドレス定数+正の10進数
                         2つのアドレス定数または16進定数の和をアドレスとする(オーバーフローに注意)
                             例: MAIN+@GR1
                                 (MAIN:MEM)+#0101
         アドレス定数-アドレス定数
         アドレス定数-16進定数
+        アドレス定数-正の10進数
         16進定数-アドレス定数
                         2つのアドレス定数または16進定数の差をアドレスとする(オーバーフローに注意)
                             例: LIB:S005-LIB:B001
@@ -5435,6 +5437,7 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
     find-src <ADDRESS> <CASL2_COMMAND>
                 指定のCASL2コマンドを指定アドレス位置以降から探し最初に見つかったコードを表示する
                 CASL2ソースまたはBASICから変換されたCASL2ソースから検索する
+                ※ソースは整形されている場合がありshow-srcコマンドで確認できる
                 ADDRESS        .. 検索開始位置のアドレス。16進定数かアドレス定数で指定
                 COMET2_COMMAND .. CASL2のコマンドをソースに記載されている形で指定する
                 例:
@@ -5501,7 +5504,7 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
             r#"
     run [<STEP_LIMIT>]
                 次のブレークポイントまで実行する。ステップ制限数までにブレークポイントに到達しない場合はそこで停止する
-                STEP_LIMIT .. ステップ制限数。正の10進数で指定する(最大値は18446744073709551616)
+                STEP_LIMIT .. ステップ制限数。正の10進数で指定する(最大値は18446744073709551615)
                               省略した場合は 100000000
 "#
         }
@@ -5516,7 +5519,7 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
             r#"
     set-by-file <FILE_PATH>
                 ファイルに列挙された設定系のデバッガコマンドを実行する
-                1行につき1コマンドを配置できる                
+                1行につき1コマンドを配置できる
                 ファイルに指定できないデバッガコマンド:
                     quit reset restart run set-by-file skip s step
 "#
@@ -5554,17 +5557,114 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
                 VALUE    .. 16進定数,アドレス定数
 "#
         }
-        "set-start" => todo!(),
-        "show-labels" => todo!(),
-        "show-mem" => todo!(),
-        "show-mem-stat" => todo!(),
-        "show-reg" => todo!(),
-        "show-src" => todo!(),
-        "show-state" => todo!(),
-        "show-var" => todo!(),
-        "skip" => todo!(),
-        "step" => todo!(),
-        "write-code" => todo!(),
+        "set-start" => {
+            r#"
+    set-start [<ADDRESS>]
+                プログラムの開始点を変更する(restart時に影響)。省略した場合は最初の開始点に戻す
+                ADDRESS  .. プログラム開始点のアドレス。16進定数かアドレス定数で指定
+"#
+        }
+        "show-labels" => {
+            r#"
+    show-labels [<PROGRAM_ENTRY>]
+                ラベルの一覧とアドレスを表示する。PROGRAM_ENTRYを指定した場合はローカルラベルを表示する
+                PROGRAM_ENTRY .. プログラムエントリラベルを指定
+"#
+        }
+        "show-mem" => {
+            r#"
+    show-mem <ADDRESS> [<LENGTH>] [<TYPE>]
+                メモリの指定アドレスから指定の長さ分の領域の各値を列挙する
+                ADDRESS  .. 対象の先頭アドレス。16進定数かアドレス定数で指定
+                LENGTH   .. 表示対象のメモリのサイズ(単位は語)。正の10進数か16進定数で指定
+                            省略した場合は1語
+                TYPE     .. 指定するとBASICの型に合わせた内容表示になる
+                            指定できるのはboolean,integer,stringの3種類
+                            省略した場合は16進定数として表示される
+"#
+        }
+        "show-mem-stat" => {
+            r#"
+    show-mem-stat <ADDRESS> [<LENGTH>]
+                メモリの指定アドレスから指定の長さ分の領域の統計情報ぽいものを表示する
+                表示されるのは書込回数 読込回数 実行回数となる
+                        書込回数 .. ST命令やOUT命令で指定されたアドレスに書き込まれた回数
+                        読込回数 .. LD命令などで指定されたアドレスから読み込まれた回数
+                                   ※アドレス指定で読み込む命令による読み込み全てが対象
+                        実行回数 .. PRで指定されたアドレスが実行された回数
+                ADDRESS  .. 対象の先頭アドレス。16進定数かアドレス定数で指定
+                LENGTH   .. 表示対象のメモリのサイズ(単位は語)。正の10進数か16進定数で指定
+                            省略した場合は1語
+"#
+        }
+        "show-reg" => {
+            r#"
+    show-reg
+                各レジスタの現在の値を表示する
+                GR0～GR7,PR,SP,FR(ZF,SF,OF)が表示対象。
+                GR0～GR7は10進定数と16進定数の2つの表現で表示される
+                PR,SPは16進定数として表示される
+                ZF,SF,OFはビットとして0または1が表示される
+"#
+        }
+        "show-src" => {
+            r#"
+    show-src [<ADDRESS> [<LENGTH>]]
+                指定したアドレス位置から指定長さ分の範囲にあるコードを表示する
+                CASL2ソースまたはBASICから変換されたCASL2ソースを表示する(※ソースは整形されている場合がある)
+                ADDRESS  .. 対象の先頭アドレス。16進定数かアドレス定数で指定
+                LENGTH   .. 表示対象のメモリのサイズ(単位は語)。正の10進数か16進定数で指定
+                            省略した場合は40語分
+"#
+        }
+        "show-state" => {
+            r#"
+    show-state
+                直近の実行(run,skip,step)の結果を再表示する
+                ※レジスタ情報は表示されない
+"#
+        }
+        "show-var" => {
+            r#"
+    show-var [<BASIC_PROGRAM_ENTRY> [<VAR_NAME1>[,<VAR_NAME2>..]]]
+                指定したBASICプログラムの変数名と対応するラベルとアドレスと値を表示する
+                BASIC_PROGRAM_ENTRY .. BASICソースに指定されているプログラムエントリラベル
+                VAR_NAME*           .. BASICソースに含まれる変数名(注意:大文字小文字は区別される)
+"#
+        }
+        "skip" => {
+            r#"
+    skip [<STEP_LIMIT>]
+                現在のサブルーチンのRETまで実行する。ステップ制限数までにRETに到達しない場合はそこで停止する
+                STEP_LIMIT .. ステップ制限数。正の10進数で指定する(最大値は18446744073709551615)
+                              省略した場合は 100000000
+"#
+        }
+        "s" | "step" => {
+            r#"
+    s    [<STEP_COUNT>]
+    step [<STEP_COUNT>]
+                指定ステップ数だけ実行する。STEP_COUNT省略時は1ステップだけ実行する
+                STEP_COUNT .. ステップ数。正の10進数で指定する(最大値は18446744073709551615)
+"#
+        }
+        "write-code" => {
+            r#"
+    write-code <ADDRESS> <CASL2_COMMAND>
+                アドレス位置に指定のCASL2コマンドを書き込む
+                ADDRESS       .. 対象の先頭アドレス。16進定数かアドレス定数で指定
+                CASL2_COMMAND .. 書き込むCASL2コマンド
+                                 アドレス定数にはデバッガの拡張形式が使用可能
+                                 IN,OUT,RPUSH,RPOPは展開されて複数の命令が書き込まれる
+                                 START,END,DSは指定できない
+                例:
+                    add-ds FOO 6
+                    write-code FOO         LD GR1,MAIN:X
+                    write-code FOO+#0002   LD GR2,MAIN:Y
+                    write-code FOO+#0004   ADDL GR1,GR2
+                    write-code FOO+#0005   RET
+"#
+        }
         _ => "コマンド名が正しくありません",
     };
 
