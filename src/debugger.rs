@@ -26,6 +26,7 @@ const REQUEST_CONTINUE: i32 = 0x300_0000;
 const REQUEST_BREAK: i32 = 0x400_0000;
 const REQUEST_QUIT: i32 = 99;
 const DEFAULT_COMET2_LIMIT_ON_BASIC_MODE: u64 = 1_000_000_000_000;
+const DEFAULT_STEP_LIMIT: u64 = 100_000_000;
 
 #[derive(Clone, Copy)]
 enum RunMode {
@@ -838,7 +839,7 @@ fn interactive_basic<R: BufRead, W: Write>(
                     };
                 } else {
                     state.run_mode = RunMode::GoToBasicBreakPoint {
-                        basic_limit: 10000,
+                        basic_limit: DEFAULT_STEP_LIMIT,
                         comet2_limit: DEFAULT_COMET2_LIMIT_ON_BASIC_MODE,
                     };
                     return Ok(0);
@@ -904,7 +905,7 @@ fn interactive_basic<R: BufRead, W: Write>(
                     };
                 } else {
                     state.run_mode = RunMode::SkipBasicSubroutine {
-                        basic_limit: 10000,
+                        basic_limit: DEFAULT_STEP_LIMIT,
                         comet2_limit: DEFAULT_COMET2_LIMIT_ON_BASIC_MODE,
                     };
                     return Ok(0);
@@ -1105,7 +1106,7 @@ fn interactive_casl2<R: BufRead, W: Write>(
                         }
                     }
                 } else {
-                    state.run_mode = RunMode::GoToBreakPoint(10000);
+                    state.run_mode = RunMode::GoToBreakPoint(DEFAULT_STEP_LIMIT);
                 }
                 return Ok(0);
             }
@@ -1165,7 +1166,7 @@ fn interactive_casl2<R: BufRead, W: Write>(
                         }
                     }
                 } else {
-                    state.run_mode = RunMode::SkipSubroutine(10000);
+                    state.run_mode = RunMode::SkipSubroutine(DEFAULT_STEP_LIMIT);
                 }
                 return Ok(0);
             }
@@ -5501,7 +5502,7 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
     run [<STEP_LIMIT>]
                 次のブレークポイントまで実行する。ステップ制限数までにブレークポイントに到達しない場合はそこで停止する
                 STEP_LIMIT .. ステップ制限数。正の10進数で指定する(最大値は18446744073709551616)
-                              省略した場合は 10000
+                              省略した場合は 100000000
 "#
         }
         "set-breakpoint" => {
