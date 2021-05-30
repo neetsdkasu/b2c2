@@ -2606,7 +2606,7 @@ fn show_execute_stat<W: Write>(
         })
         .collect::<Vec<_>>();
 
-    writeln!(stdout, "実行回数")?;
+    writeln!(stdout, "到達回数")?;
     for (i, (n, hint, _)) in info.status_hint.iter().enumerate() {
         let (bp, cnt) = match bps.iter().find(|(_, id)| *id == i) {
             Some((pos, id)) => {
@@ -5246,7 +5246,7 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
                 指定のCASL2コマンドを指定アドレス位置以降から探し最初に見つかったコードを表示する
     find-value <ADDRESS> <VALUE>
                 指定の値を指定アドレス位置以降から探し最初に見つかったものを表示する
-    help <COMMAND_NAME>
+    help [<COMMAND_NAME>]
                 指定デバッガコマンドの詳細ヘルプを表示する
     help constant
                 デバッガコマンドで使用する定数に関する説明を表示する
@@ -5335,17 +5335,19 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
                                 (#1234)
         アドレス定数+アドレス定数
         アドレス定数+16進定数
-        アドレス定数+正の10進数
+        アドレス定数+10進数
                         2つのアドレス定数または16進定数の和をアドレスとする(オーバーフローに注意)
                             例: MAIN+@GR1
                                 (MAIN:MEM)+#0101
+                                MAIN:FOO+10
         アドレス定数-アドレス定数
         アドレス定数-16進定数
-        アドレス定数-正の10進数
+        アドレス定数-10進数
         16進定数-アドレス定数
                         2つのアドレス定数または16進定数の差をアドレスとする(オーバーフローに注意)
                             例: LIB:S005-LIB:B001
                                 MAIN:J004-#0010
+                                MAIN:FOO-3
                                 #FFFF-@SP
     リテラル
                 10進定数、16進定数、文字定数の頭に=を付けて指定
@@ -5387,11 +5389,11 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
         "default-cmd" => {
             r#"
     default-cmd [<DEBUG_COMMAND>]
-    default-cmd none
                 空行が入力されたときの挙動を設定する
                 DEBUG_COMMAND .. デバッガコマンドとその引数を空行入力時のコマンドとして割り当てる
                                  未指定の場合は現在の割り当てコマンドを表示する
-                none　　　　　　　　　.. コマンド割り当てを解除する
+    default-cmd none
+                空行が入力されたときのコマンド割り当てを解除する
 "#
         }
         "dump-code" => {
@@ -5454,8 +5456,10 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
         }
         "help" => {
             r#"
-    help <COMMAND_NAME>
+    help [<COMMAND_NAME>]
                 指定デバッガコマンドの詳細ヘルプを表示する
+                COMMAND_NAME .. デバッガコマンド名を指定する
+                                省略時は全てのコマンドの簡易ヘルプを表示する
     help constant
                 デバッガコマンドで使用する定数に関する説明を表示する
 "#
@@ -5497,7 +5501,7 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
             r#"
     restart
                 プログラムを最初の位置から実行しなおす。メモリやGRやFRは終了時点の状態クリアされずに最後の実行状態のまま維持される
-                スタート位置はset-startコマンドで指定されている場合以外は-src指定のファイルのプログラムからとなる
+                set-startコマンドで指定されている場合はそのプログラムからスタートとなる
 "#
         }
         "run" => {
@@ -5646,6 +5650,7 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
     step [<STEP_COUNT>]
                 指定ステップ数だけ実行する。STEP_COUNT省略時は1ステップだけ実行する
                 STEP_COUNT .. ステップ数。正の10進数で指定する(最大値は18446744073709551615)
+                              省略した場合は 1
 "#
         }
         "write-code" => {
@@ -5690,14 +5695,14 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
                 空行が入力されたときの挙動を設定する
     fill-arr <VAR_NAME> <VALUE>
                 現在地点のプログラムの配列変数の全ての要素を指定の値で埋める。値はBASICリテラルのみ
-    help <COMMAND_NAME>
+    help [<COMMAND_NAME>]
                 指定デバッガコマンドの詳細ヘルプを表示する
     list-files
                 読み込んだソースファイルの一覧を表示する
     mode <MODE>
                 指定したモードに切り替える
     quit
-                テスト実行を中止する
+                テスト実行を中止しデバッガを終了する
     remove-breakpoint <BASIC_PROGRAM_ENTRY> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
                 指定したBASICプログラムからブレークポイントを解除する
     reset
@@ -5736,27 +5741,188 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
     };
 
     let description = match cmd.as_str() {
-        "default-cmd" => todo!(),
-        "fill-arr" => todo!(),
-        "help" => todo!(),
-        "list-files" => todo!(),
-        "mode" => todo!(),
-        "quit" => todo!(),
-        "remove-breakpoint" => todo!(),
-        "reset" => todo!(),
-        "restart" => todo!(),
-        "run" => todo!(),
-        "set-breakpoint" => todo!(),
-        "set-by-file" => todo!(),
-        "set-elem" => todo!(),
-        "set-len" => todo!(),
-        "set-var" => todo!(),
-        "show-execute-stat" => todo!(),
-        "show-src" => todo!(),
-        "show-state" => todo!(),
-        "show-var" => todo!(),
-        "skip" => todo!(),
-        "step" => todo!(),
+        "default-cmd" => {
+            r#"
+    default-cmd [<DEBUG_COMMAND>]
+                空行が入力されたときの挙動を設定する
+                DEBUG_COMMAND .. デバッガコマンドとその引数を空行入力時のコマンドとして割り当てる
+                                 未指定の場合は現在の割り当てコマンドを表示する
+    default-cmd none
+                空行が入力されたときのコマンド割り当てを解除する
+"#
+        }
+        "fill-arr" => {
+            r#"
+    fill-arr <VAR_NAME> <VALUE>
+                現在地点のプログラムの配列変数の全ての要素を指定の値で埋める。値はBASICリテラルのみ
+                文字列を指定した場合は文字列のその時点の長さ分だけ埋める
+                プログラムが(initialize)に到達してない場合は設定できない
+                VAR_NAME .. 固定長配列の変数名または文字列の変数名(注意:大文字小文字は区別される)
+                VALUE    .. 配列に対応する型のBASICリテラル値(真理値/整数)
+"#
+        }
+        "help" => {
+            r#"
+    help [<COMMAND_NAME>]
+                指定デバッガコマンドの詳細ヘルプを表示する
+                COMMAND_NAME .. デバッガコマンド名を指定する
+                                省略時は全てのコマンドの簡易ヘルプを表示する
+"#
+        }
+        "list-files" => {
+            r#"
+    list-files
+                読み込んだソースファイルの一覧を表示する
+                ソースファイルとラベルの対応を表示する
+"#
+        }
+        "mode" => {
+            r#"
+    mode <MODE>
+                指定したデバッグモードに切り替える(BASICデバッグモードで起動した場合にのみ有効)
+                MODE .. BASICかCASL2を指定して切り替える
+"#
+        }
+        "quit" => {
+            r#"
+    quit
+                テスト実行を中止しデバッガを終了する
+"#
+        }
+        "remove-breakpoint" => {
+            r#"
+    remove-breakpoint <BASIC_PROGRAM_ENTRY> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
+                指定したBASICプログラムからブレークポイントを解除する
+                BASIC_PROGRAM_ENTRY .. BASICソースに指定されているプログラムエントリラベル
+                STATEMENT_ID*       .. BASICソースのステートメントID
+                                       IDはshow-srcコマンドで確認できる
+"#
+        }
+        "reset" => {
+            r#"
+    reset
+                プログラムを最初から実行しなおす。プログラムをファイルから読み込みなおし配置される
+"#
+        }
+        "restart" => {
+            r#"
+    restart
+                プログラムを最初の位置から実行しなおす。メモリの状態はクリアされずに最後の実行状態のまま維持される
+                set-startコマンドで指定されている場合はそのプログラムからスタートとなる
+"#
+        }
+        "run" => {
+            r#"
+    run [<BASIC_STEP_LIMIT> [<COMET2_STEP_LIMIT>]]
+                次のブレークポイントまで実行する
+                BASIC_STEP_LIMIT  .. BASICステートメントのステップ数制限
+                                     省略した場合は 100000000
+                COMET2_STEP_LIMIT .. COMET2命令のステップ数制限
+                                     省略した場合は 1000000000000
+"#
+        }
+        "set-breakpoint" => {
+            r#"
+    set-breakpoint <BASIC_PROGRAM_ENTRY> <STATEMENT_ID1>[,<STATEMENT_ID2>..]
+                指定したBASICプログラムにブレークポイントを設定する
+                BASIC_PROGRAM_ENTRY .. BASICソースに指定されているプログラムエントリラベル
+                STATEMENT_ID*       .. BASICソースのステートメントID
+                                       IDはshow-srcコマンドで確認できる
+"#
+        }
+        "set-by-file" => {
+            r#"
+    set-by-file <FILE_PATH>
+                ファイルに列挙された設定系のデバッガコマンドを実行する
+                1行につき1コマンドを配置できる
+                ファイルに指定できないデバッガコマンド:
+                    quit reset restart run set-by-file skip s step
+"#
+        }
+        "set-elem" => {
+            r#"
+    set-elem <VAR_NAME> <INDEX> <VALUE>
+                現在地点のプログラムの配列変数の要素に値を設定する。値はBASICリテラルのみ
+                プログラムが(initialize)に到達してない場合は設定できない
+                VAR_NAME .. 固定長配列の変数名または文字列の変数名(注意:大文字小文字は区別される)
+                INDEX    .. 値を設定する配列・文字列の位置。10進数で指定。長さ以上の値は指定できない
+                VALUE    .. 配列に対応する型のBASICリテラル値(真理値/整数)
+"#
+        }
+        "set-len" => {
+            r#"
+    set-len <STR_VAR_NAME> <LENGTH>
+                現在地点のプログラムの文字列変数の長さ情報のみを書き換える
+                プログラムが(initialize)に到達してない場合は設定できない
+                STR_VAR_NAME .. 文字列の変数名(注意:大文字小文字は区別される)
+                LENGTH       .. 文字列の長さ。0以上256以下の10進数で指定
+"#
+        }
+        "set-var" => {
+            r#"
+    set-var <VAR_NAME> <VALUE1>[,<VALUE2>..]
+                現在地点のプログラムの変数に値を設定する。値はBASICリテラルのみ
+                プログラムが(initialize)に到達してない場合は変数に値を設定できない
+                プログラムのスタート地点の場合は引数に値の設定が可能(必要に応じてメモリ確保がされる)
+                VAR_NAME .. 変数名(注意:大文字小文字は区別される)
+                VALUE*   .. 変数に代入する値や文字列。BASICリテラル
+                            配列の場合はカンマ区切りで配列長分の値を並べる必要がある
+"#
+        }
+        "show-execute-stat" => {
+            r#"
+    show-execute-stat [<BASIC_PROGRAM_ENTRY>]
+                指定したBASICプログラムのコード実行の統計情報ぽいものを表示する
+                各ステートメントの到達回数が表示される
+                BASIC_PROGRAM_ENTRY .. BASICソースに指定されているプログラムエントリラベル
+"#
+        }
+        "show-src" => {
+            r#"
+    show-src [<BASIC_PROGRAM_ENTRY>]
+                指定したBASICプログラムのコードを表示する
+                入力されたファイルのソースコードではなく、
+                CASL2ソースへ変換後に埋め込まれた情報から復元したコードとなる
+                BASIC_PROGRAM_ENTRY .. BASICソースに指定されているプログラムエントリラベル
+"#
+        }
+        "show-state" => {
+            r#"
+    show-state
+                直近の実行(run,skip,step)の結果を再表示する
+                ※変数の情報は表示されない
+"#
+        }
+        "show-var" => {
+            r#"
+    show-var [<BASIC_PROGRAM_ENTRY> [<VAR_NAME1>[,<VAR_NAME2>..]]]
+                指定したBASICプログラムの変数名を表示する。可能な場合は値も表示する
+                値が表示されるのは実行状態で(initialize)に到達しているプログラムが対象となる
+                BASIC_PROGRAM_ENTRY .. BASICソースに指定されているプログラムエントリラベル
+                VAR_NAME* .. 対象プログラムの変数名(注意:大文字小文字は区別される)
+"#
+        }
+        "skip" => {
+            r#"
+    skip [<BASIC_STEP_LIMIT> [<COMET2_STEP_LIMIT>]]
+                現在地点のサブルーチンを抜けるまで実行する
+                BASIC_STEP_LIMIT  .. BASICステートメントのステップ数制限
+                                     省略した場合は 100000000
+                COMET2_STEP_LIMIT .. COMET2命令のステップ数制限
+                                     省略した場合は 1000000000000
+"#
+        }
+        "s" | "step" => {
+            r#"
+    s    [<BASIC_STEP_COUNT> [<COMET2_STEP_LIMIT>]]
+    step [<BASIC_STEP_COUNT> [<COMET2_STEP_LIMIT>]]
+                指定ステップ数だけ実行する。BASIC_STEP_COUNT省略時は1ステップだけ実行する
+                BASIC_STEP_COUNT  .. BASICステートメントを実行するステップ数
+                                     省略した場合は 1
+                COMET2_STEP_LIMIT .. COMET2命令のステップ数制限
+                                     省略した場合は 1000000000000
+"#
+        }
         _ => "コマンド名が正しくありません",
     };
 
