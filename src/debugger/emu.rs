@@ -218,7 +218,7 @@ impl Emulator {
                 .as_ref()
                 .and_then(|label| self.program_labels.get(label))
                 .copied()
-                .expect("BUG")
+                .unwrap()
         });
 
         let call = casl2::Command::P {
@@ -1354,7 +1354,7 @@ impl Emulator {
                 eprintln!("ERROR: 禁止されている名前です  ( {} )", new_name);
                 return Ok(8);
             }
-            let old_name = casl2::utils::get_program_name(&casl2_src).expect("BUG");
+            let old_name = casl2::utils::get_program_name(&casl2_src).unwrap();
             match casl2::utils::change_label(&casl2_src, old_name, new_name.as_str()) {
                 Some(src) => src,
                 None => {
@@ -1622,7 +1622,7 @@ impl Emulator {
                     casl2::Adr::LiteralDec(_)
                     | casl2::Adr::LiteralHex(_)
                     | casl2::Adr::LiteralStr(_) => {
-                        let label_pos = literals.get(adr).expect("BUG");
+                        let label_pos = literals.get(adr).unwrap();
                         self.mem[*mempos + 1] = *label_pos as u16;
                     }
                 },
@@ -1630,7 +1630,7 @@ impl Emulator {
             }
         }
 
-        let program_pos = *self.program_labels.get(&name).expect("BUG");
+        let program_pos = *self.program_labels.get(&name).unwrap();
 
         if let Some(pos_list) = self.unknown_labels.remove(&name) {
             for pos in pos_list {

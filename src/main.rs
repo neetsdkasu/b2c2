@@ -181,7 +181,7 @@ fn process_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
             eprintln!("ERROR: 禁止されている名前です  ( {} )", new_name);
             return Ok(8);
         }
-        let old_name = casl2::utils::get_program_name(&casl2_src).expect("BUG");
+        let old_name = casl2::utils::get_program_name(&casl2_src).unwrap();
         match casl2::utils::change_label(&casl2_src, old_name, new_name.as_str()) {
             Some(src) => src,
             None => {

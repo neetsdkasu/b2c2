@@ -90,7 +90,7 @@ pub fn split_subroutines(
     }
 
     let program_name = casl2::utils::get_program_name(&statements)
-        .expect("BUG")
+        .unwrap()
         .to_string();
 
     ret.push((program_name, statements));

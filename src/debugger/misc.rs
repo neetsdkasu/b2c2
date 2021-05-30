@@ -853,13 +853,13 @@ pub(super) fn print_arr_label<W: Write>(
             _ => unreachable!("BUG"),
         },
     };
-    let map = emu.local_labels.get(key).expect("BUG");
+    let map = emu.local_labels.get(key).unwrap();
     match label {
         TempArrayOfBoolean(_str_labels, _size) => unreachable!("たぶん来ない"),
         TempArrayOfInteger(_str_labels, _size) => unreachable!("たぶん来ない"),
         VarArrayOfBoolean(label, size) => {
             let size = *size;
-            let adr = *map.get(label).expect("BUG");
+            let adr = *map.get(label).unwrap();
             if adr + size > emu.mem.len() {
                 writeln!(
                     stdout,
@@ -911,7 +911,7 @@ pub(super) fn print_arr_label<W: Write>(
         }
         VarArrayOfInteger(label, size) => {
             let size = *size;
-            let adr = *map.get(label).expect("BUG");
+            let adr = *map.get(label).unwrap();
             if adr + size > emu.mem.len() {
                 writeln!(
                     stdout,
@@ -948,7 +948,7 @@ pub(super) fn print_arr_label<W: Write>(
         }
         VarRefArrayOfBoolean(label, size) => {
             let size = *size;
-            let refer = *map.get(label).expect("BUG");
+            let refer = *map.get(label).unwrap();
             let adr = emu.mem[refer] as usize;
             if adr + size > emu.mem.len() {
                 writeln!(
@@ -1003,7 +1003,7 @@ pub(super) fn print_arr_label<W: Write>(
         }
         VarRefArrayOfInteger(label, size) => {
             let size = *size;
-            let refer = *map.get(label).expect("BUG");
+            let refer = *map.get(label).unwrap();
             let adr = emu.mem[refer] as usize;
             if adr + size > emu.mem.len() {
                 writeln!(
@@ -1041,7 +1041,7 @@ pub(super) fn print_arr_label<W: Write>(
             }
         }
         MemArrayOfBoolean { offset, size } => {
-            let mem_pos = *map.get("MEM").expect("BUG");
+            let mem_pos = *map.get("MEM").unwrap();
             let base_adr = emu.mem[mem_pos] as usize;
             let size = *size;
             let adr = base_adr + *offset;
@@ -1095,7 +1095,7 @@ pub(super) fn print_arr_label<W: Write>(
             }
         }
         MemArrayOfInteger { offset, size } => {
-            let mem_pos = *map.get("MEM").expect("BUG");
+            let mem_pos = *map.get("MEM").unwrap();
             let base_adr = emu.mem[mem_pos] as usize;
             let size = *size;
             let adr = base_adr + *offset;
@@ -1134,7 +1134,7 @@ pub(super) fn print_arr_label<W: Write>(
             }
         }
         MemRefArrayOfBoolean { offset, size } => {
-            let mem_pos = *map.get("MEM").expect("BUG");
+            let mem_pos = *map.get("MEM").unwrap();
             let base_adr = emu.mem[mem_pos] as usize;
             let size = *size;
             let refer = base_adr as usize + *offset as usize;
@@ -1199,7 +1199,7 @@ pub(super) fn print_arr_label<W: Write>(
             }
         }
         MemRefArrayOfInteger { offset, size } => {
-            let mem_pos = *map.get("MEM").expect("BUG");
+            let mem_pos = *map.get("MEM").unwrap();
             let base_adr = emu.mem[mem_pos] as usize;
             let size = *size;
             let refer = base_adr as usize + *offset as usize;
@@ -1275,7 +1275,7 @@ pub(super) fn print_str_label<W: Write>(
             _ => unreachable!("BUG"),
         },
     };
-    let map = emu.local_labels.get(key).expect("BUG");
+    let map = emu.local_labels.get(key).unwrap();
     match &label.label_type {
         Const(_str) => {
             // IN/OUTの定数 LB**/LL**
@@ -1292,7 +1292,7 @@ pub(super) fn print_str_label<W: Write>(
         Var | ArgVal => {
             // 文字列変数 SB**/SL**
             // 引数 ARG*/ARG*
-            let adr = *map.get(&label.len).expect("BUG");
+            let adr = *map.get(&label.len).unwrap();
             let len = emu.mem[adr] as usize;
             let value = len as i16;
             let broken = len > 256;
@@ -1307,7 +1307,7 @@ pub(super) fn print_str_label<W: Write>(
                 if broken { " (異常値)" } else { "    " },
                 arg_hint_l
             )?;
-            let adr = *map.get(&label.pos).expect("BUG");
+            let adr = *map.get(&label.pos).unwrap();
             if adr + len.min(256) > emu.mem.len() {
                 writeln!(
                     stdout,
@@ -1345,7 +1345,7 @@ pub(super) fn print_str_label<W: Write>(
         }
         ArgRef => {
             // 引数(参照型) ARG*/ARG*
-            let adr = *map.get(&label.len).expect("BUG");
+            let adr = *map.get(&label.len).unwrap();
             let refer = emu.mem[adr] as usize;
             let len = emu.mem[refer] as usize;
             let value = len as i16;
@@ -1362,7 +1362,7 @@ pub(super) fn print_str_label<W: Write>(
                 if broken { " (異常値)" } else { "    " },
                 arg_hint_l
             )?;
-            let adr = *map.get(&label.pos).expect("BUG");
+            let adr = *map.get(&label.pos).unwrap();
             let refer = emu.mem[adr] as usize;
             if refer + len.min(256) > emu.mem.len() {
                 writeln!(
@@ -1402,7 +1402,7 @@ pub(super) fn print_str_label<W: Write>(
         }
         MemRef(offset) => {
             // メモリ(MEMからのオフセット)
-            let mem_pos = *map.get("MEM").expect("BUG");
+            let mem_pos = *map.get("MEM").unwrap();
             let base_adr = emu.mem[mem_pos] as usize;
             let refer = base_adr + offset;
             if refer > emu.mem.len() {
@@ -1488,7 +1488,7 @@ pub(super) fn print_str_label<W: Write>(
         }
         MemVal(offset) => {
             // メモリ(MEMからのオフセット)
-            let mem_pos = *map.get("MEM").expect("BUG");
+            let mem_pos = *map.get("MEM").unwrap();
             let base_adr = emu.mem[mem_pos] as usize;
             let adr = base_adr + offset;
             if adr > emu.mem.len() {
@@ -1580,10 +1580,10 @@ pub(super) fn print_value_label<W: Write>(
             _ => unreachable!("BUG"),
         },
     };
-    let map = emu.local_labels.get(key).expect("BUG");
+    let map = emu.local_labels.get(key).unwrap();
     match label {
         VarBoolean(s) => {
-            let adr = *map.get(s).expect("BUG");
+            let adr = *map.get(s).unwrap();
             let raw = emu.mem[adr];
             let value = if raw == 0 {
                 "False"
@@ -1609,7 +1609,7 @@ pub(super) fn print_value_label<W: Write>(
             )?;
         }
         VarInteger(s) => {
-            let adr = *map.get(s).expect("BUG");
+            let adr = *map.get(s).unwrap();
             let raw = emu.mem[adr];
             let value = raw as i16;
             writeln!(
@@ -1619,7 +1619,7 @@ pub(super) fn print_value_label<W: Write>(
             )?;
         }
         VarRefBoolean(s) => {
-            let adr = *map.get(s).expect("BUG");
+            let adr = *map.get(s).unwrap();
             let refer = emu.mem[adr];
             let raw = emu.mem[refer as usize];
             let value = if raw == 0 {
@@ -1647,7 +1647,7 @@ pub(super) fn print_value_label<W: Write>(
             )?;
         }
         VarRefInteger(s) => {
-            let adr = *map.get(s).expect("BUG");
+            let adr = *map.get(s).unwrap();
             let refer = emu.mem[adr];
             let raw = emu.mem[refer as usize];
             let value = raw as i16;
@@ -1658,7 +1658,7 @@ pub(super) fn print_value_label<W: Write>(
             )?;
         }
         MemBoolean(offset) => {
-            let pos = *map.get(&"MEM".to_string()).expect("BUG");
+            let pos = *map.get(&"MEM".to_string()).unwrap();
             let adr = emu.mem[pos] as usize + offset;
             let raw = emu.mem[adr];
             let value = if raw == 0 {
@@ -1685,7 +1685,7 @@ pub(super) fn print_value_label<W: Write>(
             )?;
         }
         MemInteger(offset) => {
-            let pos = *map.get(&"MEM".to_string()).expect("BUG");
+            let pos = *map.get(&"MEM".to_string()).unwrap();
             let adr = emu.mem[pos] as usize + offset;
             let raw = emu.mem[adr];
             let value = raw as i16;
@@ -1696,7 +1696,7 @@ pub(super) fn print_value_label<W: Write>(
             )?;
         }
         MemRefBoolean(offset) => {
-            let pos = *map.get(&"MEM".to_string()).expect("BUG");
+            let pos = *map.get(&"MEM".to_string()).unwrap();
             let adr = emu.mem[pos] as usize + offset;
             let refer = emu.mem[adr];
             let raw = emu.mem[refer as usize];
@@ -1725,7 +1725,7 @@ pub(super) fn print_value_label<W: Write>(
             )?;
         }
         MemRefInteger(offset) => {
-            let pos = *map.get(&"MEM".to_string()).expect("BUG");
+            let pos = *map.get(&"MEM".to_string()).unwrap();
             let adr = emu.mem[pos] as usize + offset;
             let refer = emu.mem[adr];
             let raw = emu.mem[refer as usize];

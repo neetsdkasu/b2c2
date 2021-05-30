@@ -1141,7 +1141,7 @@ fn interactive_casl2<R: BufRead, W: Write>(
                     }
                 } else {
                     state.start_point = None;
-                    let name = emu.start_point.as_ref().expect("BUG");
+                    let name = emu.start_point.as_ref().unwrap();
                     writeln!(
                         stdout,
                         "スタートポイントを{}に戻しました(次のrestartから有効です)",
@@ -2738,11 +2738,7 @@ fn show_state_basic<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> 
             writeln!(stdout, "Start Point: #{:04X}", pos)?;
         }
     } else {
-        writeln!(
-            stdout,
-            "Start Point: {}",
-            emu.start_point.as_ref().expect("BUG")
-        )?;
+        writeln!(stdout, "Start Point: {}", emu.start_point.as_ref().unwrap())?;
     }
 
     writeln!(stdout, "Step Count: {}", emu.basic_step_count)?;
@@ -2779,16 +2775,16 @@ fn show_state_basic<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> 
                 writeln!(stdout, "Info:")?;
                 match extra {
                     For { counter, to, step } => {
-                        let local_labels = emu.local_labels.get(pg_label).expect("BUG");
+                        let local_labels = emu.local_labels.get(pg_label).unwrap();
                         match emu.resolve_label(pg_label, counter) {
                             Some((pos, None, parser::VarType::Integer)) => {
                                 write!(stdout, "  counter: {}", emu.mem[pos] as i16)?;
                                 if let Some(to) = to {
-                                    let to = emu.mem[*local_labels.get(to).expect("BUG")];
+                                    let to = emu.mem[*local_labels.get(to).unwrap()];
                                     write!(stdout, ", to: {}", to)?;
                                 }
                                 if let Some(step) = step {
-                                    let step = emu.mem[*local_labels.get(step).expect("BUG")];
+                                    let step = emu.mem[*local_labels.get(step).unwrap()];
                                     write!(stdout, ", step: {}", step)?;
                                 }
                                 writeln!(stdout)?;
@@ -2878,18 +2874,14 @@ fn show_state<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> io::Re
             writeln!(stdout, "Start Point: #{:04X}", pos)?;
         }
     } else {
-        writeln!(
-            stdout,
-            "Start Point: {}",
-            emu.start_point.as_ref().expect("BUG")
-        )?;
+        writeln!(stdout, "Start Point: {}", emu.start_point.as_ref().unwrap())?;
     }
 
     writeln!(stdout, "Step Count: {}", emu.step_count)?;
 
     write!(stdout, "Call State:")?;
     for (i, (pos, ret)) in emu.program_stack.iter().enumerate() {
-        let fp = ret.checked_sub(2).expect("BUG");
+        let fp = ret.checked_sub(2).unwrap();
         match emu.all_label_list.binary_search_by_key(pos, |(_, p)| *p) {
             Ok(mut index) => {
                 while index > 0 {
@@ -3094,7 +3086,7 @@ fn set_by_file<W: Write>(
                         }
                     } else {
                         state.start_point = None;
-                        let name = emu.start_point.as_ref().expect("BUG");
+                        let name = emu.start_point.as_ref().unwrap();
                         writeln!(
                             stdout,
                             "スタートポイントを{}に戻しました(次のrestartから有効です)",

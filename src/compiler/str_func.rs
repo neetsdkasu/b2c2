@@ -127,10 +127,10 @@ impl Compiler {
 
         assert!((2..=3).contains(&param.len()));
 
-        let src = param.get(0).expect("BUG");
+        let src = param.get(0).unwrap();
         assert!(matches!(src.return_type(), parser::ExprType::String));
 
-        let offset = param.get(1).expect("BUG");
+        let offset = param.get(1).unwrap();
         assert!(matches!(offset.return_type(), parser::ExprType::Integer));
 
         let length = param.get(2);

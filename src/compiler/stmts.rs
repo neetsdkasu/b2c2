@@ -45,11 +45,11 @@ impl Compiler {
         }
 
         let name = match self.original_program_name.as_ref() {
-            Some(origin) if origin == name => self.program_name.clone().expect("BUG"),
+            Some(origin) if origin == name => self.program_name.clone().unwrap(),
             _ => name.to_string(),
         };
 
-        let argument_def = self.callables.get(&name).cloned().expect("BUG");
+        let argument_def = self.callables.get(&name).cloned().unwrap();
         assert_eq!(argument_def.len(), arguments.len());
 
         let mut set_argument_codes = Vec::<(IndexRegister, String)>::new();
@@ -76,7 +76,7 @@ impl Compiler {
             let arg = argument_def
                 .iter()
                 .find(|arg| &arg.var_name == arg_name)
-                .expect("BUG");
+                .unwrap();
 
             self.comment(format!("  {}", arg));
             self.comment(format!("  {} = {}", arg_name, value));
@@ -425,7 +425,7 @@ impl Compiler {
                         _ => unreachable!("BUG"),
                     };
                     let reg1 = arg.register1;
-                    let reg2 = arg.register2.expect("BUG");
+                    let reg2 = arg.register2.unwrap();
                     let labels = self.compile_str_expr(value);
                     match labels.label_type {
                         StrLabelType::Const(_) | StrLabelType::Lit(_) | StrLabelType::Temp
@@ -763,7 +763,7 @@ impl Compiler {
                     } else {
                         StrLabels {
                             len: format!("ARG{}", arg.register1 as isize),
-                            pos: format!("ARG{}", arg.register2.expect("BUG") as isize),
+                            pos: format!("ARG{}", arg.register2.unwrap() as isize),
                             label_type: StrLabelType::ArgVal,
                         }
                     };
@@ -782,7 +782,7 @@ impl Compiler {
                     } else {
                         StrLabels {
                             len: format!("ARG{}", arg.register1 as isize),
-                            pos: format!("ARG{}", arg.register2.expect("BUG") as isize),
+                            pos: format!("ARG{}", arg.register2.unwrap() as isize),
                             label_type: StrLabelType::ArgRef,
                         }
                     };
@@ -1007,7 +1007,7 @@ impl Compiler {
             r#" AND {reg},{reg}
                 JZE {next}"#,
             reg = condition_reg,
-            next = labels.first().expect("BUG")
+            next = labels.first().unwrap()
         ));
 
         for stmt in block.iter() {

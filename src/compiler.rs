@@ -120,7 +120,7 @@ impl Flag {
 
         if !self.split_subroutines {
             let name = casl2::utils::get_program_name(&statements)
-                .expect("BUG")
+                .unwrap()
                 .to_string();
             return vec![(name, statements)];
         }
@@ -690,7 +690,7 @@ impl Compiler {
             self.code(casl2::Command::P {
                 code: casl2::P::Push,
                 adr: casl2::Adr::Dec(0),
-                x: Some(TryFrom::try_from(reg).expect("BUG")),
+                x: Some(TryFrom::try_from(reg).unwrap()),
             });
         }
         self.registers_used |= 1 << reg as isize;
@@ -746,7 +746,7 @@ impl Compiler {
             .get(var_name)
             .cloned()
             .unwrap_or_else(|| {
-                let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+                let (label, arg) = self.argument_labels.get(var_name).unwrap();
                 assert_eq!(arg.var_name, var_name);
                 assert!(matches!(arg.var_type, parser::VarType::Integer));
                 label.clone()
@@ -755,7 +755,7 @@ impl Compiler {
 
     // 整数変数(参照型)のラベル取得
     fn get_ref_int_var_label(&self, var_name: &str) -> ValueLabel {
-        let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+        let (label, arg) = self.argument_labels.get(var_name).unwrap();
         assert_eq!(arg.var_name, var_name);
         assert!(matches!(arg.var_type, parser::VarType::RefInteger));
         label.clone()
@@ -767,7 +767,7 @@ impl Compiler {
             .get(var_name)
             .cloned()
             .unwrap_or_else(|| {
-                let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+                let (label, arg) = self.argument_labels.get(var_name).unwrap();
                 assert_eq!(arg.var_name, var_name);
                 assert!(matches!(arg.var_type, parser::VarType::Boolean));
                 label.clone()
@@ -776,7 +776,7 @@ impl Compiler {
 
     // 真理値変数(参照型)のラベル取得
     fn get_ref_bool_var_label(&self, var_name: &str) -> ValueLabel {
-        let (label, arg) = self.argument_labels.get(var_name).expect("BUG");
+        let (label, arg) = self.argument_labels.get(var_name).unwrap();
         assert_eq!(arg.var_name, var_name);
         assert!(matches!(arg.var_type, parser::VarType::RefBoolean));
         label.clone()
@@ -788,7 +788,7 @@ impl Compiler {
             .get(var_name)
             .cloned()
             .unwrap_or_else(|| {
-                let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
+                let (labels, arg) = self.str_argument_labels.get(var_name).unwrap();
                 assert_eq!(arg.var_name, var_name);
                 assert!(matches!(arg.var_type, parser::VarType::String));
                 assert!(matches!(
@@ -801,7 +801,7 @@ impl Compiler {
 
     // 文字列変数(参照型)のラベル取得
     fn get_ref_str_var_labels(&self, var_name: &str) -> StrLabels {
-        let (labels, arg) = self.str_argument_labels.get(var_name).expect("BUG");
+        let (labels, arg) = self.str_argument_labels.get(var_name).unwrap();
         assert_eq!(arg.var_name, var_name);
         assert!(matches!(arg.var_type, parser::VarType::RefString));
         assert!(matches!(
@@ -817,7 +817,7 @@ impl Compiler {
             .get(var_name)
             .cloned()
             .unwrap_or_else(|| {
-                let (label, arg) = self.arr_argument_labels.get(var_name).expect("BUG");
+                let (label, arg) = self.arr_argument_labels.get(var_name).unwrap();
                 assert_eq!(arg.var_name, var_name);
                 assert!(matches!(
                     label,
@@ -829,7 +829,7 @@ impl Compiler {
 
     // 真理値配列(参照型)のラベル取得
     fn get_ref_bool_arr_label(&self, var_name: &str) -> ArrayLabel {
-        let (label, arg) = self.arr_argument_labels.get(var_name).expect("BUG");
+        let (label, arg) = self.arr_argument_labels.get(var_name).unwrap();
         assert_eq!(arg.var_name, var_name);
         assert!(matches!(
             label,
@@ -844,7 +844,7 @@ impl Compiler {
             .get(var_name)
             .cloned()
             .unwrap_or_else(|| {
-                let (label, arg) = self.arr_argument_labels.get(var_name).expect("BUG");
+                let (label, arg) = self.arr_argument_labels.get(var_name).unwrap();
                 assert_eq!(arg.var_name, var_name);
                 assert!(matches!(
                     label,
@@ -856,7 +856,7 @@ impl Compiler {
 
     // 整数配列(参照型)のラベル取得
     fn get_ref_int_arr_label(&self, var_name: &str) -> ArrayLabel {
-        let (label, arg) = self.arr_argument_labels.get(var_name).expect("BUG");
+        let (label, arg) = self.arr_argument_labels.get(var_name).unwrap();
         assert_eq!(arg.var_name, var_name);
         assert!(matches!(
             label,
@@ -966,26 +966,26 @@ impl Compiler {
                     | parser::VarType::RefBoolean
                     | parser::VarType::Integer
                     | parser::VarType::RefInteger => {
-                        let (label, _) = argument_labels.get(&arg.var_name).expect("BUG");
+                        let (label, _) = argument_labels.get(&arg.var_name).unwrap();
                         statements.labeled(label.label(), casl2::Command::Ds { size: 1 });
                     }
                     parser::VarType::RefArrayOfBoolean(_)
                     | parser::VarType::RefArrayOfInteger(_) => {
-                        let (label, _) = arr_argument_labels.get(&arg.var_name).expect("BUG");
+                        let (label, _) = arr_argument_labels.get(&arg.var_name).unwrap();
                         statements.labeled(label.label(), casl2::Command::Ds { size: 1 });
                     }
                     parser::VarType::ArrayOfBoolean(size)
                     | parser::VarType::ArrayOfInteger(size) => {
-                        let (label, _) = arr_argument_labels.get(&arg.var_name).expect("BUG");
+                        let (label, _) = arr_argument_labels.get(&arg.var_name).unwrap();
                         statements.labeled(label.label(), casl2::Command::Ds { size: size as u16 });
                     }
                     parser::VarType::String => {
-                        let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
+                        let (labels, _) = str_argument_labels.get(&arg.var_name).unwrap();
                         statements.labeled(&labels.len, casl2::Command::Ds { size: 1 });
                         statements.labeled(&labels.pos, casl2::Command::Ds { size: 256 });
                     }
                     parser::VarType::RefString => {
-                        let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
+                        let (labels, _) = str_argument_labels.get(&arg.var_name).unwrap();
                         statements.labeled(&labels.len, casl2::Command::Ds { size: 1 });
                         statements.labeled(&labels.pos, casl2::Command::Ds { size: 1 });
                     }
@@ -1199,7 +1199,7 @@ impl Compiler {
                 | parser::VarType::RefBoolean
                 | parser::VarType::Integer
                 | parser::VarType::RefInteger => {
-                    let (label, _) = argument_labels.get(&arg.var_name).expect("BUG");
+                    let (label, _) = argument_labels.get(&arg.var_name).unwrap();
                     if option_use_allocator {
                         if let Some(reg) = idle_register {
                             temp_statements.code(format!(
@@ -1207,7 +1207,7 @@ impl Compiler {
                                     LAD  {reg},{offset},{reg}
                                     ST   {arg},0,{reg}"#,
                                 reg = reg,
-                                offset = label.get_offset().expect("BUG"),
+                                offset = label.get_offset().unwrap(),
                                 arg = arg.register1
                             ));
                         } else {
@@ -1217,7 +1217,7 @@ impl Compiler {
                                     LAD  {reg},{offset},{reg}
                                     ST   GR0,0,{reg}"#,
                                 reg = arg.register1,
-                                offset = label.get_offset().expect("BUG")
+                                offset = label.get_offset().unwrap()
                             ));
                             idle_register = Some(arg.register1);
                         }
@@ -1233,7 +1233,7 @@ impl Compiler {
                 | parser::VarType::ArrayOfBoolean(_)
                 | parser::VarType::ArrayOfInteger(_)
                 | parser::VarType::RefArrayOfInteger(_) => {
-                    let (label, _) = arr_argument_labels.get(&arg.var_name).expect("BUG");
+                    let (label, _) = arr_argument_labels.get(&arg.var_name).unwrap();
                     if option_use_allocator {
                         if let Some(reg) = idle_register {
                             temp_statements.code(format!(
@@ -1241,7 +1241,7 @@ impl Compiler {
                                     LAD  {reg},{offset},{reg}
                                     ST   {arg},0,{reg}"#,
                                 reg = reg,
-                                offset = label.get_offset().expect("BUG"),
+                                offset = label.get_offset().unwrap(),
                                 arg = arg.register1
                             ));
                         } else {
@@ -1251,7 +1251,7 @@ impl Compiler {
                                     LAD  {reg},{offset},{reg}
                                     ST   GR0,0,{reg}"#,
                                 reg = arg.register1,
-                                offset = label.get_offset().expect("BUG")
+                                offset = label.get_offset().unwrap()
                             ));
                             idle_register = Some(arg.register1);
                         }
@@ -1264,7 +1264,7 @@ impl Compiler {
                     }
                 }
                 parser::VarType::String | parser::VarType::RefString => {
-                    let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
+                    let (labels, _) = str_argument_labels.get(&arg.var_name).unwrap();
                     if option_use_allocator {
                         if let Some(reg) = idle_register {
                             temp_statements.code(format!(
@@ -1272,10 +1272,10 @@ impl Compiler {
                                     LAD {reg},{lenoff},{reg}
                                     ST  {reglen},0,{reg}
                                     ST  {regpos},1,{reg}"#,
-                                lenoff = labels.get_offset().expect("BUG"),
+                                lenoff = labels.get_offset().unwrap(),
                                 reglen = arg.register1,
                                 reg = reg,
-                                regpos = arg.register2.expect("BUG")
+                                regpos = arg.register2.unwrap()
                             ));
                         } else {
                             let reg = arg.register1;
@@ -1285,9 +1285,9 @@ impl Compiler {
                                     LAD {reg},{lenoff},{reg}
                                     ST  GR0,0,{reg}
                                     ST  {regpos},1,{reg}"#,
-                                lenoff = labels.get_offset().expect("BUG"),
+                                lenoff = labels.get_offset().unwrap(),
                                 reg = reg,
-                                regpos = arg.register2.expect("BUG")
+                                regpos = arg.register2.unwrap()
                             ));
                             idle_register = Some(reg);
                         }
@@ -1297,7 +1297,7 @@ impl Compiler {
                                 ST {regpos},{pos}"#,
                             reglen = arg.register1,
                             len = labels.len,
-                            regpos = arg.register2.expect("BUG"),
+                            regpos = arg.register2.unwrap(),
                             pos = labels.pos
                         ));
                     }
@@ -1318,7 +1318,7 @@ impl Compiler {
 
                 parser::VarType::ArrayOfBoolean(size) | parser::VarType::ArrayOfInteger(size) => {
                     temp_statements.comment(format!("Copy Into {}", arg.var_name));
-                    let (label, _) = arr_argument_labels.get(&arg.var_name).expect("BUG");
+                    let (label, _) = arr_argument_labels.get(&arg.var_name).unwrap();
                     if option_use_allocator {
                         temp_statements.code(format!(
                             r#" LD    GR1,MEM
@@ -1327,7 +1327,7 @@ impl Compiler {
                                 LD    GR3,0,GR1
                                 LAD   GR4,{size}
                                 CALL  {copy}"#,
-                            offset = label.get_offset().expect("BUG"),
+                            offset = label.get_offset().unwrap(),
                             size = size,
                             copy = subroutine::Id::UtilCopyStr.label()
                         ));
@@ -1346,7 +1346,7 @@ impl Compiler {
                 }
                 parser::VarType::String => {
                     temp_statements.comment(format!("Copy Into {}", arg.var_name));
-                    let (labels, _) = str_argument_labels.get(&arg.var_name).expect("BUG");
+                    let (labels, _) = str_argument_labels.get(&arg.var_name).unwrap();
                     if option_use_allocator {
                         temp_statements.code(format!(
                             r#" LD    GR2,MEM
@@ -1355,7 +1355,7 @@ impl Compiler {
                                 LD    GR3,0,GR1
                                 LD    GR4,0,GR2
                                 CALL  {copy}"#,
-                            offset = labels.get_offset().expect("BUG"),
+                            offset = labels.get_offset().unwrap(),
                             copy = subroutine::Id::UtilCopyStr.label()
                         ));
                     } else {

@@ -65,7 +65,7 @@ pub fn parse<R: BufRead>(reader: R) -> io::Result<Result<Vec<Statement>, SyntaxE
         )));
     }
 
-    Ok(Ok(parser.statements.pop().expect("BUG")))
+    Ok(Ok(parser.statements.pop().unwrap()))
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -260,7 +260,7 @@ impl Parser {
     }
 
     fn add_statement(&mut self, statement: Statement) {
-        self.statements.last_mut().expect("BUG").push(statement);
+        self.statements.last_mut().unwrap().push(statement);
     }
 
     // Assign Variable
@@ -655,8 +655,8 @@ impl Parser {
 
         if let Some(arg) = self
             .callables
-            .get(self.temp_progam_name.as_ref().expect("BUG"))
-            .expect("BUG")
+            .get(self.temp_progam_name.as_ref().unwrap())
+            .unwrap()
             .iter()
             .find(|arg| arg.var_name == name)
         {
@@ -896,7 +896,7 @@ impl Parser {
                     || "Recursion".eq_ignore_ascii_case(target)
                     || "Recursive".eq_ignore_ascii_case(target) =>
             {
-                for stmt in self.statements.first().expect("BUG").iter() {
+                for stmt in self.statements.first().unwrap().iter() {
                     if let Statement::CompileOption {
                         option: CompileOption::Allocator { .. },
                     } = stmt
@@ -1036,7 +1036,7 @@ impl Parser {
                 return Err(self.syntax_error_pos(*pe, "Optionの指定が不正です".into()));
             }
             Token::Function(Function::Eof) => {
-                for stmt in self.statements.first().expect("BUG").iter() {
+                for stmt in self.statements.first().unwrap().iter() {
                     if let Statement::CompileOption {
                         option: CompileOption::Eof { .. },
                     } = stmt
@@ -1084,7 +1084,7 @@ impl Parser {
                 }
             }
             Token::Name(target) if "Register".eq_ignore_ascii_case(target) => {
-                for stmt in self.statements.first().expect("BUG").iter() {
+                for stmt in self.statements.first().unwrap().iter() {
                     if let Statement::CompileOption {
                         option: CompileOption::Register { .. },
                     } = stmt
@@ -1134,7 +1134,7 @@ impl Parser {
                 }
             }
             Token::Name(target) if "Variable".eq_ignore_ascii_case(target) => {
-                for stmt in self.statements.first().expect("BUG").iter() {
+                for stmt in self.statements.first().unwrap().iter() {
                     if let Statement::CompileOption {
                         option: CompileOption::Variable { .. },
                     } = stmt
@@ -1749,10 +1749,10 @@ impl Parser {
             return Err(self.syntax_error("不正なEndステートメントです".into()));
         }
 
-        let name = self.temp_progam_name.take().expect("BUG");
+        let name = self.temp_progam_name.take().unwrap();
         let arguments = self.temp_call_with_arguments.split_off(0);
 
-        if self.callables.get(&name).expect("BUG").len() != arguments.len() {
+        if self.callables.get(&name).unwrap().len() != arguments.len() {
             return Err(self.syntax_error("引数が不足しています".into()));
         }
 
@@ -1820,7 +1820,7 @@ impl Parser {
 
     // End If
     fn compose_command_if(&mut self) -> Result<(), SyntaxError> {
-        let block = self.statements.pop().expect("BUG"); // 常に self.statements.len() > 0 なので
+        let block = self.statements.pop().unwrap(); // 常に self.statements.len() > 0 なので
 
         match self.provisionals.pop() {
             Some(Statement::ProvitionalIf { condition }) => {
@@ -1902,7 +1902,7 @@ impl Parser {
             }
             Some(Statement::ProvisionalCaseInteger { values }) => {
                 assert!(!self.is_select_head, "BUG");
-                let block = self.statements.pop().expect("BUG");
+                let block = self.statements.pop().unwrap();
                 if let Some(Statement::SelectInteger {
                     exit_id,
                     value,
@@ -1922,7 +1922,7 @@ impl Parser {
             }
             Some(Statement::ProvisionalCaseString { values }) => {
                 assert!(!self.is_select_head, "BUG");
-                let block = self.statements.pop().expect("BUG");
+                let block = self.statements.pop().unwrap();
                 if let Some(Statement::SelectString {
                     exit_id,
                     value,
@@ -1942,7 +1942,7 @@ impl Parser {
             }
             Some(Statement::ProvisionalCaseElse) => {
                 assert!(!self.is_select_head, "BUG");
-                let block = self.statements.pop().expect("BUG");
+                let block = self.statements.pop().unwrap();
                 match self.provisionals.pop() {
                     Some(Statement::SelectInteger {
                         exit_id,
@@ -1989,7 +1989,7 @@ impl Parser {
             _ => return Err(self.syntax_error("不正なElseステートメントです".into())),
         }
 
-        let block = self.statements.pop().expect("BUG"); // 常に self.statements.len() > 0 なので
+        let block = self.statements.pop().unwrap(); // 常に self.statements.len() > 0 なので
 
         match self.provisionals.pop() {
             Some(Statement::ProvitionalIf { condition }) => {
@@ -2020,7 +2020,7 @@ impl Parser {
         &mut self,
         pos_and_tokens: &[(usize, Token)],
     ) -> Result<(), SyntaxError> {
-        let block = self.statements.pop().expect("BUG"); // 常に self.statements.len() > 0 なので
+        let block = self.statements.pop().unwrap(); // 常に self.statements.len() > 0 なので
 
         match self.provisionals.pop() {
             Some(Statement::ProvitionalIf { condition }) => {
@@ -2135,7 +2135,7 @@ impl Parser {
             }
             Some(Statement::ProvisionalCaseInteger { values }) => {
                 assert!(!self.is_select_head, "BUG");
-                let block = self.statements.pop().expect("BUG");
+                let block = self.statements.pop().unwrap();
                 if let Some(Statement::SelectInteger { case_blocks, .. }) =
                     self.provisionals.last_mut()
                 {
@@ -2147,7 +2147,7 @@ impl Parser {
             }
             Some(Statement::ProvisionalCaseString { values }) => {
                 assert!(!self.is_select_head, "BUG");
-                let block = self.statements.pop().expect("BUG");
+                let block = self.statements.pop().unwrap();
                 if let Some(Statement::SelectString { case_blocks, .. }) =
                     self.provisionals.last_mut()
                 {
@@ -2378,7 +2378,7 @@ impl Parser {
             self.syntax_error("対応するDoステートメントのない不正なLoopステートメントです".into())
         })?;
 
-        let block = self.statements.pop().expect("BUG");
+        let block = self.statements.pop().unwrap();
 
         if let Some(Statement::ProvisionalDo {
             exit_id,
@@ -2505,7 +2505,7 @@ impl Parser {
             self.syntax_error("対応するForのない不正なNextステートメントです".into())
         })?;
 
-        let block = self.statements.pop().expect("BUG");
+        let block = self.statements.pop().unwrap();
 
         if let Some(Statement::ProvisionalFor {
             exit_id,
@@ -4187,7 +4187,7 @@ impl std::fmt::Display for ArgumentInfo {
                 "ByVal {} As String [{},{}]",
                 self.var_name,
                 self.register1,
-                self.register2.expect("BUG")
+                self.register2.unwrap()
             ),
             VarType::ArrayOfBoolean(size) => format!(
                 "ByVal {}({}) As Boolean [{}]",
@@ -4211,7 +4211,7 @@ impl std::fmt::Display for ArgumentInfo {
                 "ByRef {} As String [{},{}]",
                 self.var_name,
                 self.register1,
-                self.register2.expect("BUG")
+                self.register2.unwrap()
             ),
             VarType::RefArrayOfBoolean(size) => format!(
                 "ByRef {}({}) As Boolean [{}]",

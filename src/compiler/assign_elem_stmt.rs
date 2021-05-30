@@ -879,7 +879,7 @@ impl Compiler {
         self.code(format!(
             r#" ST {value},0,{index}"#,
             value = value_reg,
-            index = casl2::IndexRegister::try_from(index_reg).expect("BUG")
+            index = casl2::IndexRegister::try_from(index_reg).unwrap()
         ));
 
         self.set_register_idle(value_reg);
@@ -956,7 +956,7 @@ impl Compiler {
         self.code(format!(
             r#" ST  {value},0,{index}"#,
             value = value_reg,
-            index = casl2::IndexRegister::try_from(index_reg).expect("BUG")
+            index = casl2::IndexRegister::try_from(index_reg).unwrap()
         ));
 
         self.set_register_idle(value_reg);
