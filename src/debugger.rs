@@ -5516,6 +5516,7 @@ fn show_command_help<W: Write>(cmd: Option<&str>, stdout: &mut W) -> io::Result<
     set-by-file <FILE_PATH>
                 ファイルに列挙された設定系のデバッガコマンドを実行する
                 1行につき1コマンドを配置できる
+                空行は無視される
                 ファイルに指定できないデバッガコマンド:
                     quit reset restart run set-by-file skip s step
 "#
@@ -5827,6 +5828,7 @@ fn show_command_help_for_basic<W: Write>(cmd: Option<&str>, stdout: &mut W) -> i
     set-by-file <FILE_PATH>
                 ファイルに列挙された設定系のデバッガコマンドを実行する
                 1行につき1コマンドを配置できる
+                空行は無視される
                 ファイルに指定できないデバッガコマンド:
                     quit reset restart run set-by-file skip s step
 "#
