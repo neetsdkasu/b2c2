@@ -20,6 +20,6 @@ cargo run -- -src swapcase.bas
 実行例  
 ```
 Swapcase Alphabet
-? Hello,World!
-hELLO,wORLD!
+? Hello, b2c2 BASIC Programming World!
+hELLO, B2C2 basic pROGRAMMING wORLD!
 ```
