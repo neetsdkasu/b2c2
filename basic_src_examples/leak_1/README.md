@@ -8,8 +8,8 @@
 |:--------------|:------------|:----------------------------|
 | main.bas      | MAIN.cas    | メイン部                    |
 | leak.bas      | LEAK.cas    | 整数変数のアドレス取得      |
-| vget.bas      | VGET.cas    | アドレスに格納の整数を取得  |
-| vset.bas      | VSET.cas    | アドレスに数値を格納        |
+| vget.bas      | VGET.cas    | アドレスから整数を取得      |
+| vset.bas      | VSET.cas    | アドレスに整数を格納        |
 
 
 変換  
@@ -29,4 +29,5 @@ cargo run -- -src vset.bas
 True
 True
 ```
-
+※1行目は*VGET*によって取得した値と元の変数の値の比較した結果を出力している  
+※2行目は*VSET*によって格納した値と元の変数の値の比較した結果を出力している  
