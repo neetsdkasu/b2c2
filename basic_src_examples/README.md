@@ -3,7 +3,7 @@
 | フォルダ           | 概要                                      |
 |:-------------------|:------------------------------------------|
 | 15puzzle           | 15パズルゲーム                            |
-| brainf_ck          | インライン・Brainf*ck                     |
+| brainf_ck          | インライン・Brainf\*ck                    |
 | cellular_automaton | セルラオートマトン風デモ                  |
 | edit_distance      | 2つの文字列の編集距離を計算               |
 | factors            | 素因数分解                                |
