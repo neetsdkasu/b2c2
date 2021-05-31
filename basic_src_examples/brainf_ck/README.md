@@ -1,6 +1,7 @@
 # brainf_ck
 
 インライン・Brainf*ck  
+256文字以下のBrainf*ckコードを実行する  
 
 
 | BASICソース   | 変換後CASL2 | 概要                        |
