@@ -746,6 +746,8 @@ Fill s, "x"c          ' "xxxx"
 長さデータの壊れた文字列変数を渡した場合の動作は未定義  
  - `Mid(文字列変数名, 開始位置, 長さ) = 文字列の式`
  - `Mid(文字列変数名, 開始位置) = 文字列の式` (文字列変数の最後尾までが更新対象)
+ - 開始位置は整数の式で指定
+ - 長さは整数の式で指定
 
 例:
 ```vb
@@ -774,6 +776,26 @@ Mid(s, 1) = "XY"         ' "1XY456"
 --------------------------------------------------------------------------------
 
 ### 関数
+
+| 関数名   | 概要                        |
+|:---------|:----------------------------|
+| Abs      | 整数を絶対値を取得          |
+| Array    | 一時的な固定長配列を生成    |
+| Asc      | 文字列の先頭の値を取得      |
+| CArray   | 固定長配列に変換            |
+| CBool    | 整数を真理値に変換          |
+| Chr      | 1文字の文字列に変換         |
+| CInt     | 整数に変換                  |
+| CStr     | 値を文字列表現に変換        |
+| Eof      | EOF情報を取得               |
+| Len      | 配列や文字列の長さを取得    |
+| Max      | 2つの整数の内の最大値を取得 |
+| Mid      | 部分文字列を取得            |
+| Min      | 2つの整数の内の最小を取得   |
+| Space    | 半角スペースの文字列を取得  |
+| String   | 文字列の生成                |
+| SubArray | 固定長配列の部分配列を生成  |
+
 
 #### 整数を絶対値を取得(Abs)
 
@@ -832,7 +854,8 @@ Print Asc(s)                       ' 12345
  - `CArray(真理値固定長配列, 配列長)`
  - `CArray(整数固定長配列, 配列長)`
  - `CArray(文字列, 配列長)`
- - 上界値ではなく配列長を指定することに注意(ややこしい)
+ - 配列長は整数リテラルで指定
+ - 上界値ではなく配列長を指定する
 
 例:
 ```vb
@@ -978,14 +1001,125 @@ End If
 
 #### 配列や文字列の長さを取得(Len)
 
+配列や文字列の長さを取得  
+ - `Len(文字列の式)`
+ - `Len(真理値の固定長配列)`
+ - `Len(整数の固定長配列)`
+
+例:
+```vb
+Dim bArr(3) As Boolean
+Dim iArr(8) As Integer
+Dim s As String
+Print (4 = Len(bArr))     ' True
+Print (9 = Len(iArr))     ' True
+s = ""
+Print (0 = Len(s))        ' True
+s = "ABCDE"
+Print (5 = Len(s))                      ' True
+Print (5 = Len(Array(1, 2, 3, 4, 5)))   ' True
+Print (5 = Len("ABCDE"))                ' True
+Print (6 = Len("ABC" & CStr(123)))      ' True
+```
+
 #### 2つの整数の内の最大値を取得(Max)
+
+2つの整数の内の最大値を取得
+ - `Max(整数の式, 整数の式)`
+ 
+例:
+```vb
+Print (30 = Max(1, 30))                 ' True
+Print (-77 = Max(-77, -100))            ' True
+Print (0 = Max(-100, 0))                ' True
+Print (120 = Max(30 + 40, 100 + 20))    ' True
+```
 
 #### 部分文字列を取得(Mid)
 
+部分文字列を生成
+ - `Mid(文字列の式, 開始位置, 長さ)`
+ - `Mid(文字列の式, 開始位置)` (文字列の最後尾までを取得)
+ - 開始位置は整数の式で指定
+ - 長さは整数の式で指定
+
+例:
+```vb
+Print ("ABC" = Mid("ABCDEFG", 0, 3))            ' True
+Print ("CDE" = Mid("ABCDEFG", 2, 3))            ' True
+Print ("FG" = Mid("ABCDEFG", 5, 3))             ' True
+Print ("BC12" = Mid("ABC" & CStr(1234), 1, 4))  ' True
+
+Print ("ABCDEFG" = Mid("ABCDEFG", 0))           ' True
+Print ("CDEFG" = Mid("ABCDEFG", 2))             ' True
+Print ("FG" = Mid("ABCDEFG", 5))                ' True
+Print ("BC1234" = Mid("ABC" & CStr(1234), 1))   ' True    
+```
+
 #### 2つの整数の内の最小を取得(Min)
+
+2つの整数の内の最小値を取得
+ - `Min(整数の式, 整数の式)`
+ 
+例:
+```vb
+Print (1 = Min(1, 30))                  ' True
+Print (-100 = Min(-77, -100))           ' True
+Print (-100 = Min(-100, 0))             ' True
+Print (70 = Min(30 + 40, 100 + 20))     ' True
+```
 
 #### 半角スペースの文字列を取得(Space)
 
+指定した数だけ半角スペースを並べた文字列を生成する
+文字列の長さは256以下まで
+ - `Space(整数の式)`
+ 
+例:
+```vb
+Dim s As String
+s = Space(5)
+Print (5 = Len(s))      ' True
+Print ("     " = s)     ' True
+```
+
 #### 文字列の生成(String)
 
+文字列を生成
+文字列の長さは256以下まで
+ - `String(整数の固定長配列)` 配列の長さと各要素の値が同じ文字列を生成する
+ - `String(長さ, 値)` 値を長さだけ並べた文字列を生成する
+ - 長さと値はそれぞれ整数の式で指定
+
+例:
+```vb
+Print ("ABCDE" = String(Array("A"c, "B"c, "C"c, "D"c, "E"c)))   ' True
+
+Print ("AAAAA" = String(5, "A"c))   ' True
+```
+
 #### 固定長配列の部分配列を生成(SubArray)
+
+固定長配列の部分配列を生成
+ - `SubArray(真理値の固定長配列, 開始位置, 配列長)`
+ - `SubArray(整数の固定長配列, 開始位置, 配列長)`
+ - 開始位置は整数の式で指定
+ - 配列長は整数リテラルで指定
+ - 配列長は元になる配列長以下になるようにする
+ - 上界値ではなく配列長を指定する
+
+例:
+```vb
+Print (Array(True, False) = SubArray(Array(True, False, True, True), 0, 2)) ' True
+Print (Array(True, True) = SubArray(Array(True, False, True, True), 2, 2))  ' True
+Print (Array(True, False) = SubArray(Array(True, False, True, True), 3, 2)) ' True
+
+Print (Array(1, 2, 3) = SubArray(Array(1, 2, 3, 4, 5, 6), 0, 3))    ' True
+Print (Array(3, 4, 5) = SubArray(Array(1, 2, 3, 4, 5, 6), 2, 3))    ' True
+Print (Array(5, 6, 0) = SubArray(Array(1, 2, 3, 4, 5, 6), 4, 3))    ' True
+```
+
+--------------------------------------------------------------------------------
+
+### 引数の受け取り(Argument)
+
