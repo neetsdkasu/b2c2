@@ -550,7 +550,9 @@ Loop Until i = 5
 
 ### 条件分岐(If)
 
-最初にTrueになった条件式に紐ついたブロック内のコードを実行する
+最初にTrueになった条件式に紐ついたブロック内のコードを実行する  
+ElseIfブロックは0個以上置ける  
+Elseブロックは最後尾に最大1つだけ置ける  
 
 ```
 If 条件式 Then
@@ -570,8 +572,35 @@ If i = 1 Then
     Print "One"
 ElseIf i = 3 Then
     Print "Trhee"
+ElseIf i = 5 Then
+    Print "Five"
 Else
     Print "Else"
+End If
+```
+```vb
+Dim i As Integer
+Input i
+If i Mod 2 = 0 Then
+    Print "i is Even"
+Else
+    Print "i is Odd"
+End If
+```
+```vb
+Dim i As Integer
+Input i
+If i = 0 Then
+    Print "i is Zero"
+End If
+```
+```vb
+Dim i As Integer
+Input i
+If i < 0 Then
+    Print "minus!"
+ElseIf i > 100 Then
+    Print "too big!"
 End If
 ```
 
@@ -675,6 +704,7 @@ CASL2のIN命令を使用する
 EOF情報を更新する  
  - `Input 整数変数名`
  - `Input 文字列変数名`
+ - 整数の読み取りは関数`CInt`と同じ
 
 例:
 ```vb
@@ -843,16 +873,108 @@ iArr1 = CArray(s, 3)    ' "X"c, "Y"c, 0
 iArr2 = CArray(s, 5)    ' "X"c, "Y"c, 0, 0, 0
 ```
 
+#### 整数を真理値に変換(CBool)
 
-#### 真理値に変換(CBool)
+整数の値を真理値に変換する  
+ - `CBool(整数の式)`
+ - 0なら`False`
+ - 0以外なら`True`
+ 
+例:
+```vb
+Dim i As Integer
+i = 123
+Print CBool(0)       ' False
+Print CBool(1)       ' True
+Print CBool(2)       ' True
+Print CBool(-1)      ' True
+Print CBool(i * 2)   ' True
+Print CBool(123 - i) ' False
+```
 
 #### 1文字の文字列に変換(Chr)
 
+引数の整数を先頭の値とする長さ1の一時的な文字列を生成する  
+ - `Chr(整数の式)`
+
+例:
+```vb
+Dim s As String
+Dim i As Integer
+s = "A"
+Print (s = Chr("A"c))   ' True
+i = "A"c
+Print (s = Chr(i))      ' True
+s(0) = 12345
+Print (s = Chr(12345))  ' True
+```
+
 #### 整数に変換(CInt)
+
+真理値や文字列を整数に変換する  
+ - `CInt(真理値の式)`
+ - `CInt(文字列の式)`
+ - 真理値の`False`は0に変換する
+ - 真理値の`True`は-1に変換する
+ - 文字列は先頭から10進数の整数と解釈できる部分までを読み取りその数値の下位16ビットを変換値とする
+ - 文字列の先頭に10進数の整数と解釈できる部分が無い場合は0を返す
+ 
+例:
+```vb
+Print (0 = CInt(False))          ' True
+Print (-1 = CInt(True))          ' True
+Print (-1 = CInt(CBool(6)))      ' True
+Print (123 = CInt("123"))        ' True
+Print (123 = CInt("123XYZ"))     ' True
+Print (-123 = CInt("-123"))      ' True
+Print (32767 = CInt("32767"))    ' True
+Print (-32768 = CInt("32768"))   ' True
+Print (-32768 = CInt("-32768"))  ' True
+Print (65 = CInt("65_535"))      ' True
+Print (65 = CInt("65,535"))      ' True
+Print (-1 = CInt("65535"))       ' True
+Print (-2 = CInt("4294967294"))  ' True
+Print (2 = CInt("-4294967294"))  ' True
+Print (0 = CInt("ABCDE"))        ' True
+Print (0 = CInt("&H1234"))       ' True
+Print (0 = CInt("0x1234"))       ' True
+Print (0 = CInt("#1234"))        ' True
+Print (0 = CInt(""))             ' True
+```
 
 #### 値を文字列表現に変換(CStr)
 
+真理値や整数を文字列表現した文字列を生成する  
+ - `CStr(真理値の式)`
+ - `CStr(整数の式)`
+ - 真理値は`"True"`,`"False"`に
+ - 整数は`"-32768"`～`"32767"`に
+
+例:
+```vb
+Print ("False" = CStr(False))      ' True
+Print ("True" = CStr(True))        ' True
+Print ("True" = CStr(CBool(6)))    ' True
+Print ("254" = CStr(200 + 50 + 4)) ' True
+Print ("-33" = CStr(-33))          ' True
+```
+
 #### EOF情報を取得(Eof)
+
+入力がEOFに到達している場合は`True`をそうでない場合は`False`を返す  
+EOF情報はデフォルトでは他のプログラム(サブルーチン)とは共有していない  
+基本的には`Eof`を呼び出すプログラム内で最低でも1回は`Input`を実行する必要がある  
+EOF情報は初期化されないため`Input`を一度も使用せずに`Eof`を呼び出した場合の値は不定  
+ - `Eof()`
+
+例:
+```vb
+Dim s As String
+Input s
+If Eof() Then
+    Print "No Data!"
+End If
+```
 
 #### 配列や文字列の長さを取得(Len)
 
