@@ -118,7 +118,7 @@ J010      NOP
           JUMP      J003
                                    ; End Select
 J005      NOP
-                                   ; Loop Until Eof(0)
+                                   ; Loop Until Eof()
 J002      NOP
           LD        GR7,EOF
           AND       GR7,GR7
