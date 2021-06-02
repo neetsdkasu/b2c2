@@ -267,6 +267,8 @@ impl Compiler {
             }
         }
 
+        self.set_register_idle(index_reg);
+
         ArrayLabel::TempArrayOfInteger(labels, size)
     }
 }
