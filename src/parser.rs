@@ -4288,6 +4288,12 @@ impl std::fmt::Display for Expr {
             | VarRefArrayOfInteger(var, index)
             | CharOfVarRefString(var, index) => format!("{}({})", var, index.to_string()).fmt(f),
             FunctionBoolean(func, param)
+                if matches!(func, Function::Eof)
+                    && matches!(param.as_ref(), Expr::LitInteger(0)) =>
+            {
+                format!("{}()", func.to_string()).fmt(f)
+            }
+            FunctionBoolean(func, param)
             | FunctionInteger(func, param)
             | FunctionString(func, param)
             | FunctionBooleanArray(_, func, param)
