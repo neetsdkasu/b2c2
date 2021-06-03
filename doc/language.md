@@ -1340,7 +1340,75 @@ Extern Sub FUGA
  - 値渡しであるが値のコピーは呼び出された側で行われることを期待する
 
 
+--------------------------------------------------------------------------------
 
+### 外部プログラムの呼び出し(Call)
 
+`Extern Sub`で宣言した他のプログラム(サブルーチン)を呼び出す
+ - 引数なしのプログラムの場合 `Call プログラム名`
+ - 引数ありのプログラムの場合 `Call プログラム名(引数, 引数, ..)` `Extern Sub`で引数名を並べた順番で引数に渡す値をカンマ区切りで並べて括弧で囲む
+
+例:
+```vb
+Extern Sub FOO With
+    ByVal xFlag As Boolean To GR1
+    ByRef someNumber As Integer To GR2
+    ByRef message As String To GR3,GR4
+    ByVal elements(10) As Integer To GR5
+End Sub
+Extern Sub BAR
+Extern Sub BAZ
+Extern Sub HOGE With
+    ByVal message As String To GR5,GR1
+    ByRef flags(20) As Boolean To GR7
+    ByRef returnValue As Integer To GR2
+End Sub
+Extern Sub FUGA
+
+Dim flags(20) As Boolean
+Dim iArr(10) As Integer
+Dim s As String
+Dim value As Integer
+
+Fill flags, True
+iArr = Array(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+s = "ABCDEF"
+value = 123
+
+Call BAR
+Call BAZ
+Call FUGA
+Call HOGE("XYZ", flags, value)
+Call FOO(value > 100, value, s, iArr)
+````
+
+引数名付きで呼び出す場合  
+`Call プログラム名 With`と`End Call`の間に`引数名 = 式`で引数名を指定して呼び出すことも可能  
+引数名を指定するので並べる順番は問わない  
+
+例:
+```vb
+Extern Sub FOO With
+    ByVal xFlag As Boolean To GR1
+    ByRef someNumber As Integer To GR2
+    ByRef message As String To GR3,GR4
+    ByVal elements(10) As Integer To GR5
+End Sub
+
+Dim iArr(10) As Integer
+Dim s As String
+Dim value As Integer
+
+iArr = Array(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+s = "ABCDEF"
+value = 123
+
+Call FOO With
+    someNumber = value
+    elements = iArr
+    message = s
+    xFlag = value > 100
+End Call
+```
 
 
