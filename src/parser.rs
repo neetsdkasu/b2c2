@@ -891,8 +891,10 @@ impl Parser {
             }
             Token::Name(target)
                 if "Allocator".eq_ignore_ascii_case(target)
+                    || "Alloc".eq_ignore_ascii_case(target)
                     || "Allocate".eq_ignore_ascii_case(target)
                     || "Allocation".eq_ignore_ascii_case(target)
+                    || "Recur".eq_ignore_ascii_case(target)
                     || "Recursion".eq_ignore_ascii_case(target)
                     || "Recursive".eq_ignore_ascii_case(target) =>
             {
@@ -925,6 +927,8 @@ impl Parser {
                     }
                     Token::Name(value)
                         if "Common".eq_ignore_ascii_case(value)
+                            || "Share".eq_ignore_ascii_case(value)
+                            || "Sharing".eq_ignore_ascii_case(value)
                             || "Shared".eq_ignore_ascii_case(value)
                             || "External".eq_ignore_ascii_case(value)
                             || "Global".eq_ignore_ascii_case(value)
@@ -966,6 +970,16 @@ impl Parser {
                         if "Default".eq_ignore_ascii_case(value)
                             || "Disable".eq_ignore_ascii_case(value)
                             || "Disabled".eq_ignore_ascii_case(value)
+                            || "Label".eq_ignore_ascii_case(value)
+                            || "Labeling".eq_ignore_ascii_case(value)
+                            || "Labeled".eq_ignore_ascii_case(value)
+                            || "Fix".eq_ignore_ascii_case(value)
+                            || "Fixing".eq_ignore_ascii_case(value)
+                            || "Fixed".eq_ignore_ascii_case(value)
+                            || "Pair".eq_ignore_ascii_case(value)
+                            || "Paired".eq_ignore_ascii_case(value)
+                            || "Pairing".eq_ignore_ascii_case(value)
+                            || "Unique".eq_ignore_ascii_case(value)
                             || "Off".eq_ignore_ascii_case(value)
                             || "No".eq_ignore_ascii_case(value)
                             || "Nothing".eq_ignore_ascii_case(value)
@@ -1054,6 +1068,8 @@ impl Parser {
                     }
                     Token::Name(value)
                         if "Common".eq_ignore_ascii_case(value)
+                            || "Share".eq_ignore_ascii_case(value)
+                            || "Sharing".eq_ignore_ascii_case(value)
                             || "Shared".eq_ignore_ascii_case(value)
                             || "External".eq_ignore_ascii_case(value)
                             || "Global".eq_ignore_ascii_case(value)
@@ -1149,6 +1165,8 @@ impl Parser {
                     Token::Name(value)
                         if "Default".eq_ignore_ascii_case(value)
                             || "Initialize".eq_ignore_ascii_case(value)
+                            || "Init".eq_ignore_ascii_case(value)
+                            || "Initialized".eq_ignore_ascii_case(value)
                             || "Format".eq_ignore_ascii_case(value)
                             || "Clear".eq_ignore_ascii_case(value)
                             || "Clean".eq_ignore_ascii_case(value)
@@ -1160,6 +1178,8 @@ impl Parser {
                     }
                     Token::Name(value)
                         if "Uninitialize".eq_ignore_ascii_case(value)
+                            || "Uninitialized".eq_ignore_ascii_case(value)
+                            || "Uninit".eq_ignore_ascii_case(value)
                             || "Unclear".eq_ignore_ascii_case(value)
                             || "Unclean".eq_ignore_ascii_case(value)
                             || "Dirty".eq_ignore_ascii_case(value) =>
