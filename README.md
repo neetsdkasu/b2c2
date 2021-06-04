@@ -926,8 +926,6 @@ cargo run -- -src fizzbuzz.bas
 
 ※cargoをインストール済みとします  
   
-  
-  
  - インストール  
 ※`cargo install`がソースコードの取得とビルドと実行バイナリの配置を行います
 ```bash
