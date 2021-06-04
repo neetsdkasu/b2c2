@@ -934,12 +934,12 @@ cargo run -- -src fizzbuzz.bas
 cargo install --git https://github.com/neetsdkasu/b2c2 --branch main
 ```
  - 実行  
-※BASICのソースコードファイルファイルは適宜用意してください  
+※BASICのソースコードファイルは適宜用意してください  
 ```bash
 b2c2 -src BASICのソースコードファイル
 ```
  - アンインストール  
-※バイナリ削除のみ。インストール時に取得されたソースコード等はどこかに残ったままのようです  
+※実行バイナリの削除のみ。インストール時に取得されたソースコード等はどこかに残ったままのようです  
 ```bash
 cargo uninstall b2c2
 ```
