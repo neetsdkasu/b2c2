@@ -909,7 +909,7 @@ Number?
 ##### b2c2のビルドと実行の例
 
 ソースコードを取得してFizz Buzz (その1)を変換しFizz Buzz (その2)を変換するまでの一連のコマンドライン  
-※gitとcargoが両方ともインストール済みとします  
+※gitとcargoの両方ともインストール済みとします  
 ※この例の場合では初回の`cargo run`実行時にb2c2が暗黙的にビルドされます  
 ```bash
 git clone https://github.com/neetsdkasu/b2c2
@@ -920,6 +920,22 @@ cargo run -- -src fizzbuzz.bas
 cd ..
 cd fizz_buzz_2
 cargo run -- -src fizzbuzz.bas
+```
+
+##### b2c2をインストールして使う場合
+
+※cargoをインストール済みとします  
+※`cargo install`がソースコードの取得とビルドと実行バイナリの配置を行います
+```bash
+cargo install --git https://github.com/neetsdkasu/b2c2 --branch main
+```
+実行(BASICのソースコードファイルファイルは適宜用意してください)  
+```bash
+b2c2 -src BASICのソースコードファイル
+```
+アンインストール
+```bash
+cargo uninstall b2c2
 ```
 
 
