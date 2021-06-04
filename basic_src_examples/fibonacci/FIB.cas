@@ -1,0 +1,140 @@
+FIB       START
+          RPUSH
+                                   ; Allocate Memory
+          LD        GR0,GR1
+          LD        GR1,MEM
+          PUSH      0,GR1
+          LD        GR1,GR0
+          PUSH      0,GR1
+          XOR       GR0,GR0
+          LAD       GR1,3
+          CALL      ALLOC
+          ST        GR0,MEM
+          POP       GR1
+                                   ; Argument n
+          LD        GR7,MEM
+          LAD       GR7,0,GR7
+          ST        GR1,0,GR7
+                                   ; Argument r
+          LD        GR7,MEM
+          LAD       GR7,1,GR7
+          ST        GR2,0,GR7
+                                   ; Init Variable
+          XOR       GR0,GR0
+          LD        GR1,MEM
+          LAD       GR1,2,GR1
+          ST        GR0,0,GR1
+                                   ; If (n <= 0) Then
+          LD        GR7,MEM
+          LD        GR7,0,GR7
+          XOR       GR6,GR6
+          XOR       GR0,GR0
+          CPA       GR7,GR6
+          JPL       J004
+          LAD       GR0,#FFFF
+J004      LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J002
+                                   ; r = 0
+          XOR       GR7,GR7
+          LD        GR6,MEM
+          LD        GR6,1,GR6
+          ST        GR7,0,GR6
+          JUMP      J001
+                                   ; ElseIf (n = 1) Then
+J002      NOP
+          LD        GR7,MEM
+          LD        GR7,0,GR7
+          LAD       GR6,1
+          SUBA      GR7,GR6
+          JZE       J005
+          LAD       GR7,#FFFF
+J005      XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J003
+                                   ; r = 1
+          LAD       GR7,1
+          LD        GR6,MEM
+          LD        GR6,1,GR6
+          ST        GR7,0,GR6
+          JUMP      J001
+                                   ; Else
+J003      NOP
+                                   ; Call FIB
+                                   ;   ByVal n As Integer [GR1]
+                                   ;   n = (n - 1)
+          LD        GR7,MEM
+          LD        GR7,0,GR7
+          LAD       GR7,-1,GR7
+          ST        GR7,T001
+                                   ;   ByRef r As Integer [GR2]
+                                   ;   r = r
+                                   ;   Set Arguments And Call FIB
+          LD        GR1,T001
+          LD        GR2,MEM
+          LD        GR2,1,GR2
+          CALL      FIB
+                                   ; Call FIB
+                                   ;   ByVal n As Integer [GR1]
+                                   ;   n = (n - 2)
+          LD        GR7,MEM
+          LD        GR7,0,GR7
+          LAD       GR7,-2,GR7
+          ST        GR7,T001
+                                   ;   ByRef r As Integer [GR2]
+                                   ;   r = t
+                                   ;   Set Arguments And Call FIB
+          LD        GR1,T001
+          LD        GR2,MEM
+          LAD       GR2,2,GR2
+          CALL      FIB
+                                   ; r += t
+          LD        GR7,MEM
+          LD        GR7,2,GR7
+          LD        GR6,MEM
+          LD        GR6,1,GR6
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; End If
+J001      NOP
+EXIT      NOP
+                                   ; Release Memory
+          LAD       GR0,1
+          LD        GR1,MEM
+          CALL      ALLOC
+          POP       GR1
+          ST        GR1,MEM
+          RPOP
+          RET
+MEM       DS        1
+T001      DS        1
+                                   ; UtilAllocator
+ALLOC     AND       GR0,GR0
+          JNZ       J008
+          LAD       GR0,V003
+          ADDL      GR0,V001
+          CPL       GR0,V002
+          JZE       J007
+J006      ST        GR1,V001
+          LAD       GR0,V003
+          ADDL      GR1,GR0
+          ST        GR1,V002
+          RET
+J007      ADDL      GR0,GR1
+          CPL       GR0,V004
+          JPL       J006
+          ST        GR0,V002
+          SUBL      GR0,GR1
+          ADDL      GR1,V001
+          ST        GR1,V001
+          RET
+J008      ST        GR1,V002
+          LAD       GR0,V003
+          SUBL      GR1,GR0
+          ST        GR1,V001
+          RET
+V001      DS        1
+V002      DS        1
+V003      DS        100
+V004      DC        V004
+          END

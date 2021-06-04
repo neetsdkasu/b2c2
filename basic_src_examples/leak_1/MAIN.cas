@@ -1,0 +1,122 @@
+MAIN      START
+          RPUSH
+                                   ; Init Variables
+          LAD       GR1,I001
+          XOR       GR2,GR2
+          LAD       GR3,3
+          CALL      C010
+                                   ; Call LEAK
+                                   ;   ByRef var As Integer [GR1]
+                                   ;   var = var
+                                   ;   ByRef adr As Integer [GR2]
+                                   ;   adr = adr
+                                   ;   Set Arguments And Call LEAK
+          LAD       GR1,I001
+          LAD       GR2,I002
+          CALL      LEAK
+                                   ; var = 123
+          LAD       GR7,123
+          ST        GR7,I001
+                                   ; Call VGET
+                                   ;   ByVal adr As Integer [GR1]
+                                   ;   adr = adr
+                                   ;   ByRef value As Integer [GR2]
+                                   ;   value = value
+                                   ;   Set Arguments And Call VGET
+          LD        GR1,I002
+          LAD       GR2,I003
+          CALL      VGET
+                                   ; Print (123 = value)
+          LAD       GR7,123
+          LD        GR6,I003
+          SUBA      GR7,GR6
+          JZE       J001
+          LAD       GR7,#FFFF
+J001      XOR       GR7,=#FFFF
+          LD        GR3,GR7
+          LAD       GR1,TB001
+          LAD       GR2,TL001
+          CALL      C001
+          OUT       TB001,TL001
+                                   ; Call VSET
+                                   ;   ByVal adr As Integer [GR1]
+                                   ;   adr = adr
+                                   ;   ByVal value As Integer [GR2]
+                                   ;   value = 987
+          LAD       GR7,987
+          ST        GR7,T001
+                                   ;   Set Arguments And Call VSET
+          LD        GR1,I002
+          LD        GR2,T001
+          CALL      VSET
+                                   ; Print (987 = var)
+          LAD       GR7,987
+          LD        GR6,I001
+          SUBA      GR7,GR6
+          JZE       J005
+          LAD       GR7,#FFFF
+J005      XOR       GR7,=#FFFF
+          LD        GR3,GR7
+          LAD       GR1,TB001
+          LAD       GR2,TL001
+          CALL      C001
+          OUT       TB001,TL001
+EXIT      NOP
+          RPOP
+          RET
+                                   ; Dim var As Integer
+I001      DS        1
+                                   ; Dim adr As Integer
+I002      DS        1
+                                   ; Dim value As Integer
+I003      DS        1
+T001      DS        1
+TL001     DS        1
+TB001     DS        256
+                                   ; FuncCStrArgBool
+C001      PUSH      0,GR3
+          PUSH      0,GR4
+          AND       GR3,GR3
+          LAD       GR3,='FalseTrue'
+          LAD       GR4,5
+          JZE       J002
+          ADDL      GR3,GR4
+          LAD       GR4,4
+J002      CALL      C007
+          POP       GR4
+          POP       GR3
+          RET
+                                   ; UtilCopyStr
+C007      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          ST        GR4,0,GR2
+          AND       GR4,GR4
+          JZE       J004
+J003      LD        GR2,0,GR3
+          ST        GR2,0,GR1
+          LAD       GR3,1,GR3
+          LAD       GR1,1,GR1
+          SUBL      GR4,=1
+          JPL       J003
+J004      POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilFill
+C010      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J006      CPL       GR1,GR3
+          JZE       J007
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J006
+J007      POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+          END

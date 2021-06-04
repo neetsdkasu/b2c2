@@ -1,0 +1,140 @@
+RAND      START
+                                   ; Argument init
+          ST        GR1,ARG1
+                                   ; Argument value
+          ST        GR2,ARG2
+                                   ; If init Then
+          LD        GR7,ARG1
+          AND       GR7,GR7
+          JZE       J002
+                                   ; seed = (((17 * value) + 23) Mod 1236)
+          LAD       GR7,17
+          LD        GR6,ARG2
+          LD        GR6,0,GR6
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C012
+          LD        GR7,GR0
+          LAD       GR7,23,GR7
+          LAD       GR6,1236
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C009
+          LD        GR0,GR1
+          LD        GR7,GR0
+          ST        GR7,I001
+          JUMP      J001
+                                   ; Else
+J002      NOP
+                                   ; seed = (((17 * seed) + 23) Mod 1236)
+          LAD       GR7,17
+          LD        GR6,I001
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C012
+          LD        GR7,GR0
+          LAD       GR7,23,GR7
+          LAD       GR6,1236
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C009
+          LD        GR0,GR1
+          LD        GR7,GR0
+          ST        GR7,I001
+                                   ; value = ((seed >> 2) And 3)
+          LD        GR7,I001
+          SRA       GR7,2
+          AND       GR7,=3
+          LD        GR6,ARG2
+          ST        GR7,0,GR6
+                                   ; End If
+J001      NOP
+EXIT      NOP
+          RET
+                                   ; ByVal init As Boolean [GR1]
+ARG1      DS        1
+                                   ; ByRef value As Integer [GR2]
+ARG2      DS        1
+                                   ; Dim seed As Integer
+I001      DS        1
+                                   ; UtilDivMod
+C009      AND       GR3,GR3
+          JNZ       J012
+          XOR       GR0,GR0
+          LAD       GR1,-1
+          RET
+J012      PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          LD        GR4,GR2
+          LD        GR5,GR2
+          JPL       J010
+          XOR       GR5,GR5
+          SUBA      GR5,GR2
+J010      LD        GR1,GR3
+          JPL       J011
+          XOR       GR1,GR1
+          SUBA      GR1,GR3
+J011      LAD       GR0,1
+J013      ADDL      GR1,GR1
+          JOV       J014
+          ADDL      GR0,GR0
+          JUMP      J013
+J014      SRL       GR1,1
+          LAD       GR1,#8000,GR1
+          XOR       GR2,GR2
+J015      CPL       GR5,GR1
+          JMI       J016
+          SUBL      GR5,GR1
+          ADDL      GR2,GR0
+J016      SRL       GR0,1
+          JZE       J017
+          SRL       GR1,1
+          JUMP      J015
+J017      LD        GR5,GR4
+          XOR       GR5,GR3
+          SRA       GR5,15
+          XOR       GR2,GR5
+          SUBA      GR2,GR5
+          CALL      C012
+          LD        GR1,GR4
+          SUBA      GR1,GR0
+          LD        GR0,GR2
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          RET
+                                   ; UtilMul
+C012      PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          XOR       GR0,GR0
+          XOR       GR1,GR1
+          LD        GR4,GR2
+          LD        GR5,GR3
+J003      SRL       GR2,1
+          JOV       J004
+          JNZ       J006
+          JUMP      J007
+J004      ADDL      GR0,GR3
+          JOV       J005
+          JUMP      J006
+J005      LAD       GR1,1,GR1
+J006      SLL       GR3,1
+          JUMP      J003
+J007      SRL       GR5,1
+          SLL       GR4,1
+          JOV       J008
+          JNZ       J007
+          JUMP      J009
+J008      ADDL      GR1,GR5
+          JUMP      J007
+J009      POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          RET
+          END

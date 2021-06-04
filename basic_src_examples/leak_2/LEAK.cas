@@ -1,0 +1,174 @@
+LEAK      START
+          RPUSH
+                                   ; Argument arr_adr
+          ST        GR1,ARG1
+                                   ; Argument arr_len
+          ST        GR2,ARG2
+                                   ; Init Variables
+          LAD       GR1,I001
+          XOR       GR2,GR2
+          LAD       GR3,4
+          CALL      C010
+                                   ; sum1 = 0
+          XOR       GR7,GR7
+          ST        GR7,I003
+                                   ; For i = 0 To (arr_len - 1) Step 1
+          LD        GR7,ARG2
+          LAD       GR7,-1,GR7
+          ST        GR7,T001
+          XOR       GR7,GR7
+          ST        GR7,I001
+J001      NOP
+          LD        GR1,I001
+          CPA       GR1,T001
+          JPL       J003
+                                   ; Call VSET
+                                   ;   ByVal adr As Integer [GR1]
+                                   ;   adr = (arr_adr + i)
+          LD        GR7,ARG1
+          LD        GR6,I001
+          ADDA      GR7,GR6
+          ST        GR7,T002
+                                   ;   ByVal value As Integer [GR2]
+                                   ;   value = (i + i)
+          LD        GR7,I001
+          LD        GR6,I001
+          ADDA      GR7,GR6
+          ST        GR7,T003
+                                   ;   Set Arguments And Call VSET
+          LD        GR1,T002
+          LD        GR2,T003
+          CALL      VSET
+                                   ; sum1 += (i + i)
+          LD        GR7,I001
+          LD        GR6,I001
+          ADDA      GR7,GR6
+          LAD       GR6,I003
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; Next i
+J002      NOP
+          LAD       GR1,I001
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J001
+J003      NOP
+                                   ; sum2 = 0
+          XOR       GR7,GR7
+          ST        GR7,I004
+                                   ; For i = 0 To (arr_len - 1) Step 1
+          LD        GR7,ARG2
+          LAD       GR7,-1,GR7
+          ST        GR7,T001
+          XOR       GR7,GR7
+          ST        GR7,I001
+J004      NOP
+          LD        GR1,I001
+          CPA       GR1,T001
+          JPL       J006
+                                   ; Call VGET
+                                   ;   ByVal adr As Integer [GR1]
+                                   ;   adr = (arr_adr + i)
+          LD        GR7,ARG1
+          LD        GR6,I001
+          ADDA      GR7,GR6
+          ST        GR7,T002
+                                   ;   ByRef value As Integer [GR2]
+                                   ;   value = v
+                                   ;   Set Arguments And Call VGET
+          LD        GR1,T002
+          LAD       GR2,I002
+          CALL      VGET
+                                   ; sum2 += v
+          LD        GR7,I002
+          LAD       GR6,I004
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; Next i
+J005      NOP
+          LAD       GR1,I001
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J004
+J006      NOP
+                                   ; Print (sum1 = sum2)
+          LD        GR7,I003
+          LD        GR6,I004
+          SUBA      GR7,GR6
+          JZE       J007
+          LAD       GR7,#FFFF
+J007      XOR       GR7,=#FFFF
+          LD        GR3,GR7
+          LAD       GR1,TB001
+          LAD       GR2,TL001
+          CALL      C001
+          OUT       TB001,TL001
+EXIT      NOP
+          RPOP
+          RET
+                                   ; ByVal arr_adr As Integer [GR1]
+ARG1      DS        1
+                                   ; ByVal arr_len As Integer [GR2]
+ARG2      DS        1
+                                   ; Dim i As Integer
+I001      DS        1
+                                   ; Dim v As Integer
+I002      DS        1
+                                   ; Dim sum1 As Integer
+I003      DS        1
+                                   ; Dim sum2 As Integer
+I004      DS        1
+T001      DS        1
+T002      DS        1
+T003      DS        1
+TL001     DS        1
+TB001     DS        256
+                                   ; FuncCStrArgBool
+C001      PUSH      0,GR3
+          PUSH      0,GR4
+          AND       GR3,GR3
+          LAD       GR3,='FalseTrue'
+          LAD       GR4,5
+          JZE       J008
+          ADDL      GR3,GR4
+          LAD       GR4,4
+J008      CALL      C007
+          POP       GR4
+          POP       GR3
+          RET
+                                   ; UtilCopyStr
+C007      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          ST        GR4,0,GR2
+          AND       GR4,GR4
+          JZE       J010
+J009      LD        GR2,0,GR3
+          ST        GR2,0,GR1
+          LAD       GR3,1,GR3
+          LAD       GR1,1,GR1
+          SUBL      GR4,=1
+          JPL       J009
+J010      POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilFill
+C010      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J011      CPL       GR1,GR3
+          JZE       J012
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J011
+J012      POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+          END

@@ -1,0 +1,334 @@
+MAIN      START
+          RPUSH
+                                   ; Init Variables
+          LAD       GR1,I001
+          XOR       GR2,GR2
+          LAD       GR3,2
+          CALL      C010
+                                   ; Print "LIMIT?"
+          OUT       LB001,LL001
+                                   ; Input C
+          IN        TB001,TL001
+          XOR       GR0,GR0
+          ST        GR0,EOF
+          LAD       GR1,TB001
+          LD        GR2,TL001
+          JPL       J004
+          JZE       J004
+          ST        GR2,EOF
+          XOR       GR2,GR2
+J004      CALL      C000
+          ST        GR0,I002
+                                   ; C = Max(1, Min(100, C))
+          LAD       GR7,1
+          LAD       GR6,100
+          LD        GR5,I002
+          CPA       GR6,GR5
+          JMI       J005
+          LD        GR6,GR5
+J005      NOP
+          CPA       GR7,GR6
+          JPL       J006
+          LD        GR7,GR6
+J006      NOP
+          ST        GR7,I002
+                                   ; For I = 1 To C Step 1
+          LD        GR7,I002
+          ST        GR7,T001
+          LAD       GR7,1
+          ST        GR7,I001
+J007      NOP
+          LD        GR1,I001
+          CPA       GR1,T001
+          JPL       J009
+                                   ; Select Case (I Mod 15)
+          LD        GR7,I001
+          LAD       GR6,15
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C009
+          LD        GR0,GR1
+          LD        GR7,GR0
+          CPA       GR7,=0
+          JZE       J010
+          CPA       GR7,=3
+          JZE       J011
+          CPA       GR7,=6
+          JZE       J011
+          CPA       GR7,=9
+          JZE       J011
+          CPA       GR7,=12
+          JZE       J011
+          CPA       GR7,=5
+          JZE       J012
+          CPA       GR7,=10
+          JZE       J012
+          JUMP      J013
+                                   ; Case 0
+J010      NOP
+                                   ; Print "FIZZBUZZ"
+          OUT       LB002,LL002
+          JUMP      J029
+                                   ; Case 3, 6, 9, 12
+J011      NOP
+                                   ; Print "FIZZ"
+          OUT       LB003,LL003
+          JUMP      J029
+                                   ; Case 5, 10
+J012      NOP
+                                   ; Print "BUZZ"
+          OUT       LB004,LL004
+          JUMP      J029
+                                   ; Case Else
+J013      NOP
+                                   ; Print I
+          LD        GR7,I001
+          LD        GR3,GR7
+          LAD       GR1,TB001
+          LAD       GR2,TL001
+          CALL      C002
+          OUT       TB001,TL001
+                                   ; End Select
+J029      NOP
+                                   ; Next I
+J008      NOP
+          LAD       GR1,I001
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J007
+J009      NOP
+EXIT      NOP
+          RPOP
+          RET
+                                   ; Dim I As Integer
+I001      DS        1
+                                   ; Dim C As Integer
+I002      DS        1
+EOF       DS        1
+T001      DS        1
+TL001     DS        1
+TB001     DS        256
+LL001     DC        6
+LB001     DC        'LIMIT?'
+LL002     DC        8
+LB002     DC        'FIZZBUZZ'
+LL003     DC        4
+LB003     DC        'FIZZ'
+LL004     DC        4
+LB004     DC        'BUZZ'
+                                   ; FuncCInt
+C000      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          ADDL      GR2,GR1
+          XOR       GR0,GR0
+          XOR       GR4,GR4
+          CPL       GR1,GR2
+          JZE       J001
+          LD        GR3,0,GR1
+          CPL       GR3,='+'
+          JNZ       J003
+          LAD       GR1,1,GR1
+          JUMP      J002
+J003      CPL       GR3,='-'
+          JNZ       J002
+          LAD       GR4,-1
+          LAD       GR1,1,GR1
+J002      CPL       GR1,GR2
+          JZE       J001
+          LD        GR3,0,GR1
+          SUBL      GR3,='0'
+          JMI       J001
+          CPL       GR3,=9
+          JPL       J001
+          LD        GR5,GR0
+          SLL       GR0,3
+          ADDL      GR0,GR5
+          ADDL      GR0,GR5
+          ADDL      GR0,GR3
+          LAD       GR1,1,GR1
+          JUMP      J002
+J001      XOR       GR0,GR4
+          SUBL      GR0,GR4
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; FuncCStrArgInt
+C002      CPL       GR3,=#8000
+          JNZ       J030
+          PUSH      0,GR3
+          PUSH      0,GR4
+          LAD       GR3,='-32768'
+          LAD       GR4,6
+          CALL      C007
+          POP       GR4
+          POP       GR3
+          RET
+J030      AND       GR3,GR3
+          JNZ       J031
+          LAD       GR3,1
+          ST        GR3,0,GR2
+          LD        GR3,='0'
+          ST        GR3,0,GR1
+          XOR       GR3,GR3
+          RET
+J031      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          JPL       J032
+          LD        GR4,='-'
+          ST        GR4,0,GR1
+          LAD       GR1,1,GR1
+          XOR       GR3,=#FFFF
+          LAD       GR3,1,GR3
+J032      LAD       GR4,V001
+          LD        GR5,GR1
+          LD        GR2,GR3
+          LAD       GR3,10
+J033      CALL      C009
+          ADDL      GR1,='0'
+          ST        GR1,0,GR4
+          LAD       GR4,1,GR4
+          LD        GR2,GR0
+          JPL       J033
+          LAD       GR2,V001
+          LAD       GR4,-1,GR4
+J034      LD        GR1,0,GR4
+          ST        GR1,0,GR5
+          LAD       GR5,1,GR5
+          LAD       GR4,-1,GR4
+          CPL       GR4,GR2
+          JPL       J034
+          JZE       J034
+          LD        GR0,GR5
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          SUBL      GR0,GR1
+          ST        GR0,0,GR2
+          RET
+V001      DS        6
+                                   ; UtilCopyStr
+C007      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          ST        GR4,0,GR2
+          AND       GR4,GR4
+          JZE       J036
+J035      LD        GR2,0,GR3
+          ST        GR2,0,GR1
+          LAD       GR3,1,GR3
+          LAD       GR1,1,GR1
+          SUBL      GR4,=1
+          JPL       J035
+J036      POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilDivMod
+C009      AND       GR3,GR3
+          JNZ       J016
+          XOR       GR0,GR0
+          LAD       GR1,-1
+          RET
+J016      PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          LD        GR4,GR2
+          LD        GR5,GR2
+          JPL       J014
+          XOR       GR5,GR5
+          SUBA      GR5,GR2
+J014      LD        GR1,GR3
+          JPL       J015
+          XOR       GR1,GR1
+          SUBA      GR1,GR3
+J015      LAD       GR0,1
+J017      ADDL      GR1,GR1
+          JOV       J018
+          ADDL      GR0,GR0
+          JUMP      J017
+J018      SRL       GR1,1
+          LAD       GR1,#8000,GR1
+          XOR       GR2,GR2
+J019      CPL       GR5,GR1
+          JMI       J020
+          SUBL      GR5,GR1
+          ADDL      GR2,GR0
+J020      SRL       GR0,1
+          JZE       J021
+          SRL       GR1,1
+          JUMP      J019
+J021      LD        GR5,GR4
+          XOR       GR5,GR3
+          SRA       GR5,15
+          XOR       GR2,GR5
+          SUBA      GR2,GR5
+          CALL      C012
+          LD        GR1,GR4
+          SUBA      GR1,GR0
+          LD        GR0,GR2
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          RET
+                                   ; UtilFill
+C010      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J037      CPL       GR1,GR3
+          JZE       J038
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J037
+J038      POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilMul
+C012      PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          XOR       GR0,GR0
+          XOR       GR1,GR1
+          LD        GR4,GR2
+          LD        GR5,GR3
+J022      SRL       GR2,1
+          JOV       J023
+          JNZ       J025
+          JUMP      J026
+J023      ADDL      GR0,GR3
+          JOV       J024
+          JUMP      J025
+J024      LAD       GR1,1,GR1
+J025      SLL       GR3,1
+          JUMP      J022
+J026      SRL       GR5,1
+          SLL       GR4,1
+          JOV       J027
+          JNZ       J026
+          JUMP      J028
+J027      ADDL      GR1,GR5
+          JUMP      J026
+J028      POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          RET
+          END

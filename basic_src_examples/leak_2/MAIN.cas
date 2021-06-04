@@ -1,0 +1,67 @@
+MAIN      START
+          RPUSH
+                                   ; Allocate Memory
+          LD        GR1,MEM
+          PUSH      0,GR1
+          XOR       GR0,GR0
+          LAD       GR1,1
+          CALL      ALLOC
+          ST        GR0,MEM
+                                   ; Init Variable
+          XOR       GR0,GR0
+          LD        GR1,MEM
+          LAD       GR1,0,GR1
+          ST        GR0,0,GR1
+                                   ; Call LEAK
+                                   ;   ByRef pseudo_arr As Integer [GR1]
+                                   ;   pseudo_arr = pseudo_arr
+                                   ;   ByVal arr_len As Integer [GR2]
+                                   ;   arr_len = 1000
+          LAD       GR7,1000
+          ST        GR7,T001
+                                   ;   Set Arguments And Call LEAK
+          LD        GR1,MEM
+          LAD       GR1,0,GR1
+          LD        GR2,T001
+          CALL      LEAK
+EXIT      NOP
+                                   ; Release Memory
+          LAD       GR0,1
+          LD        GR1,MEM
+          CALL      ALLOC
+          POP       GR1
+          ST        GR1,MEM
+          RPOP
+          RET
+MEM       DS        1
+T001      DS        1
+                                   ; UtilAllocator
+ALLOC     AND       GR0,GR0
+          JNZ       J003
+          LAD       GR0,V003
+          ADDL      GR0,V001
+          CPL       GR0,V002
+          JZE       J002
+J001      ST        GR1,V001
+          LAD       GR0,V003
+          ADDL      GR1,GR0
+          ST        GR1,V002
+          RET
+J002      ADDL      GR0,GR1
+          CPL       GR0,V004
+          JPL       J001
+          ST        GR0,V002
+          SUBL      GR0,GR1
+          ADDL      GR1,V001
+          ST        GR1,V001
+          RET
+J003      ST        GR1,V002
+          LAD       GR0,V003
+          SUBL      GR1,GR0
+          ST        GR1,V001
+          RET
+V001      DS        1
+V002      DS        1
+V003      DS        1000
+V004      DC        V004
+          END

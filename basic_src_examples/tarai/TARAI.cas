@@ -1,0 +1,176 @@
+TARAI     START
+                                   ; Allocate Memory
+          LD        GR0,GR1
+          LD        GR1,MEM
+          PUSH      0,GR1
+          LD        GR1,GR0
+          PUSH      0,GR1
+          XOR       GR0,GR0
+          LAD       GR1,7
+          CALL      ALLOC
+          ST        GR0,MEM
+          POP       GR1
+                                   ; Argument x
+          LD        GR7,MEM
+          LAD       GR7,0,GR7
+          ST        GR1,0,GR7
+                                   ; Argument y
+          LD        GR7,MEM
+          LAD       GR7,1,GR7
+          ST        GR2,0,GR7
+                                   ; Argument z
+          LD        GR7,MEM
+          LAD       GR7,2,GR7
+          ST        GR3,0,GR7
+                                   ; Argument ret
+          LD        GR7,MEM
+          LAD       GR7,3,GR7
+          ST        GR4,0,GR7
+                                   ; If (x <= y) Then
+          LD        GR7,MEM
+          LD        GR7,0,GR7
+          LD        GR6,MEM
+          LD        GR6,1,GR6
+          XOR       GR0,GR0
+          CPA       GR7,GR6
+          JPL       J003
+          LAD       GR0,#FFFF
+J003      LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J002
+                                   ; ret = y
+          LD        GR7,MEM
+          LD        GR7,1,GR7
+          LD        GR6,MEM
+          LD        GR6,3,GR6
+          ST        GR7,0,GR6
+          JUMP      J001
+                                   ; Else
+J002      NOP
+                                   ; Call TARAI
+                                   ;   ByVal x As Integer [GR1]
+                                   ;   x = (x - 1)
+          LD        GR7,MEM
+          LD        GR7,0,GR7
+          LAD       GR7,-1,GR7
+          ST        GR7,T001
+                                   ;   ByVal y As Integer [GR2]
+                                   ;   y = y
+                                   ;   ByVal z As Integer [GR3]
+                                   ;   z = z
+                                   ;   ByRef ret As Integer [GR4]
+                                   ;   ret = a
+                                   ;   Set Arguments And Call TARAI
+          LD        GR1,T001
+          LD        GR2,MEM
+          LD        GR2,1,GR2
+          LD        GR3,MEM
+          LD        GR3,2,GR3
+          LD        GR4,MEM
+          LAD       GR4,4,GR4
+          CALL      TARAI
+                                   ; Call TARAI
+                                   ;   ByVal x As Integer [GR1]
+                                   ;   x = (y - 1)
+          LD        GR7,MEM
+          LD        GR7,1,GR7
+          LAD       GR7,-1,GR7
+          ST        GR7,T001
+                                   ;   ByVal y As Integer [GR2]
+                                   ;   y = z
+                                   ;   ByVal z As Integer [GR3]
+                                   ;   z = x
+                                   ;   ByRef ret As Integer [GR4]
+                                   ;   ret = b
+                                   ;   Set Arguments And Call TARAI
+          LD        GR1,T001
+          LD        GR2,MEM
+          LD        GR2,2,GR2
+          LD        GR3,MEM
+          LD        GR3,0,GR3
+          LD        GR4,MEM
+          LAD       GR4,5,GR4
+          CALL      TARAI
+                                   ; Call TARAI
+                                   ;   ByVal x As Integer [GR1]
+                                   ;   x = (z - 1)
+          LD        GR7,MEM
+          LD        GR7,2,GR7
+          LAD       GR7,-1,GR7
+          ST        GR7,T001
+                                   ;   ByVal y As Integer [GR2]
+                                   ;   y = x
+                                   ;   ByVal z As Integer [GR3]
+                                   ;   z = y
+                                   ;   ByRef ret As Integer [GR4]
+                                   ;   ret = c
+                                   ;   Set Arguments And Call TARAI
+          LD        GR1,T001
+          LD        GR2,MEM
+          LD        GR2,0,GR2
+          LD        GR3,MEM
+          LD        GR3,1,GR3
+          LD        GR4,MEM
+          LAD       GR4,6,GR4
+          CALL      TARAI
+                                   ; Call TARAI
+                                   ;   ByVal x As Integer [GR1]
+                                   ;   x = a
+                                   ;   ByVal y As Integer [GR2]
+                                   ;   y = b
+                                   ;   ByVal z As Integer [GR3]
+                                   ;   z = c
+                                   ;   ByRef ret As Integer [GR4]
+                                   ;   ret = ret
+                                   ;   Set Arguments And Call TARAI
+          LD        GR1,MEM
+          LD        GR1,4,GR1
+          LD        GR2,MEM
+          LD        GR2,5,GR2
+          LD        GR3,MEM
+          LD        GR3,6,GR3
+          LD        GR4,MEM
+          LD        GR4,3,GR4
+          CALL      TARAI
+                                   ; End If
+J001      NOP
+EXIT      NOP
+                                   ; Release Memory
+          LAD       GR0,1
+          LD        GR1,MEM
+          CALL      ALLOC
+          POP       GR1
+          ST        GR1,MEM
+          RET
+MEM       DS        1
+T001      DS        1
+                                   ; UtilAllocator
+ALLOC     AND       GR0,GR0
+          JNZ       J006
+          LAD       GR0,V003
+          ADDL      GR0,V001
+          CPL       GR0,V002
+          JZE       J005
+J004      ST        GR1,V001
+          LAD       GR0,V003
+          ADDL      GR1,GR0
+          ST        GR1,V002
+          RET
+J005      ADDL      GR0,GR1
+          CPL       GR0,V004
+          JPL       J004
+          ST        GR0,V002
+          SUBL      GR0,GR1
+          ADDL      GR1,V001
+          ST        GR1,V001
+          RET
+J006      ST        GR1,V002
+          LAD       GR0,V003
+          SUBL      GR1,GR0
+          ST        GR1,V001
+          RET
+V001      DS        1
+V002      DS        1
+V003      DS        30000
+V004      DC        V004
+          END

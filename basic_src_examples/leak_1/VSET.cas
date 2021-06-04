@@ -1,0 +1,18 @@
+VSET      START
+          RPUSH
+                                   ; Argument var
+          ST        GR1,ARG1
+                                   ; Argument value
+          ST        GR2,ARG2
+                                   ; var = value
+          LD        GR7,ARG2
+          LD        GR6,ARG1
+          ST        GR7,0,GR6
+EXIT      NOP
+          RPOP
+          RET
+                                   ; ByRef var As Integer [GR1]
+ARG1      DS        1
+                                   ; ByVal value As Integer [GR2]
+ARG2      DS        1
+          END

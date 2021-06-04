@@ -1,0 +1,539 @@
+MAIN      START
+          RPUSH
+                                   ; Init Variables
+          LAD       GR1,I002
+          XOR       GR2,GR2
+          LAD       GR3,281
+          CALL      C010
+                                   ; Print "Number?"
+          OUT       LB001,LL001
+                                   ; Input n
+          IN        TB001,TL001
+          XOR       GR0,GR0
+          ST        GR0,EOF
+          LAD       GR1,TB001
+          LD        GR2,TL001
+          JPL       J004
+          JZE       J004
+          ST        GR2,EOF
+          XOR       GR2,GR2
+J004      CALL      C000
+          ST        GR0,I004
+                                   ; Print ("Number is " & CStr(n))
+          LD        GR7,I004
+          LD        GR3,GR7
+          LAD       GR1,TB001
+          LAD       GR2,TL001
+          CALL      C002
+          LAD       GR1,TB002
+          LAD       GR2,TL002
+          LAD       GR3,='Number is '
+          LAD       GR4,10
+          CALL      C007
+          LAD       GR1,TB002
+          LAD       GR2,TL002
+          LAD       GR3,TB001
+          LD        GR4,TL001
+          CALL      C005
+          OUT       TB002,TL002
+                                   ; If (n < 2) Then
+          LD        GR7,I004
+          LAD       GR6,2
+          LAD       GR0,#FFFF
+          CPA       GR7,GR6
+          JMI       J031
+          XOR       GR0,GR0
+J031      LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J030
+                                   ; Print "Invalid Number"
+          OUT       LB002,LL002
+          JUMP      J029
+                                   ; Else
+J030      NOP
+                                   ; count = 0
+          XOR       GR7,GR7
+          ST        GR7,I002
+                                   ; i = 2
+          LAD       GR7,2
+          ST        GR7,I003
+                                   ; Do
+J032      NOP
+                                   ; Do Until ((n Mod i) <> 0)
+J035      NOP
+          LD        GR7,I004
+          LD        GR6,I003
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C009
+          LD        GR0,GR1
+          LD        GR7,GR0
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J037
+          LAD       GR7,#FFFF
+J037      NOP
+          AND       GR7,GR7
+          JNZ       J036
+                                   ; factor( count ) = i
+          LD        GR7,I002
+          LD        GR1,GR7
+          LAD       GR2,21
+          CALL      C013
+          LAD       GR7,IA001
+          ADDL      GR7,GR0
+          LD        GR6,I003
+          ST        GR6,0,GR7
+                                   ; count += 1
+          LAD       GR7,1
+          LAD       GR6,I002
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; n = (n \ i)
+          LD        GR7,I004
+          LD        GR6,I003
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C009
+          LD        GR7,GR0
+          ST        GR7,I004
+                                   ; Loop
+          JUMP      J035
+J036      NOP
+                                   ; i += 1
+          LAD       GR7,1
+          LAD       GR6,I003
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; Loop While ((i * i) <= n)
+J033      NOP
+          LD        GR7,I003
+          LD        GR6,I003
+          LD        GR3,GR6
+          LD        GR2,GR7
+          CALL      C012
+          LD        GR7,GR0
+          LD        GR6,I004
+          XOR       GR0,GR0
+          CPA       GR7,GR6
+          JPL       J041
+          LAD       GR0,#FFFF
+J041      LD        GR7,GR0
+          AND       GR7,GR7
+          JNZ       J032
+J034      NOP
+                                   ; If (n > 1) Then
+          LD        GR7,I004
+          LAD       GR6,1
+          LAD       GR0,#FFFF
+          CPA       GR7,GR6
+          JPL       J043
+          XOR       GR0,GR0
+J043      LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J042
+                                   ; factor( count ) = n
+          LD        GR7,I002
+          LD        GR1,GR7
+          LAD       GR2,21
+          CALL      C013
+          LAD       GR7,IA001
+          ADDL      GR7,GR0
+          LD        GR6,I004
+          ST        GR6,0,GR7
+                                   ; count += 1
+          LAD       GR7,1
+          LAD       GR6,I002
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; End If
+J042      NOP
+                                   ; Print ("FACTORS: " & CStr(count))
+          LD        GR7,I002
+          LD        GR3,GR7
+          LAD       GR1,TB001
+          LAD       GR2,TL001
+          CALL      C002
+          LAD       GR1,TB002
+          LAD       GR2,TL002
+          LAD       GR3,='FACTORS: '
+          LAD       GR4,9
+          CALL      C007
+          LAD       GR1,TB002
+          LAD       GR2,TL002
+          LAD       GR3,TB001
+          LD        GR4,TL001
+          CALL      C005
+          OUT       TB002,TL002
+                                   ; s = ""
+          LAD       GR1,SB005
+          LAD       GR2,SL005
+          LAD       GR3,=0
+          XOR       GR4,GR4
+          CALL      C007
+                                   ; For i = 0 To (count - 1) Step 1
+          LD        GR7,I002
+          LAD       GR7,-1,GR7
+          ST        GR7,T001
+          XOR       GR7,GR7
+          ST        GR7,I003
+J044      NOP
+          LD        GR1,I003
+          CPA       GR1,T001
+          JPL       J046
+                                   ; s = ((s & CStr(factor(i))) & ", ")
+          LD        GR7,I003
+          LD        GR1,GR7
+          LAD       GR2,21
+          CALL      C013
+          LAD       GR7,IA001
+          ADDL      GR7,GR0
+          LD        GR7,0,GR7
+          LD        GR3,GR7
+          LAD       GR1,TB001
+          LAD       GR2,TL001
+          CALL      C002
+          LAD       GR1,TB002
+          LAD       GR2,TL002
+          LAD       GR3,SB005
+          LD        GR4,SL005
+          CALL      C007
+          LAD       GR1,TB002
+          LAD       GR2,TL002
+          LAD       GR3,TB001
+          LD        GR4,TL001
+          CALL      C005
+          LAD       GR1,TB002
+          LAD       GR2,TL002
+          LAD       GR3,=', '
+          LAD       GR4,2
+          CALL      C005
+          LAD       GR1,SB005
+          LAD       GR2,SL005
+          LAD       GR3,TB002
+          LD        GR4,TL002
+          CALL      C007
+                                   ; If (Len(s) > 60) Then
+          LD        GR7,SL005
+          LAD       GR6,60
+          LAD       GR0,#FFFF
+          CPA       GR7,GR6
+          JPL       J048
+          XOR       GR0,GR0
+J048      LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J047
+                                   ; Print s
+          OUT       SB005,SL005
+                                   ; s = ""
+          LAD       GR1,SB005
+          LAD       GR2,SL005
+          LAD       GR3,=0
+          XOR       GR4,GR4
+          CALL      C007
+                                   ; End If
+J047      NOP
+                                   ; Next i
+J045      NOP
+          LAD       GR1,I003
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J044
+J046      NOP
+                                   ; If (Len(s) > 0) Then
+          LD        GR7,SL005
+          XOR       GR6,GR6
+          LAD       GR0,#FFFF
+          CPA       GR7,GR6
+          JPL       J050
+          XOR       GR0,GR0
+J050      LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J049
+                                   ; Print s
+          OUT       SB005,SL005
+                                   ; End If
+J049      NOP
+                                   ; End If
+J029      NOP
+EXIT      NOP
+          RPOP
+          RET
+                                   ; Dim count As Integer
+I002      DS        1
+                                   ; Dim i As Integer
+I003      DS        1
+                                   ; Dim n As Integer
+I004      DS        1
+                                   ; Dim s As String
+SL005     DS        1
+SB005     DS        256
+                                   ; Dim factor(20) As Integer
+IA001     DS        21
+EOF       DS        1
+T001      DS        1
+TL001     DS        1
+TB001     DS        256
+TL002     DS        1
+TB002     DS        256
+LL001     DC        7
+LB001     DC        'Number?'
+LL002     DC        14
+LB002     DC        'Invalid Number'
+                                   ; FuncCInt
+C000      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          ADDL      GR2,GR1
+          XOR       GR0,GR0
+          XOR       GR4,GR4
+          CPL       GR1,GR2
+          JZE       J001
+          LD        GR3,0,GR1
+          CPL       GR3,='+'
+          JNZ       J003
+          LAD       GR1,1,GR1
+          JUMP      J002
+J003      CPL       GR3,='-'
+          JNZ       J002
+          LAD       GR4,-1
+          LAD       GR1,1,GR1
+J002      CPL       GR1,GR2
+          JZE       J001
+          LD        GR3,0,GR1
+          SUBL      GR3,='0'
+          JMI       J001
+          CPL       GR3,=9
+          JPL       J001
+          LD        GR5,GR0
+          SLL       GR0,3
+          ADDL      GR0,GR5
+          ADDL      GR0,GR5
+          ADDL      GR0,GR3
+          LAD       GR1,1,GR1
+          JUMP      J002
+J001      XOR       GR0,GR4
+          SUBL      GR0,GR4
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; FuncCStrArgInt
+C002      CPL       GR3,=#8000
+          JNZ       J005
+          PUSH      0,GR3
+          PUSH      0,GR4
+          LAD       GR3,='-32768'
+          LAD       GR4,6
+          CALL      C007
+          POP       GR4
+          POP       GR3
+          RET
+J005      AND       GR3,GR3
+          JNZ       J006
+          LAD       GR3,1
+          ST        GR3,0,GR2
+          LD        GR3,='0'
+          ST        GR3,0,GR1
+          XOR       GR3,GR3
+          RET
+J006      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          JPL       J007
+          LD        GR4,='-'
+          ST        GR4,0,GR1
+          LAD       GR1,1,GR1
+          XOR       GR3,=#FFFF
+          LAD       GR3,1,GR3
+J007      LAD       GR4,V001
+          LD        GR5,GR1
+          LD        GR2,GR3
+          LAD       GR3,10
+J008      CALL      C009
+          ADDL      GR1,='0'
+          ST        GR1,0,GR4
+          LAD       GR4,1,GR4
+          LD        GR2,GR0
+          JPL       J008
+          LAD       GR2,V001
+          LAD       GR4,-1,GR4
+J009      LD        GR1,0,GR4
+          ST        GR1,0,GR5
+          LAD       GR5,1,GR5
+          LAD       GR4,-1,GR4
+          CPL       GR4,GR2
+          JPL       J009
+          JZE       J009
+          LD        GR0,GR5
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          SUBL      GR0,GR1
+          ST        GR0,0,GR2
+          RET
+V001      DS        6
+                                   ; UtilConcatStr
+C005      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          LD        GR0,0,GR2
+          LD        GR2,GR1
+          ADDL      GR1,GR0
+          LAD       GR2,256,GR2
+          ADDL      GR4,GR3
+J027      CPL       GR1,GR2
+          JZE       J028
+          CPL       GR3,GR4
+          JZE       J028
+          LD        GR0,0,GR3
+          ST        GR0,0,GR1
+          LAD       GR1,1,GR1
+          LAD       GR3,1,GR3
+          JUMP      J027
+J028      LD        GR0,GR1
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          SUBL      GR0,GR1
+          ST        GR0,0,GR2
+          RET
+                                   ; UtilCopyStr
+C007      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          ST        GR4,0,GR2
+          AND       GR4,GR4
+          JZE       J011
+J010      LD        GR2,0,GR3
+          ST        GR2,0,GR1
+          LAD       GR3,1,GR3
+          LAD       GR1,1,GR1
+          SUBL      GR4,=1
+          JPL       J010
+J011      POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilDivMod
+C009      AND       GR3,GR3
+          JNZ       J014
+          XOR       GR0,GR0
+          LAD       GR1,-1
+          RET
+J014      PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          LD        GR4,GR2
+          LD        GR5,GR2
+          JPL       J012
+          XOR       GR5,GR5
+          SUBA      GR5,GR2
+J012      LD        GR1,GR3
+          JPL       J013
+          XOR       GR1,GR1
+          SUBA      GR1,GR3
+J013      LAD       GR0,1
+J015      ADDL      GR1,GR1
+          JOV       J016
+          ADDL      GR0,GR0
+          JUMP      J015
+J016      SRL       GR1,1
+          LAD       GR1,#8000,GR1
+          XOR       GR2,GR2
+J017      CPL       GR5,GR1
+          JMI       J018
+          SUBL      GR5,GR1
+          ADDL      GR2,GR0
+J018      SRL       GR0,1
+          JZE       J019
+          SRL       GR1,1
+          JUMP      J017
+J019      LD        GR5,GR4
+          XOR       GR5,GR3
+          SRA       GR5,15
+          XOR       GR2,GR5
+          SUBA      GR2,GR5
+          CALL      C012
+          LD        GR1,GR4
+          SUBA      GR1,GR0
+          LD        GR0,GR2
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          RET
+                                   ; UtilFill
+C010      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J051      CPL       GR1,GR3
+          JZE       J052
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J051
+J052      POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilMul
+C012      PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          XOR       GR0,GR0
+          XOR       GR1,GR1
+          LD        GR4,GR2
+          LD        GR5,GR3
+J020      SRL       GR2,1
+          JOV       J021
+          JNZ       J023
+          JUMP      J024
+J021      ADDL      GR0,GR3
+          JOV       J022
+          JUMP      J023
+J022      LAD       GR1,1,GR1
+J023      SLL       GR3,1
+          JUMP      J020
+J024      SRL       GR5,1
+          SLL       GR4,1
+          JOV       J025
+          JNZ       J024
+          JUMP      J026
+J025      ADDL      GR1,GR5
+          JUMP      J024
+J026      POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          RET
+                                   ; UtilSafeIndex
+C013      AND       GR2,GR2
+          JNZ       J038
+          XOR       GR0,GR0
+          RET
+J038      LD        GR0,GR1
+          JPL       J039
+          XOR       GR0,GR0
+          RET
+J039      CPL       GR0,GR2
+          JMI       J040
+          LAD       GR0,-1
+          ADDL      GR0,GR2
+J040      RET
+          END

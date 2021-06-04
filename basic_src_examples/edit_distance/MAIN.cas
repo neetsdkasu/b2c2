@@ -1,0 +1,725 @@
+MAIN      START
+          RPUSH
+                                   ; Init Variables
+          LAD       GR1,B012
+          XOR       GR2,GR2
+          LAD       GR3,1034
+          CALL      C010
+                                   ; Print "Text1?"
+          OUT       LB001,LL001
+                                   ; Input text1
+          IN        SB006,SL006
+          XOR       GR0,GR0
+          ST        GR0,EOF
+          LD        GR0,SL006
+          JPL       J001
+          JZE       J001
+          ST        GR0,EOF
+          XOR       GR0,GR0
+          ST        GR0,SL006
+J001      NOP
+                                   ; Print "Text2?"
+          OUT       LB002,LL002
+                                   ; Input text2
+          IN        SB007,SL007
+          XOR       GR0,GR0
+          ST        GR0,EOF
+          LD        GR0,SL007
+          JPL       J002
+          JZE       J002
+          ST        GR0,EOF
+          XOR       GR0,GR0
+          ST        GR0,SL007
+J002      NOP
+                                   ; If ((Len(text1) = 0) Or (Len(text2) = 0)) Then
+          LD        GR7,SL006
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J004
+          LAD       GR7,#FFFF
+J004      XOR       GR7,=#FFFF
+          LD        GR6,SL007
+          XOR       GR5,GR5
+          SUBA      GR6,GR5
+          JZE       J005
+          LAD       GR6,#FFFF
+J005      XOR       GR6,=#FFFF
+          OR        GR7,GR6
+          AND       GR7,GR7
+          JZE       J003
+                                   ; distance = (Len(text1) + Len(text2))
+          LD        GR7,SL006
+          LD        GR6,SL007
+          ADDA      GR7,GR6
+          ST        GR7,I005
+                                   ; Print ("Edit Distance: " & CStr(distance))
+          LD        GR7,I005
+          LD        GR3,GR7
+          LAD       GR1,TB001
+          LAD       GR2,TL001
+          CALL      C002
+          LAD       GR1,TB002
+          LAD       GR2,TL002
+          LAD       GR3,='Edit Distance: '
+          LAD       GR4,15
+          CALL      C007
+          LAD       GR1,TB002
+          LAD       GR2,TL002
+          LAD       GR3,TB001
+          LD        GR4,TL001
+          CALL      C005
+          OUT       TB002,TL002
+                                   ; Exit Sub
+          JUMP      EXIT
+                                   ; End If
+J003      NOP
+                                   ; dp10 = 0
+          XOR       GR7,GR7
+          ST        GR7,I010
+                                   ; For i = 0 To (Len(text1) - 1) Step 1
+          LD        GR7,SL006
+          LAD       GR7,-1,GR7
+          ST        GR7,T001
+          XOR       GR7,GR7
+          ST        GR7,I001
+J030      NOP
+          LD        GR1,I001
+          CPA       GR1,T001
+          JPL       J032
+                                   ; dp1( i ) = (i + 1)
+          LD        GR7,I001
+          LD        GR1,GR7
+          LAD       GR2,256
+          CALL      C013
+          LAD       GR7,IA008
+          ADDL      GR7,GR0
+          LD        GR6,I001
+          LAD       GR6,1,GR6
+          ST        GR6,0,GR7
+                                   ; Next i
+J031      NOP
+          LAD       GR1,I001
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J030
+J032      NOP
+                                   ; turn = True
+          LAD       GR7,#FFFF
+          ST        GR7,B012
+                                   ; For i = 0 To (Len(text2) - 1) Step 1
+          LD        GR7,SL007
+          LAD       GR7,-1,GR7
+          ST        GR7,T001
+          XOR       GR7,GR7
+          ST        GR7,I001
+J036      NOP
+          LD        GR1,I001
+          CPA       GR1,T001
+          JPL       J038
+                                   ; ch = text2(i)
+          LD        GR7,I001
+          LD        GR1,GR7
+          LD        GR2,SL007
+          LAD       GR3,SB007
+          CALL      C011
+          LD        GR7,GR0
+          ST        GR7,I003
+                                   ; If turn Then
+          LD        GR7,B012
+          AND       GR7,GR7
+          JZE       J041
+                                   ; dp20 = (i + 1)
+          LD        GR7,I001
+          LAD       GR7,1,GR7
+          ST        GR7,I011
+                                   ; If (text1(0) = ch) Then
+          XOR       GR7,GR7
+          LD        GR1,GR7
+          LD        GR2,SL006
+          LAD       GR3,SB006
+          CALL      C011
+          LD        GR7,GR0
+          LD        GR6,I003
+          SUBA      GR7,GR6
+          JZE       J044
+          LAD       GR7,#FFFF
+J044      XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J043
+                                   ; cost = 0
+          XOR       GR7,GR7
+          ST        GR7,I004
+          JUMP      J042
+                                   ; Else
+J043      NOP
+                                   ; cost = 1
+          LAD       GR7,1
+          ST        GR7,I004
+                                   ; End If
+J042      NOP
+                                   ; dp2( 0 ) = Min((dp20 + 1), Min((dp10 + cost), (dp1(0) + 1)))
+          LD        GR7,I011
+          LAD       GR7,1,GR7
+          LD        GR6,I010
+          LD        GR5,I004
+          ADDA      GR6,GR5
+          LD        GR5,IA008
+          LAD       GR5,1,GR5
+          CPA       GR6,GR5
+          JMI       J045
+          LD        GR6,GR5
+J045      NOP
+          CPA       GR7,GR6
+          JMI       J046
+          LD        GR7,GR6
+J046      NOP
+          LAD       GR6,IA009
+          ST        GR7,0,GR6
+                                   ; For k = 1 To (Len(text1) - 1) Step 1
+          LD        GR7,SL006
+          LAD       GR7,-1,GR7
+          ST        GR7,T002
+          LAD       GR7,1
+          ST        GR7,I002
+J047      NOP
+          LD        GR1,I002
+          CPA       GR1,T002
+          JPL       J049
+                                   ; If (text1(k) = ch) Then
+          LD        GR7,I002
+          LD        GR1,GR7
+          LD        GR2,SL006
+          LAD       GR3,SB006
+          CALL      C011
+          LD        GR7,GR0
+          LD        GR6,I003
+          SUBA      GR7,GR6
+          JZE       J052
+          LAD       GR7,#FFFF
+J052      XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J051
+                                   ; cost = 0
+          XOR       GR7,GR7
+          ST        GR7,I004
+          JUMP      J050
+                                   ; Else
+J051      NOP
+                                   ; cost = 1
+          LAD       GR7,1
+          ST        GR7,I004
+                                   ; End If
+J050      NOP
+                                   ; dp2( k ) = Min((dp2(k - 1) + 1), Min((dp1(k - 1) + cost), (dp1(k) + 1)))
+          LD        GR7,I002
+          LD        GR1,GR7
+          LAD       GR2,256
+          CALL      C013
+          LAD       GR7,IA009
+          ADDL      GR7,GR0
+          LD        GR6,I002
+          LAD       GR6,-1,GR6
+          LD        GR1,GR6
+          LAD       GR2,256
+          CALL      C013
+          LAD       GR6,IA009
+          ADDL      GR6,GR0
+          LD        GR6,0,GR6
+          LAD       GR6,1,GR6
+          LD        GR5,I002
+          LAD       GR5,-1,GR5
+          LD        GR1,GR5
+          LAD       GR2,256
+          CALL      C013
+          LAD       GR5,IA008
+          ADDL      GR5,GR0
+          LD        GR5,0,GR5
+          LD        GR4,I004
+          ADDA      GR5,GR4
+          LD        GR4,I002
+          LD        GR1,GR4
+          LAD       GR2,256
+          CALL      C013
+          LAD       GR4,IA008
+          ADDL      GR4,GR0
+          LD        GR4,0,GR4
+          LAD       GR4,1,GR4
+          CPA       GR5,GR4
+          JMI       J053
+          LD        GR5,GR4
+J053      NOP
+          CPA       GR6,GR5
+          JMI       J054
+          LD        GR6,GR5
+J054      NOP
+          ST        GR6,0,GR7
+                                   ; Next k
+J048      NOP
+          LAD       GR1,I002
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J047
+J049      NOP
+          JUMP      J040
+                                   ; Else
+J041      NOP
+                                   ; dp10 = (i + 1)
+          LD        GR7,I001
+          LAD       GR7,1,GR7
+          ST        GR7,I010
+                                   ; If (text1(0) = ch) Then
+          XOR       GR7,GR7
+          LD        GR1,GR7
+          LD        GR2,SL006
+          LAD       GR3,SB006
+          CALL      C011
+          LD        GR7,GR0
+          LD        GR6,I003
+          SUBA      GR7,GR6
+          JZE       J057
+          LAD       GR7,#FFFF
+J057      XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J056
+                                   ; cost = 0
+          XOR       GR7,GR7
+          ST        GR7,I004
+          JUMP      J055
+                                   ; Else
+J056      NOP
+                                   ; cost = 1
+          LAD       GR7,1
+          ST        GR7,I004
+                                   ; End If
+J055      NOP
+                                   ; dp1( 0 ) = Min((dp10 + 1), Min((dp20 + cost), (dp2(0) + 1)))
+          LD        GR7,I010
+          LAD       GR7,1,GR7
+          LD        GR6,I011
+          LD        GR5,I004
+          ADDA      GR6,GR5
+          LD        GR5,IA009
+          LAD       GR5,1,GR5
+          CPA       GR6,GR5
+          JMI       J058
+          LD        GR6,GR5
+J058      NOP
+          CPA       GR7,GR6
+          JMI       J059
+          LD        GR7,GR6
+J059      NOP
+          LAD       GR6,IA008
+          ST        GR7,0,GR6
+                                   ; For k = 1 To (Len(text1) - 1) Step 1
+          LD        GR7,SL006
+          LAD       GR7,-1,GR7
+          ST        GR7,T002
+          LAD       GR7,1
+          ST        GR7,I002
+J060      NOP
+          LD        GR1,I002
+          CPA       GR1,T002
+          JPL       J062
+                                   ; If (text1(k) = ch) Then
+          LD        GR7,I002
+          LD        GR1,GR7
+          LD        GR2,SL006
+          LAD       GR3,SB006
+          CALL      C011
+          LD        GR7,GR0
+          LD        GR6,I003
+          SUBA      GR7,GR6
+          JZE       J065
+          LAD       GR7,#FFFF
+J065      XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J064
+                                   ; cost = 0
+          XOR       GR7,GR7
+          ST        GR7,I004
+          JUMP      J063
+                                   ; Else
+J064      NOP
+                                   ; cost = 1
+          LAD       GR7,1
+          ST        GR7,I004
+                                   ; End If
+J063      NOP
+                                   ; dp1( k ) = Min((dp1(k - 1) + 1), Min((dp2(k - 1) + cost), (dp2(k) + 1)))
+          LD        GR7,I002
+          LD        GR1,GR7
+          LAD       GR2,256
+          CALL      C013
+          LAD       GR7,IA008
+          ADDL      GR7,GR0
+          LD        GR6,I002
+          LAD       GR6,-1,GR6
+          LD        GR1,GR6
+          LAD       GR2,256
+          CALL      C013
+          LAD       GR6,IA008
+          ADDL      GR6,GR0
+          LD        GR6,0,GR6
+          LAD       GR6,1,GR6
+          LD        GR5,I002
+          LAD       GR5,-1,GR5
+          LD        GR1,GR5
+          LAD       GR2,256
+          CALL      C013
+          LAD       GR5,IA009
+          ADDL      GR5,GR0
+          LD        GR5,0,GR5
+          LD        GR4,I004
+          ADDA      GR5,GR4
+          LD        GR4,I002
+          LD        GR1,GR4
+          LAD       GR2,256
+          CALL      C013
+          LAD       GR4,IA009
+          ADDL      GR4,GR0
+          LD        GR4,0,GR4
+          LAD       GR4,1,GR4
+          CPA       GR5,GR4
+          JMI       J066
+          LD        GR5,GR4
+J066      NOP
+          CPA       GR6,GR5
+          JMI       J067
+          LD        GR6,GR5
+J067      NOP
+          ST        GR6,0,GR7
+                                   ; Next k
+J061      NOP
+          LAD       GR1,I002
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J060
+J062      NOP
+                                   ; End If
+J040      NOP
+                                   ; turn = Not(turn)
+          LD        GR7,B012
+          XOR       GR7,=#FFFF
+          ST        GR7,B012
+                                   ; Next i
+J037      NOP
+          LAD       GR1,I001
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J036
+J038      NOP
+                                   ; If turn Then
+          LD        GR7,B012
+          AND       GR7,GR7
+          JZE       J069
+                                   ; distance = dp1(Len(text1) - 1)
+          LD        GR7,SL006
+          LAD       GR7,-1,GR7
+          LD        GR1,GR7
+          LAD       GR2,256
+          CALL      C013
+          LAD       GR7,IA008
+          ADDL      GR7,GR0
+          LD        GR7,0,GR7
+          ST        GR7,I005
+          JUMP      J068
+                                   ; Else
+J069      NOP
+                                   ; distance = dp2(Len(text1) - 1)
+          LD        GR7,SL006
+          LAD       GR7,-1,GR7
+          LD        GR1,GR7
+          LAD       GR2,256
+          CALL      C013
+          LAD       GR7,IA009
+          ADDL      GR7,GR0
+          LD        GR7,0,GR7
+          ST        GR7,I005
+                                   ; End If
+J068      NOP
+                                   ; Print ("Edit Distance: " & CStr(distance))
+          LD        GR7,I005
+          LD        GR3,GR7
+          LAD       GR1,TB001
+          LAD       GR2,TL001
+          CALL      C002
+          LAD       GR1,TB002
+          LAD       GR2,TL002
+          LAD       GR3,='Edit Distance: '
+          LAD       GR4,15
+          CALL      C007
+          LAD       GR1,TB002
+          LAD       GR2,TL002
+          LAD       GR3,TB001
+          LD        GR4,TL001
+          CALL      C005
+          OUT       TB002,TL002
+EXIT      NOP
+          RPOP
+          RET
+                                   ; Dim turn As Boolean
+B012      DS        1
+                                   ; Dim i As Integer
+I001      DS        1
+                                   ; Dim k As Integer
+I002      DS        1
+                                   ; Dim ch As Integer
+I003      DS        1
+                                   ; Dim cost As Integer
+I004      DS        1
+                                   ; Dim distance As Integer
+I005      DS        1
+                                   ; Dim dp10 As Integer
+I010      DS        1
+                                   ; Dim dp20 As Integer
+I011      DS        1
+                                   ; Dim text1 As String
+SL006     DS        1
+SB006     DS        256
+                                   ; Dim text2 As String
+SL007     DS        1
+SB007     DS        256
+                                   ; Dim dp1(255) As Integer
+IA008     DS        256
+                                   ; Dim dp2(255) As Integer
+IA009     DS        256
+EOF       DS        1
+T001      DS        1
+T002      DS        1
+TL001     DS        1
+TB001     DS        256
+TL002     DS        1
+TB002     DS        256
+LL001     DC        6
+LB001     DC        'Text1?'
+LL002     DC        6
+LB002     DC        'Text2?'
+                                   ; FuncCStrArgInt
+C002      CPL       GR3,=#8000
+          JNZ       J006
+          PUSH      0,GR3
+          PUSH      0,GR4
+          LAD       GR3,='-32768'
+          LAD       GR4,6
+          CALL      C007
+          POP       GR4
+          POP       GR3
+          RET
+J006      AND       GR3,GR3
+          JNZ       J007
+          LAD       GR3,1
+          ST        GR3,0,GR2
+          LD        GR3,='0'
+          ST        GR3,0,GR1
+          XOR       GR3,GR3
+          RET
+J007      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          JPL       J008
+          LD        GR4,='-'
+          ST        GR4,0,GR1
+          LAD       GR1,1,GR1
+          XOR       GR3,=#FFFF
+          LAD       GR3,1,GR3
+J008      LAD       GR4,V001
+          LD        GR5,GR1
+          LD        GR2,GR3
+          LAD       GR3,10
+J009      CALL      C009
+          ADDL      GR1,='0'
+          ST        GR1,0,GR4
+          LAD       GR4,1,GR4
+          LD        GR2,GR0
+          JPL       J009
+          LAD       GR2,V001
+          LAD       GR4,-1,GR4
+J010      LD        GR1,0,GR4
+          ST        GR1,0,GR5
+          LAD       GR5,1,GR5
+          LAD       GR4,-1,GR4
+          CPL       GR4,GR2
+          JPL       J010
+          JZE       J010
+          LD        GR0,GR5
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          SUBL      GR0,GR1
+          ST        GR0,0,GR2
+          RET
+V001      DS        6
+                                   ; UtilConcatStr
+C005      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          LD        GR0,0,GR2
+          LD        GR2,GR1
+          ADDL      GR1,GR0
+          LAD       GR2,256,GR2
+          ADDL      GR4,GR3
+J028      CPL       GR1,GR2
+          JZE       J029
+          CPL       GR3,GR4
+          JZE       J029
+          LD        GR0,0,GR3
+          ST        GR0,0,GR1
+          LAD       GR1,1,GR1
+          LAD       GR3,1,GR3
+          JUMP      J028
+J029      LD        GR0,GR1
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          SUBL      GR0,GR1
+          ST        GR0,0,GR2
+          RET
+                                   ; UtilCopyStr
+C007      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          ST        GR4,0,GR2
+          AND       GR4,GR4
+          JZE       J012
+J011      LD        GR2,0,GR3
+          ST        GR2,0,GR1
+          LAD       GR3,1,GR3
+          LAD       GR1,1,GR1
+          SUBL      GR4,=1
+          JPL       J011
+J012      POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilDivMod
+C009      AND       GR3,GR3
+          JNZ       J015
+          XOR       GR0,GR0
+          LAD       GR1,-1
+          RET
+J015      PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          LD        GR4,GR2
+          LD        GR5,GR2
+          JPL       J013
+          XOR       GR5,GR5
+          SUBA      GR5,GR2
+J013      LD        GR1,GR3
+          JPL       J014
+          XOR       GR1,GR1
+          SUBA      GR1,GR3
+J014      LAD       GR0,1
+J016      ADDL      GR1,GR1
+          JOV       J017
+          ADDL      GR0,GR0
+          JUMP      J016
+J017      SRL       GR1,1
+          LAD       GR1,#8000,GR1
+          XOR       GR2,GR2
+J018      CPL       GR5,GR1
+          JMI       J019
+          SUBL      GR5,GR1
+          ADDL      GR2,GR0
+J019      SRL       GR0,1
+          JZE       J020
+          SRL       GR1,1
+          JUMP      J018
+J020      LD        GR5,GR4
+          XOR       GR5,GR3
+          SRA       GR5,15
+          XOR       GR2,GR5
+          SUBA      GR2,GR5
+          CALL      C012
+          LD        GR1,GR4
+          SUBA      GR1,GR0
+          LD        GR0,GR2
+          POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          RET
+                                   ; UtilFill
+C010      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J070      CPL       GR1,GR3
+          JZE       J071
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J070
+J071      POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilLoadElement
+C011      AND       GR2,GR2
+          JNZ       J039
+          XOR       GR0,GR0
+          RET
+J039      CALL      C013
+          PUSH      0,GR3
+          ADDL      GR3,GR0
+          LD        GR0,0,GR3
+          POP       GR3
+          RET
+                                   ; UtilMul
+C012      PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          PUSH      0,GR5
+          XOR       GR0,GR0
+          XOR       GR1,GR1
+          LD        GR4,GR2
+          LD        GR5,GR3
+J021      SRL       GR2,1
+          JOV       J022
+          JNZ       J024
+          JUMP      J025
+J022      ADDL      GR0,GR3
+          JOV       J023
+          JUMP      J024
+J023      LAD       GR1,1,GR1
+J024      SLL       GR3,1
+          JUMP      J021
+J025      SRL       GR5,1
+          SLL       GR4,1
+          JOV       J026
+          JNZ       J025
+          JUMP      J027
+J026      ADDL      GR1,GR5
+          JUMP      J025
+J027      POP       GR5
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          RET
+                                   ; UtilSafeIndex
+C013      AND       GR2,GR2
+          JNZ       J033
+          XOR       GR0,GR0
+          RET
+J033      LD        GR0,GR1
+          JPL       J034
+          XOR       GR0,GR0
+          RET
+J034      CPL       GR0,GR2
+          JMI       J035
+          LAD       GR0,-1
+          ADDL      GR0,GR2
+J035      RET
+          END

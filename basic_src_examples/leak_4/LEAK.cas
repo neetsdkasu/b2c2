@@ -1,0 +1,126 @@
+LEAK      START
+          RPUSH
+                                   ; Argument str_len
+          ST        GR1,ARG1
+                                   ; Argument str_adr
+          ST        GR2,ARG2
+                                   ; Argument size
+          ST        GR3,ARG3
+                                   ; Init Variables
+          LAD       GR1,I001
+          XOR       GR2,GR2
+          LAD       GR3,3
+          CALL      C010
+                                   ; str_len = size
+          LD        GR7,ARG3
+          LD        GR6,ARG1
+          ST        GR7,0,GR6
+                                   ; c = "A"c
+          LD        GR7,='A'
+          ST        GR7,I002
+                                   ; x = 99
+          LAD       GR7,99
+          ST        GR7,I003
+                                   ; For i = 0 To (size - 1) Step 1
+          LD        GR7,ARG3
+          LAD       GR7,-1,GR7
+          ST        GR7,T001
+          XOR       GR7,GR7
+          ST        GR7,I001
+J001      NOP
+          LD        GR1,I001
+          CPA       GR1,T001
+          JPL       J003
+                                   ; If (i = x) Then
+          LD        GR7,I001
+          LD        GR6,I003
+          SUBA      GR7,GR6
+          JZE       J006
+          LAD       GR7,#FFFF
+J006      XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J005
+                                   ; Call VSET
+                                   ;   ByVal adr As Integer [GR1]
+                                   ;   adr = (str_adr + i)
+          LD        GR7,ARG2
+          LD        GR6,I001
+          ADDA      GR7,GR6
+          ST        GR7,T002
+                                   ;   ByVal value As Integer [GR2]
+                                   ;   value = c
+                                   ;   Set Arguments And Call VSET
+          LD        GR1,T002
+          LD        GR2,I002
+          CALL      VSET
+                                   ; x += 100
+          LAD       GR7,100
+          LAD       GR6,I003
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; c += 1
+          LAD       GR7,1
+          LAD       GR6,I002
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+          JUMP      J004
+                                   ; Else
+J005      NOP
+                                   ; Call VSET
+                                   ;   ByVal adr As Integer [GR1]
+                                   ;   adr = (str_adr + i)
+          LD        GR7,ARG2
+          LD        GR6,I001
+          ADDA      GR7,GR6
+          ST        GR7,T002
+                                   ;   ByVal value As Integer [GR2]
+                                   ;   value = "."c
+          LD        GR7,='.'
+          ST        GR7,T003
+                                   ;   Set Arguments And Call VSET
+          LD        GR1,T002
+          LD        GR2,T003
+          CALL      VSET
+                                   ; End If
+J004      NOP
+                                   ; Next i
+J002      NOP
+          LAD       GR1,I001
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J001
+J003      NOP
+EXIT      NOP
+          RPOP
+          RET
+                                   ; ByRef str_len As Integer [GR1]
+ARG1      DS        1
+                                   ; ByVal str_adr As Integer [GR2]
+ARG2      DS        1
+                                   ; ByVal size As Integer [GR3]
+ARG3      DS        1
+                                   ; Dim i As Integer
+I001      DS        1
+                                   ; Dim c As Integer
+I002      DS        1
+                                   ; Dim x As Integer
+I003      DS        1
+T001      DS        1
+T002      DS        1
+T003      DS        1
+                                   ; UtilFill
+C010      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J007      CPL       GR1,GR3
+          JZE       J008
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J007
+J008      POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+          END

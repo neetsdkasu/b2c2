@@ -1,0 +1,210 @@
+MOVE      START
+                                   ; Argument cmd
+          ST        GR1,ARG1
+                                   ; Argument steps
+          ST        GR2,ARG2
+                                   ; Argument field
+          ST        GR3,ARG3
+                                   ; For i = 0 To 15 Step 1
+          XOR       GR7,GR7
+          ST        GR7,I002
+J001      NOP
+          LD        GR1,I002
+          CPA       GR1,=15
+          JPL       J003
+                                   ; If (field(i) = 0) Then
+          LD        GR7,I002
+          LD        GR1,GR7
+          LAD       GR2,16
+          CALL      C013
+          LD        GR7,ARG3
+          ADDL      GR7,GR0
+          LD        GR7,0,GR7
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J008
+          LAD       GR7,#FFFF
+J008      XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J004
+                                   ; pos = i
+          LD        GR7,I002
+          ST        GR7,I001
+                                   ; Select Case cmd
+          LD        GR7,ARG1
+          CPA       GR7,=0
+          JZE       J009
+          CPA       GR7,=1
+          JZE       J010
+          CPA       GR7,=2
+          JZE       J011
+          CPA       GR7,=3
+          JZE       J012
+          JUMP      J013
+                                   ; Case 0
+J009      NOP
+                                   ; If (pos >= 4) Then
+          LD        GR7,I001
+          LAD       GR6,4
+          XOR       GR0,GR0
+          CPA       GR7,GR6
+          JMI       J015
+          LAD       GR0,#FFFF
+J015      LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J014
+                                   ; pos -= 4
+          LAD       GR7,4
+          LD        GR6,I001
+          SUBA      GR6,GR7
+          ST        GR6,I001
+                                   ; End If
+J014      NOP
+          JUMP      J013
+                                   ; Case 1
+J010      NOP
+                                   ; If ((pos And 3) <> 3) Then
+          LD        GR7,I001
+          AND       GR7,=3
+          LAD       GR6,3
+          SUBA      GR7,GR6
+          JZE       J017
+          LAD       GR7,#FFFF
+J017      NOP
+          AND       GR7,GR7
+          JZE       J016
+                                   ; pos += 1
+          LAD       GR7,1
+          LAD       GR6,I001
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; End If
+J016      NOP
+          JUMP      J013
+                                   ; Case 2
+J011      NOP
+                                   ; If (pos < 12) Then
+          LD        GR7,I001
+          LAD       GR6,12
+          LAD       GR0,#FFFF
+          CPA       GR7,GR6
+          JMI       J019
+          XOR       GR0,GR0
+J019      LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J018
+                                   ; pos += 4
+          LAD       GR7,4
+          LAD       GR6,I001
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; End If
+J018      NOP
+          JUMP      J013
+                                   ; Case 3
+J012      NOP
+                                   ; If ((pos And 3) <> 0) Then
+          LD        GR7,I001
+          AND       GR7,=3
+          XOR       GR6,GR6
+          SUBA      GR7,GR6
+          JZE       J021
+          LAD       GR7,#FFFF
+J021      NOP
+          AND       GR7,GR7
+          JZE       J020
+                                   ; pos -= 1
+          LAD       GR7,1
+          LD        GR6,I001
+          SUBA      GR6,GR7
+          ST        GR6,I001
+                                   ; End If
+J020      NOP
+                                   ; End Select
+J013      NOP
+                                   ; If (pos = i) Then
+          LD        GR7,I001
+          LD        GR6,I002
+          SUBA      GR7,GR6
+          JZE       J024
+          LAD       GR7,#FFFF
+J024      XOR       GR7,=#FFFF
+          AND       GR7,GR7
+          JZE       J023
+                                   ; Print "CANNOT MOVE"
+          OUT       LB001,LL001
+          JUMP      J022
+                                   ; Else
+J023      NOP
+                                   ; steps += 1
+          LAD       GR7,1
+          LD        GR6,ARG2
+          ADDA      GR7,0,GR6
+          ST        GR7,0,GR6
+                                   ; field( i ) = field(pos)
+          LD        GR7,I002
+          LD        GR1,GR7
+          LAD       GR2,16
+          CALL      C013
+          LD        GR7,ARG3
+          ADDL      GR7,GR0
+          LD        GR6,I001
+          LD        GR1,GR6
+          LAD       GR2,16
+          CALL      C013
+          LD        GR6,ARG3
+          ADDL      GR6,GR0
+          LD        GR6,0,GR6
+          ST        GR6,0,GR7
+                                   ; field( pos ) = 0
+          LD        GR7,I001
+          LD        GR1,GR7
+          LAD       GR2,16
+          CALL      C013
+          LD        GR7,ARG3
+          ADDL      GR7,GR0
+          XOR       GR6,GR6
+          ST        GR6,0,GR7
+                                   ; End If
+J022      NOP
+                                   ; Exit For
+          JUMP      J003
+                                   ; End If
+J004      NOP
+                                   ; Next i
+J002      NOP
+          LAD       GR1,I002
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J001
+J003      NOP
+EXIT      NOP
+          RET
+                                   ; ByVal cmd As Integer [GR1]
+ARG1      DS        1
+                                   ; ByRef steps As Integer [GR2]
+ARG2      DS        1
+                                   ; ByRef field(15) As Integer [GR3]
+ARG3      DS        1
+                                   ; Dim pos As Integer
+I001      DS        1
+                                   ; Dim i As Integer
+I002      DS        1
+LL001     DC        11
+LB001     DC        'CANNOT MOVE'
+                                   ; UtilSafeIndex
+C013      AND       GR2,GR2
+          JNZ       J005
+          XOR       GR0,GR0
+          RET
+J005      LD        GR0,GR1
+          JPL       J006
+          XOR       GR0,GR0
+          RET
+J006      CPL       GR0,GR2
+          JMI       J007
+          LAD       GR0,-1
+          ADDL      GR0,GR2
+J007      RET
+          END

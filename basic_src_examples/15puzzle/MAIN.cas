@@ -1,0 +1,90 @@
+MAIN      START
+          RPUSH
+                                   ; Call INIT
+                                   ;   ByRef field(15) As Integer [GR1]
+                                   ;   field = field
+                                   ;   Set Arguments And Call INIT
+          LAD       GR1,IA002
+          CALL      INIT
+                                   ; Do
+J001      NOP
+                                   ; Call SHOW
+                                   ;   ByVal steps As Integer [GR1]
+                                   ;   steps = steps
+                                   ;   ByRef field(15) As Integer [GR2]
+                                   ;   field = field
+                                   ;   Set Arguments And Call SHOW
+          LD        GR1,I001
+          LAD       GR2,IA002
+          CALL      SHOW
+                                   ; Call CHECK
+                                   ;   ByRef ok As Boolean [GR1]
+                                   ;   ok = ok
+                                   ;   ByVal steps As Integer [GR2]
+                                   ;   steps = steps
+                                   ;   ByRef field(15) As Integer [GR3]
+                                   ;   field = field
+                                   ;   Set Arguments And Call CHECK
+          LAD       GR1,B003
+          LD        GR2,I001
+          LAD       GR3,IA002
+          CALL      CHECK
+                                   ; If ok Then
+          LD        GR7,B003
+          AND       GR7,GR7
+          JZE       J003
+                                   ; Print "Complete!"
+          OUT       LB001,LL001
+                                   ; Exit Do
+          JUMP      J002
+                                   ; End If
+J003      NOP
+                                   ; Call CMD
+                                   ;   ByRef cmd As Integer [GR1]
+                                   ;   cmd = cmd
+                                   ;   Set Arguments And Call CMD
+          LAD       GR1,I004
+          CALL      CMD
+                                   ; If (cmd < 0) Then
+          LD        GR7,I004
+          XOR       GR6,GR6
+          LAD       GR0,#FFFF
+          CPA       GR7,GR6
+          JMI       J005
+          XOR       GR0,GR0
+J005      LD        GR7,GR0
+          AND       GR7,GR7
+          JZE       J004
+                                   ; Exit Do
+          JUMP      J002
+                                   ; End If
+J004      NOP
+                                   ; Call MOVE
+                                   ;   ByVal cmd As Integer [GR1]
+                                   ;   cmd = cmd
+                                   ;   ByRef steps As Integer [GR2]
+                                   ;   steps = steps
+                                   ;   ByRef field(15) As Integer [GR3]
+                                   ;   field = field
+                                   ;   Set Arguments And Call MOVE
+          LD        GR1,I004
+          LAD       GR2,I001
+          LAD       GR3,IA002
+          CALL      MOVE
+                                   ; Loop
+          JUMP      J001
+J002      NOP
+EXIT      NOP
+          RPOP
+          RET
+                                   ; Dim ok As Boolean
+B003      DS        1
+                                   ; Dim steps As Integer
+I001      DS        1
+                                   ; Dim cmd As Integer
+I004      DS        1
+                                   ; Dim field(15) As Integer
+IA002     DS        16
+LL001     DC        9
+LB001     DC        'Complete!'
+          END

@@ -1,0 +1,135 @@
+MAIN      START
+          RPUSH
+                                   ; Init Variables
+          LAD       GR1,I001
+          XOR       GR2,GR2
+          LAD       GR3,515
+          CALL      C010
+                                   ; t = ""
+          LAD       GR1,SB003
+          LAD       GR2,SL003
+          LAD       GR3,=0
+          XOR       GR4,GR4
+          CALL      C007
+                                   ; For i = 1 To 20 Step 1
+          LAD       GR7,1
+          ST        GR7,I001
+J003      NOP
+          LD        GR1,I001
+          CPA       GR1,=20
+          JPL       J005
+                                   ; Call FIZZBUZZ
+                                   ;   ByVal num As Integer [GR1]
+                                   ;   num = i
+                                   ;   ByRef fizzBuzzStr As String [GR2,GR3]
+                                   ;   fizzBuzzStr = s
+                                   ;   Set Arguments And Call FIZZBUZZ
+          LD        GR1,I001
+          LAD       GR2,SL002
+          LAD       GR3,SB002
+          CALL      FIZZBUZZ
+                                   ; t = ((t & s) & ", ")
+          LAD       GR1,TB001
+          LAD       GR2,TL001
+          LAD       GR3,SB003
+          LD        GR4,SL003
+          CALL      C007
+          LAD       GR1,TB001
+          LAD       GR2,TL001
+          LAD       GR3,SB002
+          LD        GR4,SL002
+          CALL      C005
+          LAD       GR1,TB001
+          LAD       GR2,TL001
+          LAD       GR3,=', '
+          LAD       GR4,2
+          CALL      C005
+          LAD       GR1,SB003
+          LAD       GR2,SL003
+          LAD       GR3,TB001
+          LD        GR4,TL001
+          CALL      C007
+                                   ; Next i
+J004      NOP
+          LAD       GR1,I001
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J003
+J005      NOP
+                                   ; Print t
+          OUT       SB003,SL003
+EXIT      NOP
+          RPOP
+          RET
+                                   ; Dim i As Integer
+I001      DS        1
+                                   ; Dim s As String
+SL002     DS        1
+SB002     DS        256
+                                   ; Dim t As String
+SL003     DS        1
+SB003     DS        256
+TL001     DS        1
+TB001     DS        256
+                                   ; UtilConcatStr
+C005      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          LD        GR0,0,GR2
+          LD        GR2,GR1
+          ADDL      GR1,GR0
+          LAD       GR2,256,GR2
+          ADDL      GR4,GR3
+J006      CPL       GR1,GR2
+          JZE       J007
+          CPL       GR3,GR4
+          JZE       J007
+          LD        GR0,0,GR3
+          ST        GR0,0,GR1
+          LAD       GR1,1,GR1
+          LAD       GR3,1,GR3
+          JUMP      J006
+J007      LD        GR0,GR1
+          POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          SUBL      GR0,GR1
+          ST        GR0,0,GR2
+          RET
+                                   ; UtilCopyStr
+C007      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          PUSH      0,GR4
+          ST        GR4,0,GR2
+          AND       GR4,GR4
+          JZE       J002
+J001      LD        GR2,0,GR3
+          ST        GR2,0,GR1
+          LAD       GR3,1,GR3
+          LAD       GR1,1,GR1
+          SUBL      GR4,=1
+          JPL       J001
+J002      POP       GR4
+          POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+                                   ; UtilFill
+C010      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J008      CPL       GR1,GR3
+          JZE       J009
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J008
+J009      POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+          END

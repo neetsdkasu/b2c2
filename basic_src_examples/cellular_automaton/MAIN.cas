@@ -1,0 +1,164 @@
+MAIN      START
+          RPUSH
+                                   ; Init Variables
+          LAD       GR1,B006
+          XOR       GR2,GR2
+          LAD       GR3,519
+          CALL      C010
+                                   ; Call INIT
+                                   ;   ByRef field1 As String [GR1,GR2]
+                                   ;   field1 = field1
+                                   ;   ByRef field2 As String [GR3,GR4]
+                                   ;   field2 = field2
+                                   ;   ByRef speed As Integer [GR5]
+                                   ;   speed = speed
+                                   ;   Set Arguments And Call INIT
+          LAD       GR1,SL004
+          LAD       GR2,SB004
+          LAD       GR3,SL005
+          LAD       GR4,SB005
+          LAD       GR5,I003
+          CALL      INIT
+                                   ; turn = True
+          LAD       GR7,#FFFF
+          ST        GR7,B006
+                                   ; Print field1
+          OUT       SB004,SL004
+                                   ; For i = 0 To 1000 Step 1
+          XOR       GR7,GR7
+          ST        GR7,I001
+J001      NOP
+          LD        GR1,I001
+          CPA       GR1,=1000
+          JPL       J003
+                                   ; If turn Then
+          LD        GR7,B006
+          AND       GR7,GR7
+          JZE       J005
+                                   ; Call PLAY
+                                   ;   ByRef field1 As String [GR1,GR2]
+                                   ;   field1 = field1
+                                   ;   ByRef field2 As String [GR3,GR4]
+                                   ;   field2 = field2
+                                   ;   Set Arguments And Call PLAY
+          LAD       GR1,SL004
+          LAD       GR2,SB004
+          LAD       GR3,SL005
+          LAD       GR4,SB005
+          CALL      PLAY
+                                   ; Call CHECK
+                                   ;   ByRef field As String [GR1,GR2]
+                                   ;   field = field2
+                                   ;   ByRef over As Boolean [GR3]
+                                   ;   over = over
+                                   ;   Set Arguments And Call CHECK
+          LAD       GR1,SL005
+          LAD       GR2,SB005
+          LAD       GR3,B007
+          CALL      CHECK
+                                   ; Print field2
+          OUT       SB005,SL005
+          JUMP      J004
+                                   ; Else
+J005      NOP
+                                   ; Call PLAY
+                                   ;   ByRef field1 As String [GR1,GR2]
+                                   ;   field1 = field2
+                                   ;   ByRef field2 As String [GR3,GR4]
+                                   ;   field2 = field1
+                                   ;   Set Arguments And Call PLAY
+          LAD       GR1,SL005
+          LAD       GR2,SB005
+          LAD       GR3,SL004
+          LAD       GR4,SB004
+          CALL      PLAY
+                                   ; Call CHECK
+                                   ;   ByRef field As String [GR1,GR2]
+                                   ;   field = field1
+                                   ;   ByRef over As Boolean [GR3]
+                                   ;   over = over
+                                   ;   Set Arguments And Call CHECK
+          LAD       GR1,SL004
+          LAD       GR2,SB004
+          LAD       GR3,B007
+          CALL      CHECK
+                                   ; Print field1
+          OUT       SB004,SL004
+                                   ; End If
+J004      NOP
+                                   ; If over Then
+          LD        GR7,B007
+          AND       GR7,GR7
+          JZE       J006
+                                   ; Exit For
+          JUMP      J003
+                                   ; End If
+J006      NOP
+                                   ; turn = Not(turn)
+          LD        GR7,B006
+          XOR       GR7,=#FFFF
+          ST        GR7,B006
+                                   ; For k = speed To 30000 Step 1
+          LD        GR7,I003
+          ST        GR7,I002
+J007      NOP
+          LD        GR1,I002
+          CPA       GR1,=30000
+          JPL       J009
+                                   ; turn = Not(Not(Not(Not(turn))))
+          LD        GR7,B006
+          XOR       GR7,=#FFFF
+          XOR       GR7,=#FFFF
+          XOR       GR7,=#FFFF
+          XOR       GR7,=#FFFF
+          ST        GR7,B006
+                                   ; Next k
+J008      NOP
+          LAD       GR1,I002
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J007
+J009      NOP
+                                   ; Next i
+J002      NOP
+          LAD       GR1,I001
+          LD        GR2,0,GR1
+          LAD       GR2,1,GR2
+          ST        GR2,0,GR1
+          JUMP      J001
+J003      NOP
+EXIT      NOP
+          RPOP
+          RET
+                                   ; Dim turn As Boolean
+B006      DS        1
+                                   ; Dim over As Boolean
+B007      DS        1
+                                   ; Dim i As Integer
+I001      DS        1
+                                   ; Dim k As Integer
+I002      DS        1
+                                   ; Dim speed As Integer
+I003      DS        1
+                                   ; Dim field1 As String
+SL004     DS        1
+SB004     DS        256
+                                   ; Dim field2 As String
+SL005     DS        1
+SB005     DS        256
+                                   ; UtilFill
+C010      PUSH      0,GR1
+          PUSH      0,GR2
+          PUSH      0,GR3
+          ADDL      GR3,GR1
+J010      CPL       GR1,GR3
+          JZE       J011
+          ST        GR2,0,GR1
+          LAD       GR1,1,GR1
+          JUMP      J010
+J011      POP       GR3
+          POP       GR2
+          POP       GR1
+          RET
+          END
