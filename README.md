@@ -11,9 +11,10 @@ BASIC言語風の独自のプログラミング言語(?)のソースコードフ
 -------------------------------------------------------------------------------
 
 ### Example: Fizz Buzz (その1)
-リポジトリの*basic_src_examples/fizz_buzz_1/ *のディレクトリに入力のBASICファイルと出力のCASL2ファイルがあります  
 
-生成コマンド: `cargo run -- -src fizzbuzz.bas` (basic_src_examples/fizz_buzz_1/での実行を想定)  
+リポジトリの *basic_src_examples/fizz_buzz_1/* のディレクトリに入力のBASICファイルと出力のCASL2ファイルがあります  
+
+生成コマンド: `cargo run -- -src fizzbuzz.bas` (*basic_src_examples/fizz_buzz_1/* での実行を想定)  
 
 入力ファイル: *basic_src_examples/fizz_buzz_1/fizzbuzz.bas*
 ```vb
@@ -407,9 +408,10 @@ BUZZ
 -------------------------------------------------------------------------------
 
 ### Example: Fizz Buzz (その2)
-リポジトリの*basic_src_examples/fizz_buzz_2/ *のディレクトリに入力のBASICファイルと出力のCASL2ファイルがあります  
 
-生成コマンド: `cargo run -- -src fizzbuzz.bas`  (basic_src_examples/fizz_buzz_2/での実行を想定)    
+リポジトリの *basic_src_examples/fizz_buzz_2/* のディレクトリに入力のBASICファイルと出力のCASL2ファイルがあります  
+
+生成コマンド: `cargo run -- -src fizzbuzz.bas`  (*basic_src_examples/fizz_buzz_2/* での実行を想定)    
 
 入力ファイル: *basic_src_examples/fizz_buzz_2/fizzbuzz.bas*
 ```vb
