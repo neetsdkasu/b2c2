@@ -925,15 +925,21 @@ cargo run -- -src fizzbuzz.bas
 ##### b2c2をインストールして使う場合
 
 ※cargoをインストール済みとします  
+  
+  
+  
+ - インストール  
 ※`cargo install`がソースコードの取得とビルドと実行バイナリの配置を行います
 ```bash
 cargo install --git https://github.com/neetsdkasu/b2c2 --branch main
 ```
-実行(BASICのソースコードファイルファイルは適宜用意してください)  
+ - 実行  
+※BASICのソースコードファイルファイルは適宜用意してください  
 ```bash
 b2c2 -src BASICのソースコードファイル
 ```
-アンインストール
+ - アンインストール  
+※バイナリ削除のみ。インストール時に取得されたソースコード等はどこかに残ったままのようです  
 ```bash
 cargo uninstall b2c2
 ```
