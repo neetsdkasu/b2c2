@@ -285,7 +285,7 @@ macro_rules! enumdef {
     ($name:ident; $array:ident; $($value:ident,)* ) => {
         enumdef!($name; $array;; $($value,)*);
         impl $name {
-            fn to_str(&self) -> &str {
+            fn to_str(self) -> &'static str {
                 match self {
                     $($name::$value => stringify!($value),)*
                 }
@@ -392,7 +392,7 @@ enumdef!(
 );
 
 impl Operator {
-    fn to_str(&self) -> &str {
+    fn to_str(self) -> &'static str {
         use Operator::*;
         match self {
             Mod => "Mod",
