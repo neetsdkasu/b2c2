@@ -129,7 +129,7 @@ impl Compiler {
         let labels = self.compile_str_expr(value);
 
         let labels = match &labels.label_type {
-            StrLabelType::Lit(s) => self.get_lit_str_labels(&s),
+            StrLabelType::Lit(s) => self.get_lit_str_labels(s),
             StrLabelType::ArgRef | StrLabelType::MemVal(..) | StrLabelType::MemRef(..) => {
                 let copystr = self.load_subroutine(subroutine::Id::UtilCopyStr);
                 let temp_labels = self.get_temp_str_var_label();

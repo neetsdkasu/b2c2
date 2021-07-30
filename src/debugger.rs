@@ -117,7 +117,7 @@ pub fn run_nonstep(src_file: String, flags: Flags) -> io::Result<i32> {
     if !emu.unknown_labels.is_empty() {
         // 未解決ラベルを解決する処理を入れる
         let src_dir = Path::new(&src_file).parent().unwrap();
-        match auto_resolve_files(&mut emu, &mut stdin, &mut stdout, &src_dir, &flags) {
+        match auto_resolve_files(&mut emu, &mut stdin, &mut stdout, src_dir, &flags) {
             Ok(0) => {}
             Ok(REQUEST_QUIT) => return Ok(0),
             result => return result,
@@ -168,7 +168,7 @@ pub fn run_basic(src_file: String, flags: Flags) -> io::Result<i32> {
         if !emu.unknown_labels.is_empty() {
             // 未解決ラベルを解決する処理を入れる
             let src_dir = Path::new(&src_file).parent().unwrap();
-            match resolve_files(&mut emu, &mut stdin, &mut stdout, &src_dir, &flags) {
+            match resolve_files(&mut emu, &mut stdin, &mut stdout, src_dir, &flags) {
                 Ok(0) => {}
                 Ok(REQUEST_QUIT) => return Ok(0),
                 result => return result,
@@ -315,7 +315,7 @@ pub fn run_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
         if !emu.unknown_labels.is_empty() {
             // 未解決ラベルを解決する処理を入れる
             let src_dir = Path::new(&src_file).parent().unwrap();
-            match resolve_files(&mut emu, &mut stdin, &mut stdout, &src_dir, &flags) {
+            match resolve_files(&mut emu, &mut stdin, &mut stdout, src_dir, &flags) {
                 Ok(0) => {}
                 Ok(REQUEST_QUIT) => return Ok(0),
                 result => return result,

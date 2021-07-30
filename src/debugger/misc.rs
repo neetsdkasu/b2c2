@@ -415,7 +415,7 @@ pub(super) fn auto_resolve_files<R: BufRead, W: Write>(
                         continue;
                     }
                 }
-                match get_program_name(&file)? {
+                match get_program_name(file)? {
                     Some(name) if name == label => {
                         found = Some(file.clone());
                         break;
@@ -565,7 +565,7 @@ pub(super) fn resolve_files<R: BufRead, W: Write>(
                         continue;
                     }
                 }
-                match get_program_name(&file)? {
+                match get_program_name(file)? {
                     Some(name) if name == label => {
                         found = Some(file.clone());
                         break;

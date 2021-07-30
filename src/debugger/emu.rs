@@ -467,12 +467,12 @@ impl Emulator {
                 let lc_file_name = file_name.to_ascii_lowercase();
                 let dist1 = targets
                     .iter()
-                    .map(|target| edit_distance(&target, &file_name))
+                    .map(|target| edit_distance(target, &file_name))
                     .min()
                     .unwrap();
                 let dist2 = lc_targets
                     .iter()
-                    .map(|target| edit_distance(&target, &lc_file_name))
+                    .map(|target| edit_distance(target, &lc_file_name))
                     .min()
                     .unwrap();
                 let dist = dist1.min(dist2);
@@ -832,7 +832,7 @@ impl Emulator {
                         }
                         _ => {
                             let line = line.lines().next().unwrap();
-                            let line = jis_x_201::convert_kana_wide_full_to_half(&line);
+                            let line = jis_x_201::convert_kana_wide_full_to_half(line);
                             self.mem[len] = line.chars().count().min(256) as u16;
                             for (i, ch) in line.chars().enumerate().take(256) {
                                 if pos + i > 0xFFFF {
@@ -1456,7 +1456,7 @@ impl Emulator {
                     lit_stmt.push((*pos, casl2::parse(&stmt).unwrap().pop().unwrap()));
                 }
                 casl2::Adr::LiteralStr(ls) => {
-                    let s = jis_x_201::convert_kana_wide_full_to_half(&ls);
+                    let s = jis_x_201::convert_kana_wide_full_to_half(ls);
                     let len = s.chars().count();
                     if !self.enough_remain(len) {
                         return Err("メモリ不足でプログラムをロードできませんでした".into());
@@ -1526,7 +1526,7 @@ impl Emulator {
                                 pos += 1;
                             }
                             casl2::Constant::Str(s) => {
-                                let s = jis_x_201::convert_kana_wide_full_to_half(&s);
+                                let s = jis_x_201::convert_kana_wide_full_to_half(s);
                                 for ch in s.chars() {
                                     self.mem[pos] = jis_x_201::convert_from_char(ch) as u16;
                                     pos += 1;

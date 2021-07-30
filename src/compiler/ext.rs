@@ -58,7 +58,7 @@ impl AddCode<String> for Vec<casl2::Statement> {
 
 impl AddCode<&String> for Vec<casl2::Statement> {
     fn code(&mut self, src: &String) {
-        self.extend(casl2::parse(&src).unwrap());
+        self.extend(casl2::parse(src).unwrap());
     }
 }
 
