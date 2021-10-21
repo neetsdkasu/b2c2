@@ -337,13 +337,12 @@ impl Emulator {
                     };
                     let s = get_op_code_form(op_code, Some(adr));
                     write!(&mut info.mem_code, " #{:04X}: {} {}", pos, bp, s).unwrap();
-                    info
                 } else {
                     let bp = if self.break_points[pos] { "*" } else { " " };
                     let s = get_op_code_form(op_code, None);
                     write!(&mut info.mem_code, " #{:04X}: {} {}", pos, bp, s).unwrap();
-                    info
                 }
+                info
             }
             _ => {
                 let bp = if self.break_points[pos] { "*" } else { " " };
