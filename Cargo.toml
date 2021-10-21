@@ -1,6 +1,6 @@
 [package]
 name = "b2c2"
-version = "1.0.2"
+version = "1.0.3"
 authors = ["Leonardone <neetsdkasu@gmail.com>"]
 edition = "2018"
 description = "BASIC言語風の独自のプログラミング言語(?)のソースコードファイルからCASL2のソースコードファイルを生成します" 

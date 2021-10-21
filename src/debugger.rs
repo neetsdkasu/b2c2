@@ -2762,13 +2762,13 @@ fn show_state_basic<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> 
         " "
     };
 
+    writeln!(stdout, "Last:")?;
     if let Some(((pg_label, info), hint_id)) = emu
         .get_current_program()
         .and_then(|(file, _, _)| emu.basic_info.get(file))
         .zip(emu.basic_step)
     {
         if let Some((n, s, extra)) = info.status_hint.get(hint_id as usize) {
-            writeln!(stdout, "Last:")?;
             writeln!(stdout, "{0:5}: {1} {2:3$}{4}", hint_id, bp, "", n * 2, s)?;
             if let Some(extra) = extra {
                 use compiler::ExtraInfo::*;
@@ -2824,11 +2824,9 @@ fn show_state_basic<W: Write>(emu: &Emulator, stdout: &mut W, state: &State) -> 
                 }
             }
         } else {
-            writeln!(stdout, "Last:")?;
             writeln!(stdout, "{0:5}: {1} ?????", hint_id, bp)?;
         }
     } else {
-        writeln!(stdout, "Last:")?;
         writeln!(stdout, "?????: {} ?????", bp)?;
     }
 
