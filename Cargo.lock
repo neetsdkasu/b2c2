@@ -5,3 +5,10 @@ version = 3
 [[package]]
 name = "b2c2"
 version = "1.0.3"
+dependencies = [
+ "b2c2-common",
+]
+
+[[package]]
+name = "b2c2-common"
+version = "0.1.0"

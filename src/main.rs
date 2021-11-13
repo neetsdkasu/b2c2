@@ -1,3 +1,4 @@
+pub use b2c2_common::*;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
@@ -23,23 +24,6 @@ const FLAG_TRY_MAKE_SNIPPETS: &str = "-try-make-snippets";
 const FLAG_PROGRAM_NAME: &str = "-program-name";
 const FLAG_STATISTICS: &str = "-statistics";
 const FLAG_RUN_DEBUGGER: &str = "-run";
-
-#[derive(Debug)]
-pub struct SyntaxError {
-    line_number: usize,
-    position: usize,
-    message: String,
-}
-
-impl SyntaxError {
-    fn new(line_number: usize, position: usize, message: String) -> Self {
-        Self {
-            line_number,
-            position,
-            message,
-        }
-    }
-}
 
 fn main() {
     std::process::exit(match run_app() {
