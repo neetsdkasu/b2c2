@@ -12,6 +12,7 @@ repository = "https://github.com/neetsdkasu/b2c2/"
 
 [dependencies]
 b2c2-common = { path="./b2c2-common" }
+b2c2-tokenizer = { path="./b2c2-tokenizer" }
 
 [workspace]
-members = ["b2c2-common"]
+members = ["b2c2-common", "b2c2-tokenizer"]

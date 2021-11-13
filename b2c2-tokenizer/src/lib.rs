@@ -1,4 +1,7 @@
-use crate::SyntaxError;
+// b2c2-tokenizer crate
+// author: Leonardone @ NEETSDKASU
+
+use b2c2_common::*;
 use std::io::{self, BufRead};
 use std::result;
 

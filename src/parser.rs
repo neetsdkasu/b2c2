@@ -3021,7 +3021,10 @@ impl Parser {
                         return Err(self.syntax_error_pos(*pos, "不正な式です".into()));
                     }
                 } else if op.can_be_binary() {
-                    if target_op.filter(|(_, cur_op)| cur_op > op).is_none() {
+                    if target_op
+                        .filter(|(_, cur_op)| cur_op.priority() > op.priority())
+                        .is_none()
+                    {
                         target_op = Some((i, *op));
                     }
                     next_unary = true;
@@ -3319,7 +3322,11 @@ fn validate_integer(minus: bool, value: i32) -> Option<i32> {
     }
 }
 
-impl Keyword {
+trait KeywordExtension {
+    fn is_toplevel_token(&self) -> bool;
+}
+
+impl KeywordExtension for Keyword {
     fn is_toplevel_token(&self) -> bool {
         use Keyword::*;
         match self {
@@ -3332,7 +3339,15 @@ impl Keyword {
     }
 }
 
-impl Operator {
+trait OperatorExtension<T> {
+    fn can_be_binary(&self) -> bool;
+    fn can_be_unary(&self) -> bool;
+    fn can_be_unary_integer(&self) -> bool;
+    fn can_be_unary_boolean(&self) -> bool;
+    fn priority(&self) -> i32;
+}
+
+impl OperatorExtension<Operator> for Operator {
     fn can_be_binary(&self) -> bool {
         !matches!(
             self,
@@ -3377,12 +3392,6 @@ impl Operator {
 
             Comma => 18,
         }
-    }
-}
-
-impl PartialOrd for Operator {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.priority().cmp(&other.priority()))
     }
 }
 
@@ -4115,7 +4124,12 @@ impl Expr {
     }
 }
 
-impl Function {
+trait FunctionExtension {
+    fn return_type(&self) -> ExprType;
+    fn check_param(&self, param: &Expr) -> bool;
+}
+
+impl FunctionExtension for Function {
     fn return_type(&self) -> ExprType {
         use Function::*;
         match self {

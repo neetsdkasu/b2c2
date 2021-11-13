@@ -1,4 +1,5 @@
-// create::b2c2_common
+// b2c2-common crate
+// author: Leonardone @ NEETSDKASU
 
 #[derive(Debug)]
 pub struct SyntaxError {

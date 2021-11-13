@@ -1,4 +1,5 @@
-// crate::tokenizer::test
+// b2c2-tokenizer crate::test
+// author: Leonardone @ NEETSDKASU
 
 use super::*;
 use std::io;

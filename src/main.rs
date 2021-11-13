@@ -1,4 +1,5 @@
 pub use b2c2_common::*;
+pub use b2c2_tokenizer as tokenizer;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
@@ -10,7 +11,6 @@ mod debugger;
 mod jis_x_201;
 mod parser;
 mod stat;
-mod tokenizer;
 
 const APP_NAME: &str = "b2c2";
 
