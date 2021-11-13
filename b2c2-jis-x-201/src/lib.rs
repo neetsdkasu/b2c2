@@ -1,3 +1,6 @@
+// b2c2-jis-x-201 crate
+// author: Leonardone @ NEETSDKASU
+
 // UTF-8 -> JIS X 201
 pub fn convert_from_char(ch: char) -> u8 {
     if ch.is_ascii() {

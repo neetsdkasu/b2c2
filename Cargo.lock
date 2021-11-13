@@ -10,6 +10,7 @@ dependencies = [
  "b2c2-common",
  "b2c2-compiler",
  "b2c2-compiler-common",
+ "b2c2-jis-x-201",
  "b2c2-parser",
  "b2c2-stat",
  "b2c2-tokenizer",
@@ -43,6 +44,10 @@ version = "0.1.0"
 dependencies = [
  "b2c2-casl2",
 ]
+
+[[package]]
+name = "b2c2-jis-x-201"
+version = "0.1.0"
 
 [[package]]
 name = "b2c2-parser"
