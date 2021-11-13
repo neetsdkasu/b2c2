@@ -1,7 +1,7 @@
 use crate::casl2::IndexRegister;
-use crate::compiler::{is_valid_program_name, MAX_ALLOCATION_SIZE, MAX_ARRAY_SIZE};
 use crate::tokenizer::*;
 use crate::SyntaxError;
+use b2c2_compiler_common::*;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::io::{self, BufRead};

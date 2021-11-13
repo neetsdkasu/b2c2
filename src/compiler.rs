@@ -1,8 +1,8 @@
 use self::ext::*;
-pub use self::utils::is_valid_program_name;
 use crate::casl2;
 use crate::parser;
 use crate::tokenizer;
+use b2c2_compiler_common::*;
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet};
 use std::convert::TryFrom;
@@ -33,9 +33,6 @@ pub mod utils;
 
 #[cfg(test)]
 mod test;
-
-pub const MAX_ALLOCATION_SIZE: usize = 30000;
-pub const MAX_ARRAY_SIZE: usize = 256;
 
 type CompileError = String;
 

@@ -1210,7 +1210,7 @@ impl Emulator {
 
         for (name, casl2_src) in casl2_src_list {
             if save {
-                let overwrite = compiler::utils::is_valid_program_name(&name);
+                let overwrite = b2c2_compiler_common::is_valid_program_name(&name);
                 self.save_casl2_src(&mut path, &name, &casl2_src, flags.statistics, overwrite)?;
             }
 
@@ -1365,7 +1365,7 @@ impl Emulator {
 
         for (name, casl2_src) in casl2_src_list {
             if save {
-                let overwrite = compiler::utils::is_valid_program_name(&name);
+                let overwrite = b2c2_compiler_common::is_valid_program_name(&name);
                 self.save_casl2_src(&mut path, &name, &casl2_src, flags.statistics, overwrite)?;
             }
 
