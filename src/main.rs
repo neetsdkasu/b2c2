@@ -1,15 +1,16 @@
+// b2c2 crate
+// author: Leonardone @ NEETSDKASU
+
 use b2c2_casl2 as casl2;
 use b2c2_compiler as compiler;
-use b2c2_jis_x_201 as jis_x_201;
+use b2c2_debugger as debugger;
+use b2c2_flag::*;
 use b2c2_parser as parser;
 use b2c2_stat as stat;
-use b2c2_tokenizer as tokenizer;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-
-mod debugger;
 
 const APP_NAME: &str = "b2c2";
 
@@ -32,22 +33,6 @@ fn main() {
             1
         }
     });
-}
-
-#[derive(Clone, Default)]
-pub struct Flags {
-    src_file: Option<String>,
-    pub compiler: compiler::Flag,
-    pub statistics: bool,
-    pub dst_dir: Option<String>,
-    run_debugger: Option<DebugTarget>,
-}
-
-#[derive(Clone, Copy)]
-enum DebugTarget {
-    Casl2,
-    Basic,
-    NonStep,
 }
 
 // コマンドライン引数を解釈して指定の処理を実行する
@@ -202,21 +187,6 @@ fn process_casl2(src_file: String, flags: Flags) -> io::Result<i32> {
     Ok(0)
 }
 
-impl Flags {
-    // 出力先ディレクトリの生成
-    pub fn create_dst_dir(&self) -> io::Result<PathBuf> {
-        if let Some(dir) = self.dst_dir.as_ref() {
-            let path = Path::new(dir);
-            if !path.exists() || !path.is_dir() {
-                fs::create_dir_all(dir)?;
-            }
-            Ok(path.to_path_buf())
-        } else {
-            Ok(PathBuf::new())
-        }
-    }
-}
-
 // 生成したCASL2ソースコードの保存
 fn save_casl2_src_list(
     mut path: PathBuf,
@@ -318,7 +288,13 @@ OPTIONS:
 }
 
 // コマンドライン引数を取得
-impl Flags {
+trait FlagParser {
+    fn parse<T>(&mut self, iter: T) -> io::Result<i32>
+    where
+        T: Iterator<Item = String>;
+}
+
+impl FlagParser for Flags {
     fn parse<T>(&mut self, mut iter: T) -> io::Result<i32>
     where
         T: Iterator<Item = String>,

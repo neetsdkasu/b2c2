@@ -1,13 +1,16 @@
+// b2c2-debugger crate
+// author: Leonardone @ NEETSDKASU
+
 use self::emu::*;
 use self::misc::*;
 use self::utils::*;
-use crate::casl2;
-use crate::compiler;
-use crate::jis_x_201;
-use crate::parser;
-use crate::stat;
-use crate::tokenizer;
-use crate::Flags;
+use b2c2_casl2 as casl2;
+use b2c2_compiler as compiler;
+use b2c2_flag::Flags;
+use b2c2_jis_x_201 as jis_x_201;
+use b2c2_parser as parser;
+use b2c2_stat as stat;
+use b2c2_tokenizer as tokenizer;
 use ext::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;

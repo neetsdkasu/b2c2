@@ -7,13 +7,11 @@ name = "b2c2"
 version = "1.0.3"
 dependencies = [
  "b2c2-casl2",
- "b2c2-common",
  "b2c2-compiler",
- "b2c2-compiler-common",
- "b2c2-jis-x-201",
+ "b2c2-debugger",
+ "b2c2-flag",
  "b2c2-parser",
  "b2c2-stat",
- "b2c2-tokenizer",
 ]
 
 [[package]]
@@ -43,6 +41,27 @@ name = "b2c2-compiler-common"
 version = "0.1.0"
 dependencies = [
  "b2c2-casl2",
+]
+
+[[package]]
+name = "b2c2-debugger"
+version = "0.1.0"
+dependencies = [
+ "b2c2-casl2",
+ "b2c2-compiler",
+ "b2c2-compiler-common",
+ "b2c2-flag",
+ "b2c2-jis-x-201",
+ "b2c2-parser",
+ "b2c2-stat",
+ "b2c2-tokenizer",
+]
+
+[[package]]
+name = "b2c2-flag"
+version = "0.1.0"
+dependencies = [
+ "b2c2-compiler",
 ]
 
 [[package]]

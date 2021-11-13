@@ -1,3 +1,6 @@
+// b2c2-debugger crate::emu
+// author: Leonardone @ NEETSDKASU
+
 use super::*;
 
 // プログラムリスト (ファイル名, ラベル, ソースコード(コードメモリ位置, コード))

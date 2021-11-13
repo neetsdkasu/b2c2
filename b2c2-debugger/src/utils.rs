@@ -1,3 +1,6 @@
+// b2c2-debugger crate::utils
+// author: Leonardone @ NEETSDKASU
+
 pub(super) fn is_valid_boolean(v: u16) -> bool {
     v == 0 || v == 0xFFFF
 }

@@ -1,3 +1,6 @@
+// b2c2-debugger crate::ext
+// author: Leonardone @ NEETSDKASU
+
 use super::*;
 
 type ResolveLabelAddress = (usize, Option<usize>, parser::VarType);

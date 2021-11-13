@@ -12,13 +12,11 @@ repository = "https://github.com/neetsdkasu/b2c2/"
 
 [dependencies]
 b2c2-casl2 = { path="./b2c2-casl2" }
-b2c2-common = { path="./b2c2-common" }
 b2c2-compiler = { path="./b2c2-compiler" }
-b2c2-compiler-common = { path="./b2c2-compiler-common" }
-b2c2-jis-x-201 = { path="./b2c2-jis-x-201" }
+b2c2-debugger = { path="./b2c2-debugger" }
+b2c2-flag = { path="./b2c2-flag" }
 b2c2-parser = { path="./b2c2-parser" }
 b2c2-stat = { path="./b2c2-stat" }
-b2c2-tokenizer = { path="./b2c2-tokenizer" }
 
 [workspace]
 members = [
@@ -26,6 +24,8 @@ members = [
     "b2c2-common",
     "b2c2-compiler",
     "b2c2-compiler-common",
+    "b2c2-debugger",
+    "b2c2-flag",
     "b2c2-jis-x-201",
     "b2c2-parser",
     "b2c2-stat",
