@@ -1,3 +1,6 @@
+// b2c2-compiler crate::utils
+// author: Leonardone @ NEETSDKASU
+
 use super::*;
 
 // 組み込みルーチンを分離する

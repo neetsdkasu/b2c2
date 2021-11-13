@@ -1,6 +1,8 @@
-// crate::compiler::test
+// b2c2-compiler crate::test
+// author: Leonardone @ NEETSDKASU
 
 use super::*;
+use b2c2_stat as stat;
 
 struct Gen {
     jump: Vec<&'static str>,
@@ -1227,7 +1229,7 @@ Next i
         eprintln!("{}", line);
     });
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     assert!(!statements.is_empty()); // dummy assert
 }
@@ -1271,7 +1273,7 @@ Loop
         eprintln!("{}", line);
     });
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     assert!(!statements.is_empty()); // dummy assert
 }
@@ -1329,7 +1331,7 @@ End If
         eprintln!("{}", line);
     });
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     assert!(!statements.is_empty()); // dummy assert
 }
@@ -1362,7 +1364,7 @@ Print s
         eprintln!("{}", line);
     });
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     assert!(!statements.is_empty()); // dummy assert
 }
@@ -1421,7 +1423,7 @@ End If
         eprintln!("{}", line);
     });
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     assert!(!statements.is_empty()); // dummy assert
 }
@@ -1486,7 +1488,7 @@ Print s
         eprintln!("{}", line);
     });
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     assert!(!statements.is_empty()); // dummy assert
 }
@@ -1534,7 +1536,7 @@ Print t
         eprintln!("{}", line);
     });
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     assert!(!statements.is_empty()); // dummy assert
 }
@@ -1635,7 +1637,7 @@ Print outStr
         eprintln!("{}", line);
     });
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     eprintln!("TEST CODE");
     eprintln!("++++++++[>+++++++++[>+>++<<-]++[>>---<<-]<-]>>.>+++++.+++++++..+++.");
@@ -1693,7 +1695,7 @@ End Sub
             eprintln!("{}", line);
         });
 
-        eprintln!("{}", crate::stat::analyze(&statements));
+        eprintln!("{}", stat::analyze(&statements));
 
         assert!(!statements.is_empty()); // dummy assert
     }
@@ -1823,7 +1825,7 @@ End Sub
             eprintln!("{}", line);
         });
 
-        eprintln!("{}", crate::stat::analyze(&statements));
+        eprintln!("{}", stat::analyze(&statements));
 
         assert!(!statements.is_empty()); // dummy assert
     }
@@ -1962,7 +1964,7 @@ End Sub
             eprintln!("{}", line);
         });
 
-        eprintln!("{}", crate::stat::analyze(&statements));
+        eprintln!("{}", stat::analyze(&statements));
 
         assert!(!statements.is_empty()); // dummy assert
     }
@@ -2094,7 +2096,7 @@ End Sub
             eprintln!("{}", line);
         });
 
-        eprintln!("{}", crate::stat::analyze(&statements));
+        eprintln!("{}", stat::analyze(&statements));
 
         assert!(!statements.is_empty()); // dummy assert
     }
@@ -2156,7 +2158,7 @@ End Sub
             eprintln!("{}", line);
         });
 
-        eprintln!("{}", crate::stat::analyze(&statements));
+        eprintln!("{}", stat::analyze(&statements));
 
         assert!(!statements.is_empty()); // dummy assert
     }
@@ -2197,7 +2199,7 @@ End Sub
             eprintln!("{}", line);
         });
 
-        eprintln!("{}", crate::stat::analyze(&statements));
+        eprintln!("{}", stat::analyze(&statements));
 
         assert!(!statements.is_empty()); // dummy assert
     }
@@ -2236,7 +2238,7 @@ End Sub
             eprintln!("{}", line);
         });
 
-        eprintln!("{}", crate::stat::analyze(&statements));
+        eprintln!("{}", stat::analyze(&statements));
 
         assert!(!statements.is_empty()); // dummy assert
     }
@@ -2282,7 +2284,7 @@ END SUB
             eprintln!("{}", line);
         });
 
-        eprintln!("{}", crate::stat::analyze(&statements));
+        eprintln!("{}", stat::analyze(&statements));
 
         assert!(!statements.is_empty()); // dummy assert
     }
@@ -2336,7 +2338,7 @@ End Sub
             eprintln!("{}", line);
         });
 
-        eprintln!("{}", crate::stat::analyze(&statements));
+        eprintln!("{}", stat::analyze(&statements));
 
         assert!(!statements.is_empty()); // dummy assert
     }
@@ -2453,11 +2455,11 @@ End If
 
     let statements = compile(None, &code[..]).unwrap();
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     let statements = super::optimize::remove_comment(&statements);
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
@@ -2513,11 +2515,11 @@ End If
 
     let statements = compile(None, &code[..]).unwrap();
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     let statements = super::optimize::remove_nop(&statements);
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
@@ -2573,11 +2575,11 @@ End If
 
     let statements = compile(None, &code[..]).unwrap();
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     let statements = super::optimize::remove_unreferenced_label(&statements);
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     statements.iter().for_each(|line| {
         eprintln!("{}", line);
@@ -2633,11 +2635,11 @@ End If
 
     let statements = compile(None, &code[..]).unwrap();
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     let statements = super::optimize::collect_duplicates(statements);
 
-    eprintln!("{}", crate::stat::analyze(&statements));
+    eprintln!("{}", stat::analyze(&statements));
 
     statements.iter().for_each(|line| {
         eprintln!("{}", line);

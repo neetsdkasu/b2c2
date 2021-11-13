@@ -1,3 +1,6 @@
+// b2c2-compiler crate::optimize
+// author: Leonardone @ NEETSDKASU
+
 use super::*;
 
 // コメントの除去

@@ -1,3 +1,6 @@
+// b2c2-compiler crate::stmts
+// author: Leonardone @ NEETSDKASU
+
 use super::*;
 
 // ステートメントの一部

@@ -1,4 +1,7 @@
-use crate::casl2::*;
+// b2c2-stat crate
+// author: Leonardone @ NEETSDKASU
+
+use b2c2_casl2::*;
 use std::collections::{BTreeMap, HashMap};
 
 pub fn analyze(statements: &[Statement]) -> String {

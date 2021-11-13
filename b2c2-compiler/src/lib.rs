@@ -1,8 +1,11 @@
+// b2c2-compiler crate
+// author: Leonardone @ NEETSDKASU
+
 use self::ext::*;
-use crate::casl2;
-use crate::parser;
-use crate::tokenizer;
+use b2c2_casl2 as casl2;
 use b2c2_compiler_common::*;
+use b2c2_parser as parser;
+use b2c2_tokenizer as tokenizer;
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet};
 use std::convert::TryFrom;

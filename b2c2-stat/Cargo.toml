@@ -1,0 +1,13 @@
+[package]
+name = "b2c2-stat"
+version = "0.1.0"
+edition = "2018"
+description = "b2c2のcargo test実行時にだけ使うものぽい"
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/neetsdkasu/b2c2/"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+b2c2-casl2 = { path="../b2c2-casl2" }

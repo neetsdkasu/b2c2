@@ -1,3 +1,6 @@
+// b2c2-compiler crate::bool_func
+// author: Leonardone @ NEETSDKASU
+
 use super::*;
 
 impl Compiler {

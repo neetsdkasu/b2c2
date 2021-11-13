@@ -1,3 +1,6 @@
+// b2c2-compiler crate::exprs
+// author: Leonardone @ NEETSDKASU
+
 use super::*;
 
 // 式展開等
