@@ -1,3 +1,4 @@
+pub use b2c2_casl2 as casl2;
 pub use b2c2_common::*;
 pub use b2c2_tokenizer as tokenizer;
 use std::env;
@@ -5,7 +6,6 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-mod casl2;
 mod compiler;
 mod debugger;
 mod jis_x_201;

@@ -314,8 +314,11 @@ impl TryFrom<&str> for ViewType {
     }
 }
 
-impl<'a> casl2::Tokenizer<'a> {
-    pub(super) fn extended_label(&mut self) -> Result<Option<ExtendedLabel>, &'static str> {
+pub(super) trait Casl2TokenizerExtension {
+    fn extended_label(&mut self) -> Result<Option<ExtendedLabel>, &'static str>;
+}
+impl<'a> Casl2TokenizerExtension for casl2::Tokenizer<'a> {
+    fn extended_label(&mut self) -> Result<Option<ExtendedLabel>, &'static str> {
         // MAIN
         // MAIN:MEM
         // @GR1 @PR @SP
@@ -515,9 +518,15 @@ impl ExtendedLabel {
     }
 }
 
-impl casl2::Command {
+pub(super) trait Casl2CommandExtension {
+    fn op_code(&self) -> u16;
+    fn first_word(&self) -> u16;
+    fn len(&self) -> usize;
+}
+
+impl Casl2CommandExtension for casl2::Command {
     // このやり方はちょっと厳しい・・・
-    pub(super) fn op_code(&self) -> u16 {
+    fn op_code(&self) -> u16 {
         match self {
             casl2::Command::Start { .. }
             | casl2::Command::End
@@ -585,7 +594,7 @@ impl casl2::Command {
         }
     }
 
-    pub(super) fn first_word(&self) -> u16 {
+    fn first_word(&self) -> u16 {
         match self {
             casl2::Command::Start { .. }
             | casl2::Command::End
@@ -614,7 +623,7 @@ impl casl2::Command {
         }
     }
 
-    pub(super) fn len(&self) -> usize {
+    fn len(&self) -> usize {
         match self {
             casl2::Command::Start { .. } | casl2::Command::End => 0,
             casl2::Command::Ds { size } => *size as usize,

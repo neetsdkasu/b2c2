@@ -1,4 +1,5 @@
-// crate::casl2::test
+// b2c2-casl2 crate::test
+// author: Leonardone @ NEETSDKASU
 
 use super::*;
 

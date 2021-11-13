@@ -6,8 +6,16 @@ version = 3
 name = "b2c2"
 version = "1.0.3"
 dependencies = [
+ "b2c2-casl2",
  "b2c2-common",
  "b2c2-tokenizer",
+]
+
+[[package]]
+name = "b2c2-casl2"
+version = "0.1.0"
+dependencies = [
+ "b2c2-common",
 ]
 
 [[package]]

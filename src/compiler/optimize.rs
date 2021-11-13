@@ -196,7 +196,13 @@ pub fn remove_unreferenced_label(statements: &[casl2::Statement]) -> Vec<casl2::
 }
 
 // スニペット化できるステートメントの判定用
-impl casl2::Statement {
+trait Casl2StatementExtension {
+    fn is_jump_code(&self) -> bool;
+    fn is_push_code(&self) -> bool;
+    fn is_pop_code(&self) -> bool;
+}
+
+impl Casl2StatementExtension for casl2::Statement {
     fn is_jump_code(&self) -> bool {
         if let casl2::Statement::Code {
             command: casl2::Command::P { code, .. },

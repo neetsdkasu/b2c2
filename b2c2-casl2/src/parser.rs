@@ -1,4 +1,5 @@
-// crate::casl2::parser
+// b2c2-casl2 crate::parser
+// author: Leonardone @ NEETSDKASU
 
 use super::*;
 use crate::SyntaxError;
