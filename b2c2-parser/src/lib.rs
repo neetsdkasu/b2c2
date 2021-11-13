@@ -1,7 +1,10 @@
-use crate::casl2::IndexRegister;
-use crate::tokenizer::*;
-use crate::SyntaxError;
+// b2c2-parser crate
+// author: Leonardone @ NEETSDKASU
+
+use b2c2_casl2::IndexRegister;
+use b2c2_common::*;
 use b2c2_compiler_common::*;
+use b2c2_tokenizer::*;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::io::{self, BufRead};

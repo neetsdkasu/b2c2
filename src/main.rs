@@ -1,5 +1,6 @@
 pub use b2c2_casl2 as casl2;
 pub use b2c2_common::*;
+pub use b2c2_parser as parser;
 pub use b2c2_tokenizer as tokenizer;
 use std::env;
 use std::fs;
@@ -9,7 +10,6 @@ use std::path::{Path, PathBuf};
 mod compiler;
 mod debugger;
 mod jis_x_201;
-mod parser;
 mod stat;
 
 const APP_NAME: &str = "b2c2";

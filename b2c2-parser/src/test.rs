@@ -1,4 +1,5 @@
-// crate::parser::test
+// b2c2-parser crate::test
+// author: Leonardone @ NEETSDKASU
 
 use super::*;
 use std::io;
