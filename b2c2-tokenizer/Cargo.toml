@@ -11,5 +11,5 @@ repository = "https://github.com/neetsdkasu/b2c2/"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-b2c2-common = { path="../b2c2-common" }
+b2c2-common = { path = "../b2c2-common", version = "= 0.1.0" }
 
