@@ -4283,13 +4283,7 @@ impl std::fmt::Display for Expr {
         match self {
             BinaryOperatorBoolean(op, lhs, rhs)
             | BinaryOperatorInteger(op, lhs, rhs)
-            | BinaryOperatorString(op, lhs, rhs) => format!(
-                "({} {} {})",
-                lhs.to_string(),
-                op.to_string(),
-                rhs.to_string()
-            )
-            .fmt(f),
+            | BinaryOperatorString(op, lhs, rhs) => format!("({} {} {})", lhs, op, rhs).fmt(f),
             CharOfLitString(lit, index)
                 if matches!(
                     index.as_ref(),
@@ -4298,10 +4292,10 @@ impl std::fmt::Display for Expr {
                         | BinaryOperatorString(..)
                 ) =>
             {
-                format!(r#""{}"{}"#, lit.replace('"', r#""""#), index.to_string()).fmt(f)
+                format!(r#""{}"{}"#, lit.replace('"', r#""""#), index).fmt(f)
             }
             CharOfLitString(lit, index) => {
-                format!(r#""{}"({})"#, lit.replace('"', r#""""#), index.to_string()).fmt(f)
+                format!(r#""{}"({})"#, lit.replace('"', r#""""#), index).fmt(f)
             }
             VarArrayOfBoolean(var, index)
             | VarArrayOfInteger(var, index)
@@ -4316,19 +4310,19 @@ impl std::fmt::Display for Expr {
                         | BinaryOperatorString(..)
                 ) =>
             {
-                format!("{}{}", var, index.to_string()).fmt(f)
+                format!("{}{}", var, index).fmt(f)
             }
             VarArrayOfBoolean(var, index)
             | VarArrayOfInteger(var, index)
             | CharOfVarString(var, index)
             | VarRefArrayOfBoolean(var, index)
             | VarRefArrayOfInteger(var, index)
-            | CharOfVarRefString(var, index) => format!("{}({})", var, index.to_string()).fmt(f),
+            | CharOfVarRefString(var, index) => format!("{}({})", var, index).fmt(f),
             FunctionBoolean(func, param)
                 if matches!(func, Function::Eof)
                     && matches!(param.as_ref(), Expr::LitInteger(0)) =>
             {
-                format!("{}()", func.to_string()).fmt(f)
+                format!("{}()", func).fmt(f)
             }
             FunctionBoolean(func, param)
             | FunctionInteger(func, param)
@@ -4342,22 +4336,20 @@ impl std::fmt::Display for Expr {
                         | BinaryOperatorString(..)
                 ) =>
             {
-                format!("{}{}", func.to_string(), param.to_string()).fmt(f)
+                format!("{}{}", func, param).fmt(f)
             }
             FunctionBoolean(func, param)
             | FunctionInteger(func, param)
             | FunctionString(func, param)
             | FunctionBooleanArray(_, func, param)
-            | FunctionIntegerArray(_, func, param) => {
-                format!("{}({})", func.to_string(), param.to_string()).fmt(f)
-            }
+            | FunctionIntegerArray(_, func, param) => format!("{}({})", func, param).fmt(f),
             LitBoolean(lit) => (if *lit { "True" } else { "False" }).fmt(f),
             LitInteger(lit) => lit.fmt(f),
             LitString(lit) => format!(r#""{}""#, lit.replace('"', r#""""#)).fmt(f),
             LitCharacter('"') => r#"""""c"#.fmt(f),
             LitCharacter(lit) => format!(r#""{}"c"#, lit).fmt(f),
             UnaryOperatorInteger(op, value) | UnaryOperatorBoolean(op, value) => {
-                format!("{}({})", op.to_string(), value.to_string()).fmt(f)
+                format!("{}({})", op, value).fmt(f)
             }
             VarBoolean(var)
             | VarInteger(var)

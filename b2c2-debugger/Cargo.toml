@@ -1,6 +1,6 @@
 [package]
 name = "b2c2-debugger"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2018"
 description = "CASL2のコードを雑雑に実行テストするCOMET2シミュレーター(エミュレーター?)もどき"
 readme = "README.md"
@@ -11,10 +11,10 @@ repository = "https://github.com/neetsdkasu/b2c2/"
 
 [dependencies]
 b2c2-casl2           = { path = "../b2c2-casl2"          , version = "= 0.1.1" }
-b2c2-compiler        = { path = "../b2c2-compiler"       , version = "= 1.0.1" }
+b2c2-compiler        = { path = "../b2c2-compiler"       , version = "= 1.0.2" }
 b2c2-compiler-common = { path = "../b2c2-compiler-common", version = "= 0.1.1" }
-b2c2-flag            = { path = "../b2c2-flag"           , version = "= 0.1.1" }
+b2c2-flag            = { path = "../b2c2-flag"           , version = "= 0.1.2" }
 b2c2-jis-x-201       = { path = "../b2c2-jis-x-201"      , version = "= 0.1.0" }
-b2c2-parser          = { path = "../b2c2-parser"         , version = "= 1.0.1" }
+b2c2-parser          = { path = "../b2c2-parser"         , version = "= 1.0.2" }
 b2c2-stat            = { path = "../b2c2-stat"           , version = "= 0.1.1" }
 b2c2-tokenizer       = { path = "../b2c2-tokenizer"      , version = "= 1.0.0" }
