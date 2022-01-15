@@ -1,6 +1,6 @@
 [package]
 name = "b2c2-debugger"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2018"
 description = "CASL2のコードを雑雑に実行テストするCOMET2シミュレーター(エミュレーター?)もどき"
 readme = "README.md"

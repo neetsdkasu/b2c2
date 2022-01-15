@@ -443,9 +443,9 @@ impl fmt::Display for ExtendedLabel {
             Self::StackPointer => "@SP".fmt(f),
             Self::DecConst(d) => d.to_string().fmt(f),
             Self::HexConst(h) => format!("#{:04X}", h).fmt(f),
-            Self::Load(adr) => format!("({})", adr.to_string()).fmt(f),
-            Self::Sum(adr1, adr2) => format!("{}+{}", adr1.to_string(), adr2.to_string()).fmt(f),
-            Self::Diff(adr1, adr2) => format!("{}-{}", adr1.to_string(), adr2.to_string()).fmt(f),
+            Self::Load(adr) => format!("({})", adr).fmt(f),
+            Self::Sum(adr1, adr2) => format!("{}+{}", adr1, adr2).fmt(f),
+            Self::Diff(adr1, adr2) => format!("{}-{}", adr1, adr2).fmt(f),
         }
     }
 }
