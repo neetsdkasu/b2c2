@@ -667,9 +667,9 @@ impl fmt::Display for Statement {
                 comment: None,
             } => {
                 if let Some(label) = label {
-                    format!("{:<9} {}", label.to_string(), command.to_string())
+                    format!("{:<9} {}", label.to_string(), command)
                 } else {
-                    format!("{:<9} {}", "", command.to_string())
+                    format!("{:<9} {}", "", command)
                 }
             }
         };

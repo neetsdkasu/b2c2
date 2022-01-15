@@ -1,6 +1,6 @@
 [package]
 name = "b2c2-casl2"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2018"
 description = "b2c2におけるCASL2の雑なパーサー?"
 readme = "README.md"
