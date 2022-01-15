@@ -397,7 +397,6 @@ pub enum Command {
 #[cfg(test)]
 #[derive(Clone, Debug)]
 pub struct Program {
-    name: String,
     statements: Vec<Statement>,
 }
 
@@ -418,10 +417,7 @@ impl Builder {
         }];
         Self {
             label: None,
-            program: Program {
-                name: name.into(),
-                statements,
-            },
+            program: Program { statements },
         }
     }
 
@@ -667,9 +663,9 @@ impl fmt::Display for Statement {
                 comment: None,
             } => {
                 if let Some(label) = label {
-                    format!("{:<9} {}", label.to_string(), command.to_string())
+                    format!("{:<9} {}", label.to_string(), command)
                 } else {
-                    format!("{:<9} {}", "", command.to_string())
+                    format!("{:<9} {}", "", command)
                 }
             }
         };

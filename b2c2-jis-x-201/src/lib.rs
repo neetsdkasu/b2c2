@@ -16,7 +16,6 @@ pub fn convert_from_char(ch: char) -> u8 {
 
 // JIS X 201 -> UTF-8
 pub fn convert_to_char(code: u8, replace_specials: bool) -> char {
-    use std::convert::TryFrom;
     if code.is_ascii() {
         if code == 0x7E_u8 {
             // OVER_LINE (replace from TILDE)

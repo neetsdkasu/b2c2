@@ -211,7 +211,7 @@ fn get_func_cint<T: Gen>(gen: &mut T, id: Id) -> Src {
        POP   GR1
        RET
 "#,
-            comment = format!("{:?}", id),
+            comment = format_args!("{:?}", id),
             prog = id.label(),
             ret = gen.jump_label(),
             read = gen.jump_label(),
@@ -245,7 +245,7 @@ fn get_util_safe_index<T: Gen>(gen: &mut T, id: Id) -> Src {
           ADDL   GR0,GR2
 {ok}      RET
 "#,
-            comment = format!("{:?}", id),
+            comment = format_args!("{:?}", id),
             prog = id.label(),
             lbound = gen.jump_label(),
             ubound = gen.jump_label(),
@@ -315,7 +315,7 @@ fn get_util_div_mod<T: Gen>(gen: &mut T, id: Id) -> Src {
         POP   GR2
         RET
 "#,
-            comment = format!("{:?}", id),
+            comment = format_args!("{:?}", id),
             prog = id.label(),
             mul = Id::UtilMul.label(),
             x = gen.jump_label(),
@@ -372,7 +372,7 @@ fn get_util_mul<T: Gen>(gen: &mut T, id: Id) -> Src {
          POP   GR2
          RET
 "#,
-            comment = format!("{:?}", id),
+            comment = format_args!("{:?}", id),
             prog = id.label(),
             cycle1 = gen.jump_label(),
             add1 = gen.jump_label(),
@@ -409,7 +409,7 @@ fn get_func_cstr_arg_bool<T: Gen>(gen: &mut T, id: Id) -> Src {
          POP   GR3
          RET
 "#,
-            comment = format!("{:?}", id),
+            comment = format_args!("{:?}", id),
             prog = id.label(),
             copy = Id::UtilCopyStr.label(),
             ret = gen.jump_label()
@@ -487,7 +487,7 @@ fn get_func_cstr_arg_int<T: Gen>(gen: &mut T, id: Id) -> Src {
          RET
 {temp}   DS    6
 "#,
-            comment = format!("{:?}", id),
+            comment = format_args!("{:?}", id),
             prog = id.label(),
             rem = Id::UtilDivMod.label(),
             copystr = Id::UtilCopyStr.label(),
@@ -545,7 +545,7 @@ fn get_util_compare_str<T: Gen>(gen: &mut T, id: Id) -> Src {
          POP   GR1
          RET
 "#,
-            comment = format!("{:?}", id),
+            comment = format_args!("{:?}", id),
             prog = id.label(),
             cycle = gen.jump_label(),
             next = gen.jump_label(),
@@ -588,7 +588,7 @@ fn get_util_copy_str<T: Gen>(gen: &mut T, id: Id) -> Src {
          POP   GR1
          RET
 "#,
-            comment = format!("{:?}", id),
+            comment = format_args!("{:?}", id),
             prog = id.label(),
             cycle = gen.jump_label(),
             ret = gen.jump_label()
@@ -637,7 +637,7 @@ fn get_util_concat_str<T: Gen>(gen: &mut T, id: Id) -> Src {
          ST    GR0,0,GR2
          RET
 "#,
-            comment = format!("{:?}", id),
+            comment = format_args!("{:?}", id),
             prog = id.label(),
             cycle = gen.jump_label(),
             ret = gen.jump_label()
@@ -670,7 +670,7 @@ fn get_util_fill<T: Gen>(gen: &mut T, id: Id) -> Src {
        POP   GR1
        RET
 "#,
-            comment = format!("{:?}", id),
+            comment = format_args!("{:?}", id),
             prog = id.label(),
             next = gen.jump_label(),
             ret = gen.jump_label()
@@ -708,7 +708,7 @@ fn get_func_space<T: Gen>(_gen: &mut T, id: Id) -> Src {
        ST    GR0,0,GR2
        RET
 "#,
-            comment = format!("{:?}", id),
+            comment = format_args!("{:?}", id),
             prog = id.label(),
             fit = Id::UtilSafeIndex.label(),
             fill = Id::UtilFill.label()
@@ -771,7 +771,7 @@ fn get_util_copy_to_offset_str<T: Gen>(gen: &mut T, id: Id) -> Src {
        POP   GR1
        RET
 "#,
-            comment = format!("{:?}", id),
+            comment = format_args!("{:?}", id),
             prog = id.label(),
             fit = Id::UtilSafeIndex.label(),
             x = gen.jump_label(),
@@ -837,7 +837,7 @@ fn get_util_copy_from_offset_str<T: Gen>(gen: &mut T, id: Id) -> Src {
        POP   GR1
        RET
 "#,
-            comment = format!("{:?}", id),
+            comment = format_args!("{:?}", id),
             prog = id.label(),
             fit = Id::UtilSafeIndex.label(),
             x = gen.jump_label(),
@@ -872,7 +872,7 @@ fn get_util_load_element<T: Gen>(gen: &mut T, id: Id) -> Src {
            POP  GR3
            RET
 "#,
-            comment = format!("{:?}", id),
+            comment = format_args!("{:?}", id),
             prog = id.label(),
             fit = Id::UtilSafeIndex.label(),
             ok = gen.jump_label()

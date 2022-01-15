@@ -1,7 +1,7 @@
 [package]
 name = "b2c2-tokenizer"
-version = "1.0.0"
-edition = "2018"
+version = "1.0.1"
+edition = "2021"
 authors = ["Leonardone <neetsdkasu@gmail.com>"]
 description = "b2c2のBASICコードのトーカナイザー?" 
 readme = "README.md"
@@ -11,5 +11,5 @@ repository = "https://github.com/neetsdkasu/b2c2/"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-b2c2-common = { path = "../b2c2-common", version = "= 0.1.0" }
+b2c2-common = { path = "../b2c2-common", version = "= 0.1.1" }
 

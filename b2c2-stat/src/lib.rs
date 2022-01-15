@@ -222,18 +222,18 @@ commands(r,adr,x):
         comments = comment_lines,
         codes = statements.len() - comment_lines,
         with_comment = with_comment_lines,
-        labels = format!("{:?}", labels.iter().collect::<BTreeMap<_, _>>()),
+        labels = format_args!("{:?}", labels.iter().collect::<BTreeMap<_, _>>()),
         total_label = labels.len(),
         unused_label = labels.iter().filter(|(_, c)| **c == 0).count(),
-        commands = format!("{:?}", commands.iter().collect::<BTreeMap<_, _>>()),
-        p_codes = format!("{:?}", p_codes.iter().collect::<BTreeMap<_, _>>()),
+        commands = format_args!("{:?}", commands.iter().collect::<BTreeMap<_, _>>()),
+        p_codes = format_args!("{:?}", p_codes.iter().collect::<BTreeMap<_, _>>()),
         total_ds_size = total_ds_size,
         total_dc_item_count = total_dc_item_count,
         total_dc_size = total_dc_size,
-        registers = format!("{:?}", registers),
-        index_registers = format!("{:?}", index_registers),
-        literals = format!("{:?}", literals.iter().collect::<BTreeMap<_, _>>()),
-        r_codes = format!("{:?}", r_codes.iter().collect::<BTreeMap<_, _>>()),
-        a_codes = format!("{:?}", a_codes.iter().collect::<BTreeMap<_, _>>())
+        registers = format_args!("{:?}", registers),
+        index_registers = format_args!("{:?}", index_registers),
+        literals = format_args!("{:?}", literals.iter().collect::<BTreeMap<_, _>>()),
+        r_codes = format_args!("{:?}", r_codes.iter().collect::<BTreeMap<_, _>>()),
+        a_codes = format_args!("{:?}", a_codes.iter().collect::<BTreeMap<_, _>>())
     )
 }
