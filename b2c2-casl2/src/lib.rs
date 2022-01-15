@@ -397,7 +397,6 @@ pub enum Command {
 #[cfg(test)]
 #[derive(Clone, Debug)]
 pub struct Program {
-    name: String,
     statements: Vec<Statement>,
 }
 
@@ -418,10 +417,7 @@ impl Builder {
         }];
         Self {
             label: None,
-            program: Program {
-                name: name.into(),
-                statements,
-            },
+            program: Program { statements },
         }
     }
 

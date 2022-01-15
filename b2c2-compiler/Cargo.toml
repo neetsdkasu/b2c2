@@ -1,6 +1,6 @@
 [package]
 name = "b2c2-compiler"
-version = "1.0.3"
+version = "1.0.4"
 edition = "2018"
 description = "b2c2におけるBASICコードをCASL2に変換する部分?"
 readme = "README.md"
@@ -10,10 +10,10 @@ repository = "https://github.com/neetsdkasu/b2c2/"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-b2c2-casl2           = { path = "../b2c2-casl2"          , version = "= 0.1.1" }
-b2c2-compiler-common = { path = "../b2c2-compiler-common", version = "= 0.1.1" }
-b2c2-parser          = { path = "../b2c2-parser"         , version = "= 1.0.2" }
+b2c2-casl2           = { path = "../b2c2-casl2"          , version = "= 0.1.2" }
+b2c2-compiler-common = { path = "../b2c2-compiler-common", version = "= 0.1.2" }
+b2c2-parser          = { path = "../b2c2-parser"         , version = "= 1.0.3" }
 b2c2-tokenizer       = { path = "../b2c2-tokenizer"      , version = "= 1.0.0" }
 
 [dev-dependencies]
-b2c2-stat = { path = "../b2c2-stat", version = "= 0.1.2" }
+b2c2-stat = { path = "../b2c2-stat", version = "= 0.1.3" }

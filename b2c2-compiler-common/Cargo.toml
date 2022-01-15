@@ -1,6 +1,6 @@
 [package]
 name = "b2c2-compiler-common"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2018"
 description = "b2c2-compiler以外の箇所でも使う要素を抜粋"
 readme = "README.md"
@@ -10,4 +10,4 @@ repository = "https://github.com/neetsdkasu/b2c2/"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-b2c2-casl2 = { path = "../b2c2-casl2", version = "= 0.1.1" }
+b2c2-casl2 = { path = "../b2c2-casl2", version = "= 0.1.2" }
