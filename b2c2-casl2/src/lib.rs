@@ -490,7 +490,7 @@ impl fmt::Display for Adr {
             Adr::Label(v) => format!("{}", v).fmt(f),
             Adr::LiteralDec(v) => format!("={}", *v).fmt(f),
             Adr::LiteralHex(v) => format!("=#{:04X}", *v).fmt(f),
-            Adr::LiteralStr(v) => format!("='{}'", v.replace("'", "''")).fmt(f),
+            Adr::LiteralStr(v) => format!("='{}'", v.replace('\'', "''")).fmt(f),
         }
     }
 }
@@ -500,7 +500,7 @@ impl fmt::Display for Constant {
         match self {
             Constant::Dec(v) => format!("{}", *v).fmt(f),
             Constant::Hex(v) => format!("#{:04X}", *v).fmt(f),
-            Constant::Str(v) => format!("'{}'", v.replace("'", "''")).fmt(f),
+            Constant::Str(v) => format!("'{}'", v.replace('\'', "''")).fmt(f),
             Constant::Label(v) => format!("{}", v).fmt(f),
         }
     }
