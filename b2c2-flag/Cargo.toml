@@ -1,6 +1,6 @@
 [package]
 name = "b2c2-flag"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 description = "b2c2のコマンドライン引数を保持するだけのやつ"
 readme = "README.md"
@@ -10,4 +10,4 @@ repository = "https://github.com/neetsdkasu/b2c2/"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-b2c2-compiler = { path = "../b2c2-compiler", version = "= 1.0.5" }
+b2c2-compiler = { path = "../b2c2-compiler", version = "= 1.0.6" }
